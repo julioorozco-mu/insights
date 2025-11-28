@@ -1,0 +1,10 @@
+{
+  "state": "Querétaro",
+  "code": "QUER",
+  "municipalities": [
+    "Querétaro", "San Juan del Río", "Corregidora", "El Marqués", "Cadereyta de Montes",
+    "Tequisquiapan", "Pedro Escobedo", "Ezequiel Montes", "Jalpan de Serra", "Amealco de Bonfil",
+    "Colón", "Tolimán", "Huimilpan", "Peñamiller", "Landa de Matamoros", "Arroyo Seco",
+    "San Joaquín", "Pinal de Amoles"
+  ]
+}

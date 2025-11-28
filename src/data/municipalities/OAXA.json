@@ -1,0 +1,12 @@
+{
+  "state": "Oaxaca",
+  "code": "OAXA",
+  "municipalities": [
+    "Oaxaca de Juárez", "San Juan Bautista Tuxtepec", "Juchitán de Zaragoza", "Salina Cruz",
+    "Huajuapan de León", "Puerto Escondido", "Tehuantepec", "Tlaxiaco", "Pinotepa Nacional",
+    "Matías Romero", "Santa Cruz Xoxocotlán", "Santa Lucía del Camino", "Miahuatlán de Porfirio Díaz",
+    "Heroica Ciudad de Ejutla de Crespo", "Tlacolula de Matamoros", "Ocotlán de Morelos",
+    "Zimatlán de Álvarez", "Pochutla", "Ixtepec", "Loma Bonita", "Zaachila", "Etla",
+    "San Pedro Mixtepec", "Santiago Pinotepa Nacional", "Putla Villa de Guerrero"
+  ]
+}

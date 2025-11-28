@@ -1,0 +1,11 @@
+{
+  "state": "Guerrero",
+  "code": "GUER",
+  "municipalities": [
+    "Acapulco de Juárez", "Chilpancingo de los Bravo", "Iguala de la Independencia", "Zihuatanejo",
+    "Taxco de Alarcón", "Chilapa de Álvarez", "Tlapa de Comonfort", "Ometepec", "Arcelia",
+    "Coyuca de Benítez", "Tecpan de Galeana", "Petatlán", "Atoyac de Álvarez", "Ayutla de los Libres",
+    "Tixtla de Guerrero", "Teloloapan", "Huitzuco de los Figueroa", "Pungarabato", "Cutzamala de Pinzón",
+    "Iguala", "Coyuca de Catalán", "San Marcos", "Acatepec", "La Unión", "Tlapehuala"
+  ]
+}

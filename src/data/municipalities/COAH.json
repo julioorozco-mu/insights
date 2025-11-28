@@ -1,0 +1,10 @@
+{
+  "state": "Coahuila",
+  "code": "COAH",
+  "municipalities": [
+    "Saltillo", "Torreón", "Monclova", "Piedras Negras", "Acuña", "Frontera", "Sabinas",
+    "Matamoros", "San Pedro", "Parras", "Ramos Arizpe", "Francisco I. Madero", "Múzquiz",
+    "Allende", "Nava", "Castaños", "San Juan de Sabinas", "Zaragoza", "Cuatro Ciénegas",
+    "Viesca", "General Cepeda", "Arteaga", "Sacramento", "Progreso", "Nadadores"
+  ]
+}

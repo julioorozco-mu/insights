@@ -1,0 +1,65 @@
+/* Custom theme overrides for DaisyUI - Skillzone LMS */
+
+[data-theme="skillzone"] {
+  --rounded-box: 1rem;
+  --rounded-btn: 0.75rem;
+  --rounded-badge: 9999px;
+  --animation-btn: 0.15s;
+  --animation-input: 0.15s;
+  --btn-focus-scale: 0.98;
+  --border-btn: 1px;
+  --tab-border: 1px;
+}
+
+/* Estilos personalizados para Skillzone */
+.btn-primary {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border-radius: 0.75rem;
+}
+
+.card {
+  border: none;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  border-radius: 1rem;
+}
+
+.navbar {
+  font-weight: 500;
+}
+
+/* Menu styles for dark sidebar */
+.menu li > a.active,
+.menu li > a:active {
+  background-color: rgba(148, 163, 255, 0.16) !important;
+  color: #ffffff !important;
+}
+
+/* Custom animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-in-out;
+}

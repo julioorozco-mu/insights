@@ -1,0 +1,11 @@
+{
+  "state": "Tlaxcala",
+  "code": "TLAX",
+  "municipalities": [
+    "Tlaxcala", "Apizaco", "Huamantla", "Chiautempan", "Zacatelco", "Calpulalpan", "Tlaxco",
+    "Papalotla de Xicohténcatl", "San Pablo del Monte", "Contla de Juan Cuamatzi", "Tetla de la Solidaridad",
+    "Xicohtzinco", "Totolac", "Santa Cruz Tlaxcala", "Ixtacuixtla de Mariano Matamoros",
+    "Yauhquemehcan", "Teolocholco", "Nativitas", "Tzompantepec", "Apetatitlán de Antonio Carvajal",
+    "Sanctórum de Lázaro Cárdenas", "Panotla", "Tepeyanco", "Cuapiaxtla", "Terrenate"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "state": "Hidalgo",
+  "code": "HIDA",
+  "municipalities": [
+    "Pachuca de Soto", "Tulancingo de Bravo", "Tula de Allende", "Huejutla de Reyes",
+    "Ixmiquilpan", "Actopan", "Tizayuca", "Tepeapulco", "Mineral de la Reforma", "Apan",
+    "Tepeji del Río", "Zempoala", "Mixquiahuala de Juárez", "Atotonilco de Tula", "Progreso de Obregón",
+    "Cuautepec de Hinojosa", "Tlahuelilpan", "Tlaxcoapan", "Huichapan", "Tecozautla",
+    "Zacualtipán de Ángeles", "Molango de Escamilla", "Metztitlán", "Zimapán", "Tepehuacán de Guerrero"
+  ]
+}

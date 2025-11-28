@@ -1,0 +1,11 @@
+{
+  "state": "Guanajuato",
+  "code": "GUAN",
+  "municipalities": [
+    "León", "Irapuato", "Celaya", "Salamanca", "Guanajuato", "San Miguel de Allende",
+    "Silao", "Pénjamo", "Valle de Santiago", "Cortazar", "Dolores Hidalgo", "Moroleón",
+    "Acámbaro", "San Francisco del Rincón", "Purísima del Rincón", "Apaseo el Grande",
+    "Salvatierra", "Yuriria", "Uriangato", "San Luis de la Paz", "Romita", "Villagrán",
+    "Comonfort", "San Felipe", "Abasolo"
+  ]
+}

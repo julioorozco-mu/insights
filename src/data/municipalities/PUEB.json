@@ -1,0 +1,10 @@
+{
+  "state": "Puebla",
+  "code": "PUEB",
+  "municipalities": [
+    "Puebla", "Tehuacán", "San Martín Texmelucan", "Atlixco", "San Pedro Cholula", "Amozoc",
+    "Teziutlán", "Cuautlancingo", "Huauchinango", "Izúcar de Matamoros", "Cholula", "Tecamachalco",
+    "Zacatlán", "Acatzingo", "Ajalpan", "Huejotzingo", "Tlatlauquitepec", "Chignahuapan",
+    "Acajete", "Coronango", "Tepeaca", "Xicotepec", "Chiautla", "Oriental", "Libres"
+  ]
+}

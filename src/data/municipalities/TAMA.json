@@ -1,0 +1,10 @@
+{
+  "state": "Tamaulipas",
+  "code": "TAMA",
+  "municipalities": [
+    "Reynosa", "Matamoros", "Nuevo Laredo", "Tampico", "Victoria", "Altamira", "Río Bravo",
+    "Madero", "Mante", "Valle Hermoso", "Miguel Alemán", "San Fernando", "Xicoténcatl",
+    "González", "Soto la Marina", "Aldama", "Camargo", "Güémez", "Llera", "Tula",
+    "Jaumave", "Mier", "Cruillas", "Jiménez", "Padilla"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "state": "Sonora",
+  "code": "SONO",
+  "municipalities": [
+    "Hermosillo", "Cajeme", "Nogales", "San Luis Río Colorado", "Navojoa", "Guaymas",
+    "Agua Prieta", "Caborca", "Huatabampo", "Empalme", "Etchojoa", "Puerto Peñasco",
+    "Cananea", "Altar", "Magdalena", "Santa Ana", "Benito Juárez", "Bácum", "Nacozari de García",
+    "Fronteras", "Pitiquito", "Ímuris", "Benjamín Hill", "Carbó", "Trincheras"
+  ]
+}

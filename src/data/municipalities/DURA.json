@@ -1,0 +1,10 @@
+{
+  "state": "Durango",
+  "code": "DURA",
+  "municipalities": [
+    "Durango", "Gómez Palacio", "Lerdo", "Santiago Papasquiaro", "Guadalupe Victoria",
+    "Canatlán", "El Oro", "Cuencamé", "Nombre de Dios", "Vicente Guerrero", "Pueblo Nuevo",
+    "Mapimí", "Poanas", "Mezquital", "Peñón Blanco", "Nazas", "Rodeo", "Tlahualilo",
+    "Tepehuanes", "Tamazula", "San Dimas", "Nuevo Ideal", "Indé", "Ocampo", "Pánuco de Coronado"
+  ]
+}

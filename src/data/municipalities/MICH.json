@@ -1,0 +1,10 @@
+{
+  "state": "Michoacán",
+  "code": "MICH",
+  "municipalities": [
+    "Morelia", "Uruapan", "Zamora", "Lázaro Cárdenas", "Apatzingán", "Zitácuaro",
+    "La Piedad", "Pátzcuaro", "Sahuayo", "Hidalgo", "Jacona", "Los Reyes", "Puruándiro",
+    "Maravatío", "Yurecuaro", "Tacámbaro", "Jiquilpan", "Ciudad Hidalgo", "Paracho",
+    "Huetamo", "Taretan", "Zinapécuaro", "Cherán", "Tangancícuaro", "Cotija"
+  ]
+}

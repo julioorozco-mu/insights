@@ -1,0 +1,10 @@
+{
+  "state": "Veracruz",
+  "code": "VERA",
+  "municipalities": [
+    "Xalapa", "Veracruz", "Coatzacoalcos", "Córdoba", "Poza Rica de Hidalgo", "Boca del Río",
+    "Minatitlán", "Orizaba", "Tuxpan", "Papantla", "Martínez de la Torre", "San Andrés Tuxtla",
+    "Tierra Blanca", "Cosoleacaque", "Acayucan", "Alvarado", "Cosamaloapan", "Río Blanco",
+    "Coatepec", "Banderilla", "Catemaco", "Xico", "Perote", "Tantoyuca", "Tlalixcoyan"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "state": "Chiapas",
+  "code": "CHIS",
+  "municipalities": [
+    "Tuxtla Gutiérrez", "Tapachula", "San Cristóbal de las Casas", "Comitán de Domínguez",
+    "Ocosingo", "Chiapa de Corzo", "Palenque", "Tonalá", "Villaflores", "Arriaga",
+    "Cintalapa", "Pichucalco", "Las Margaritas", "Yajalón", "Frontera Comalapa", "Motozintla",
+    "Reforma", "Huixtla", "Escuintla", "Mapastepec", "Pijijiapan", "Bochil", "Simojovel",
+    "Venustiano Carranza", "Berriozábal", "Tecpatán", "Tila", "Chilón", "Altamirano"
+  ]
+}

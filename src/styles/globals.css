@@ -1,0 +1,263 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Modern LMS Dashboard Design System */
+    /* Background Colors */
+    --page-bg: #F5F5FA;
+    --sidebar-bg: #111118;
+    --card-bg: #FFFFFF;
+    --card-alt-bg: #F8F9FF;
+    
+    /* Text Colors */
+    --text-primary: #111827;
+    --text-secondary: #6B7280;
+    --text-muted: #9CA3AF;
+    --text-on-dark: #F9FAFB;
+    --text-on-accent: #FFFFFF;
+    
+    /* Accent Colors */
+    --accent-primary: #6C5CE7;
+    --accent-primary-soft: #EEE9FF;
+    --accent-secondary: #FFB347;
+    --color-success: #22C55E;
+    --color-warning: #F97316;
+    --color-danger: #EF4444;
+    --color-info: #0EA5E9;
+    
+    /* Border Colors */
+    --border-subtle: rgba(15, 23, 42, 0.06);
+    --border-strong: rgba(15, 23, 42, 0.12);
+    --divider-on-dark: rgba(148, 163, 184, 0.35);
+    
+    /* State Colors */
+    --sidebar-item-active: rgba(148, 163, 255, 0.16);
+    --sidebar-item-hover: rgba(148, 163, 255, 0.10);
+    --chip-bg: rgba(148, 163, 255, 0.12);
+    --chip-text: #4F46E5;
+    
+    /* Shadows */
+    --shadow-card: 0 10px 30px rgba(15, 23, 42, 0.10);
+    --shadow-card-soft: 0 4px 16px rgba(15, 23, 42, 0.06);
+    --shadow-elevated: 0 18px 40px rgba(15, 23, 42, 0.16);
+    
+    /* Radius */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-pill: 999px;
+    
+    /* Spacing */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+    --spacing-xl: 24px;
+    --spacing-2xl: 32px;
+  }
+
+  body {
+    @apply bg-base-200 text-base-content;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif;
+  }
+}
+
+@layer components {
+  .container-custom {
+    @apply container mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Dashboard Card Styles */
+  .dashboard-card {
+    @apply bg-white rounded-lg shadow-card p-4;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+  }
+
+  .dashboard-card-soft {
+    @apply bg-white rounded-lg p-4;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card-soft);
+  }
+
+  /* Sidebar Navigation Item */
+  .sidebar-nav-item {
+    @apply flex items-center gap-3 px-4 py-2.5 rounded-full text-sm font-medium transition-all duration-150;
+    color: rgba(249, 250, 251, 0.8);
+  }
+
+  .sidebar-nav-item:hover {
+    background: var(--sidebar-item-hover);
+    color: #FFFFFF;
+  }
+
+  .sidebar-nav-item.active {
+    background: var(--sidebar-item-active);
+    color: #FFFFFF;
+  }
+
+  /* Section Header */
+  .section-header {
+    @apply flex items-center justify-between mb-3;
+  }
+
+  .section-title {
+    @apply text-h2 font-semibold text-dashboard-textPrimary;
+  }
+
+  .section-action {
+    @apply text-body-sm font-medium text-dashboard-accent flex items-center gap-1 hover:opacity-80 transition-opacity;
+  }
+
+  /* Level Badges */
+  .badge-beginner {
+    @apply px-2.5 py-1 text-caption font-semibold rounded-pill;
+    background: #DCFCE7;
+    color: #15803D;
+  }
+
+  .badge-intermediate {
+    @apply px-2.5 py-1 text-caption font-semibold rounded-pill;
+    background: #FEF3C7;
+    color: #92400E;
+  }
+
+  .badge-advanced {
+    @apply px-2.5 py-1 text-caption font-semibold rounded-pill;
+    background: #FEE2E2;
+    color: #B91C1C;
+  }
+
+  /* Stat Card */
+  .stat-card {
+    @apply bg-white rounded-lg p-4 flex items-center gap-3;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card-soft);
+  }
+
+  .stat-icon {
+    @apply w-10 h-10 rounded-lg flex items-center justify-center;
+    background: var(--accent-primary-soft);
+    color: var(--accent-primary);
+  }
+
+  .stat-value {
+    @apply text-xl font-bold text-dashboard-textPrimary;
+  }
+
+  .stat-delta-positive {
+    @apply text-caption font-medium text-dashboard-success;
+  }
+
+  .stat-delta-negative {
+    @apply text-caption font-medium text-dashboard-danger;
+  }
+
+  /* Course Card */
+  .course-card {
+    @apply bg-white rounded-lg overflow-hidden transition-all duration-200;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card-soft);
+  }
+
+  .course-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Avatar Group */
+  .avatar-group {
+    @apply flex -space-x-1.5;
+  }
+
+  .avatar-group-item {
+    @apply w-6 h-6 rounded-full border-2 border-white;
+  }
+
+  .avatar-counter {
+    @apply w-6 h-6 rounded-full flex items-center justify-center text-caption font-medium;
+    background: var(--accent-primary-soft);
+    color: var(--accent-primary);
+  }
+
+  /* Pill Counter */
+  .pill-counter {
+    @apply px-2 py-0.5 rounded-full text-caption font-medium;
+    background: var(--accent-primary);
+    color: white;
+  }
+
+  /* Calendar Widget */
+  .calendar-day {
+    @apply w-8 h-8 flex items-center justify-center rounded-full text-body-sm transition-colors;
+  }
+
+  .calendar-day.active {
+    background: var(--accent-primary);
+    color: white;
+  }
+
+  .calendar-day.has-event::after {
+    content: '';
+    @apply absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full;
+    background: var(--accent-primary);
+  }
+
+  /* Chart Legend */
+  .chart-legend-item {
+    @apply flex items-center gap-1.5 text-body-sm text-dashboard-textSecondary;
+  }
+
+  .chart-legend-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  /* Legacy components for backward compatibility */
+  .card-custom {
+    @apply dashboard-card;
+  }
+
+  .btn-custom {
+    @apply btn btn-primary;
+  }
+
+  .input-custom {
+    @apply input input-bordered w-full;
+  }
+
+  .textarea-custom {
+    @apply textarea textarea-bordered w-full;
+  }
+
+  .badge-custom {
+    @apply badge badge-primary;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Dashboard utilities */
+  .hover-lift {
+    @apply transition-all duration-200;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card);
+  }
+}

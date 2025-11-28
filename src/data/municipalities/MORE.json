@@ -1,0 +1,12 @@
+{
+  "state": "Morelos",
+  "code": "MORE",
+  "municipalities": [
+    "Cuernavaca", "Jiutepec", "Cuautla", "Temixco", "Emiliano Zapata", "Yautepec", "Ayala",
+    "Puente de Ixtla", "Jojutla", "Xochitepec", "Zacatepec", "Tlaltizapán", "Tepoztlán",
+    "Tlaquiltenango", "Yecapixtla", "Tetecala", "Axochiapan", "Jonacatepec", "Tlayacapan",
+    "Atlatlahucan", "Totolapan", "Ocuituco", "Tetela del Volcán", "Huitzilac", "Coatlán del Río",
+    "Mazatepec", "Miacatlán", "Amacuzac", "Jantetelco", "Temoac", "Tepalcingo", "Zacualpan de Amilpas",
+    "Tlalnepantla"
+  ]
+}

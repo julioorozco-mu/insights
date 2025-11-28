@@ -1,0 +1,109 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Función auxiliar para verificar autenticación
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Función auxiliar para verificar si el usuario es el dueño
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Usuarios
+    match /users/{userId} {
+      // Lectura: solo el propio usuario
+      allow read: if isOwner(userId);
+      // Escritura: solo el propio usuario
+      allow write: if isOwner(userId);
+    }
+    
+    // Cursos
+    match /courses/{courseId} {
+      // Lectura: todos los usuarios autenticados
+      allow read: if isAuthenticated();
+      // Escritura: solo instructores (verificar rol en el documento de usuario)
+      allow create, update: if isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'instructor';
+      allow delete: if isAuthenticated() && 
+        (resource.data.instructorId == request.auth.uid || 
+         request.auth.uid in resource.data.speakerIds);
+    }
+    
+    // Lecciones
+    match /lessons/{lessonId} {
+      // Lectura: todos los usuarios autenticados
+      allow read: if isAuthenticated();
+      // Escritura: solo el instructor del curso
+      allow write: if isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'instructor';
+    }
+    
+    // Inscripciones
+    match /enrollments/{enrollmentId} {
+      // Lectura: el estudiante inscrito o el instructor del curso
+      allow read: if isAuthenticated() && 
+        (resource.data.studentId == request.auth.uid || 
+         get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.instructorId == request.auth.uid);
+      // Escritura: solo el estudiante puede inscribirse
+      allow create: if isAuthenticated() && request.resource.data.studentId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.studentId);
+    }
+    
+    // Mensajes de chat
+    match /messages/{messageId} {
+      // Lectura: todos los usuarios autenticados
+      allow read: if isAuthenticated();
+      // Escritura: solo usuarios autenticados pueden crear mensajes
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      // No se permite actualizar o eliminar mensajes
+      allow update, delete: if false;
+    }
+    
+    // Encuestas en vivo
+    match /livePolls/{pollId} {
+      // Lectura: todos los usuarios autenticados
+      allow read: if isAuthenticated();
+      // Escritura: solo instructores
+      allow write: if isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'instructor';
+    }
+    
+    // Respuestas a encuestas
+    match /pollResponses/{responseId} {
+      // Lectura: todos los usuarios autenticados
+      allow read: if isAuthenticated();
+      // Escritura: solo el usuario puede crear su propia respuesta
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      // No se permite actualizar o eliminar respuestas
+      allow update, delete: if false;
+    }
+    
+    // Certificados
+    match /certificates/{certificateId} {
+      // Lectura: solo el estudiante dueño del certificado
+      allow read: if isAuthenticated() && resource.data.studentId == request.auth.uid;
+      // Escritura: solo el sistema (mediante Cloud Functions)
+      allow write: if false;
+    }
+    
+    // Progreso de lecciones
+    match /progress/{progressId} {
+      // Lectura: solo el estudiante dueño del progreso
+      allow read: if isAuthenticated() && resource.data.studentId == request.auth.uid;
+      // Escritura: solo el estudiante puede actualizar su propio progreso
+      allow write: if isAuthenticated() && request.resource.data.studentId == request.auth.uid;
+    }
+
+    // Notas de lecciones
+    match /lessonNotes/{noteId} {
+      // Lectura: solo el estudiante dueño de las notas
+      allow read: if isAuthenticated() && resource.data.studentId == request.auth.uid;
+      // Escritura: solo el estudiante puede crear y actualizar sus propias notas
+      allow write: if isAuthenticated() && request.resource.data.studentId == request.auth.uid;
+    }
+  }
+}

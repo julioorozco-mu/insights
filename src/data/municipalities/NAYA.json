@@ -1,0 +1,10 @@
+{
+  "state": "Nayarit",
+  "code": "NAYA",
+  "municipalities": [
+    "Tepic", "Santiago Ixcuintla", "Compostela", "Bahía de Banderas", "Tuxpan", "Ixtlán del Río",
+    "Acaponeta", "Tecuala", "San Blas", "Rosamorada", "Ruíz", "Ahuacatlán", "Jala",
+    "Santa María del Oro", "Del Nayar", "Xalisco", "San Pedro Lagunillas", "La Yesca",
+    "Huajicori", "Amatlán de Cañas"
+  ]
+}

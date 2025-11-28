@@ -1,0 +1,11 @@
+{
+  "state": "Baja California",
+  "code": "BCAL",
+  "municipalities": [
+    "Ensenada",
+    "Mexicali",
+    "Playas de Rosarito",
+    "Tecate",
+    "Tijuana"
+  ]
+}

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bienvenido a la Plataforma de Cursos</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Arial', 'Helvetica', sans-serif;
+      background-color: #f4f4f4;
+    }
+    .email-container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #ffffff;
+    }
+    .header {
+      background: #FD002A;
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .logos {
+      display: table;
+      margin: 0 auto 20px;
+      background-color: white;
+      padding: 15px 30px;
+      border-radius: 8px;
+    }
+    .logo-img {
+      height: 70px;
+      width: auto;
+      object-fit: contain;
+      display: inline-block;
+      vertical-align: middle;
+      margin: 0 15px;
+    }
+    .header-title {
+      color: #ffffff;
+      font-size: 28px;
+      font-weight: bold;
+      margin: 0;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .content {
+      padding: 40px 30px;
+    }
+    .greeting {
+      font-size: 24px;
+      color: #1f2937;
+      margin-bottom: 20px;
+      font-weight: bold;
+    }
+    .message {
+      font-size: 16px;
+      color: #4b5563;
+      line-height: 1.6;
+      margin-bottom: 30px;
+      text-align: justify;
+    }
+    .cta-button {
+      display: inline-block;
+      background: #000000 !important;
+      color: #ffffff !important;
+      text-decoration: none !important;
+      padding: 16px 40px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 16px;
+      text-align: center;
+      box-shadow: 0 4px 6px rgba(253, 0, 42, 0.019);
+      transition: transform 0.2s;
+    }
+    .cta-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 8px rgba(19, 5, 7, 0.222);
+      color: #ffffff !important;
+    }
+    a {
+      color: #ffffff !important;
+      text-decoration: none !important;
+    }
+    .button-container {
+      text-align: center;
+      margin: 30px 0;
+    }
+    .features {
+      background-color: #f9fafb;
+      padding: 30px;
+      border-radius: 8px;
+      margin: 30px 0;
+    }
+    .feature-item {
+      display: flex;
+      align-items: start;
+      margin-bottom: 15px;
+    }
+    .feature-icon {
+      color: #FD002A;
+      font-size: 20px;
+      margin-right: 12px;
+      margin-top: 2px;
+    }
+    .feature-text {
+      color: #4b5563;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .footer {
+      background-color: #1f2937;
+      color: #9ca3af;
+      padding: 30px;
+      text-align: center;
+      font-size: 14px;
+    }
+    .footer-link {
+      color: #FD002A !important;
+      text-decoration: none;
+    }
+    .divider {
+      height: 1px;
+      background-color: #e5e7eb;
+      margin: 30px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <!-- Header -->
+    <div class="header">
+      <div class="logos">
+        <img src="https://www.epolitica.com.mx/images/logos/logo_pri_edomex.png" alt="PRI Estado de México" class="logo-img">
+        <img src="https://www.epolitica.com.mx/images/logos/logo-ire-edomex-red.png" alt="Instituto Reyes Heroles" class="logo-img">
+      </div>
+      <h1 class="header-title">¡Bienvenido a la Plataforma!</h1>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+      <p class="greeting">¡Hola ${name}!</p>
+      
+      <p class="message">
+        Nos complace darte la bienvenida al curso <strong>Narrativas de Poder: Cómo ganar con ideas, imagen y redes</strong> organizado por el Instituto Reyes Heroles, A.C. del Partido Revolucionario Institucional. Tu cuenta ha sido creada exitosamente y esperamos tu participación en la sesión inaugural el próximo <strong>Lunes 03 de noviembre en punto de las 12:00 horas tiempo del centro.</strong>
+      </p>
+
+      <div class="features">
+        <div class="feature-item">
+          <span class="feature-icon">✓</span>
+          <span class="feature-text"><strong>Acceso a cursos de calidad</strong> diseñados por expertos en formación política.</span>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">✓</span>
+          <span class="feature-text"><strong>Constancia de participación</strong> al completar tu participación en el curso.</span>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">✓</span>
+          <span class="feature-text"><strong>Plataforma en línea</strong> para acceder a los cursos desde cualquier dispositivo.</span>
+        </div>
+      </div>
+
+      <p class="message">
+        Para acceder a la plataforma ingresa con las credenciales que registraste:
+      </p>
+
+      <div style="background-color: #FD002A; padding: 15px; border-radius: 6px; margin: 20px 0;">
+        <p style="margin: 0; color: #ffffff; font-size: 14px; font-weight: 600;">Correo electrónico:</p>
+        <p style="margin: 8px 0 0 0; color: #ffffff; font-size: 16px; font-weight: 700;">
+          <span style="color: #ffffff !important; font-weight: 700 !important;">${email}</span>
+        </p>
+      </div>
+
+      <div class="button-container">
+        <a href="https://www.epolitica.com.mx/auth/login" class="cta-button">
+          Ingresar a la Plataforma
+        </a>
+      </div>
+
+      <div class="divider"></div>
+
+      <p class="message" style="font-size: 14px; color: #6b7280;">
+        Si tienes alguna pregunta o necesitas asistencia, no dudes en contactarnos. 
+        Estamos aquí para apoyarte en tu proceso de aprendizaje.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p style="margin: 0 0 10px 0;">
+        <strong>Instituto Reyes Heroles</strong><br>
+        <strong>Partido Revolucionario Institucional</strong> <br>
+      </p>
+      <p style="margin: 10px 0;">
+        <a href="https://www.epolitica.com.mx" class="footer-link">www.epolitica.com.mx</a>
+      </p>
+      <p style="margin: 20px 0 0 0; font-size: 12px; color: #6b7280;">
+        Este correo fue enviado automáticamente. Por favor no respondas a este mensaje.
+      </p>
+    </div>
+  </div>
+</body>
+</html>
