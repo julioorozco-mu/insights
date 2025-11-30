@@ -4,12 +4,13 @@
 
 @layer base {
   :root {
-    /* Modern LMS Dashboard Design System */
-    /* Background Colors */
-    --page-bg: #F5F5FA;
-    --sidebar-bg: #111118;
-    --card-bg: #FFFFFF;
-    --card-alt-bg: #F8F9FF;
+    /* Brand Colors - Marca UNACH / micro-insights-dev */
+    --brand-primary: #192170;
+    --brand-secondary: #3C1970;
+    --brand-success: #10B981;
+    --brand-error: #EF4444;
+    --brand-background: #F1F5F9;
+    --brand-surface: #FFFFFF;
     
     /* Text Colors */
     --text-primary: #111827;
@@ -18,50 +19,20 @@
     --text-on-dark: #F9FAFB;
     --text-on-accent: #FFFFFF;
     
-    /* Accent Colors */
-    --accent-primary: #6C5CE7;
-    --accent-primary-soft: #EEE9FF;
-    --accent-secondary: #FFB347;
-    --color-success: #22C55E;
-    --color-warning: #F97316;
-    --color-danger: #EF4444;
-    --color-info: #0EA5E9;
-    
-    /* Border Colors */
-    --border-subtle: rgba(15, 23, 42, 0.06);
-    --border-strong: rgba(15, 23, 42, 0.12);
-    --divider-on-dark: rgba(148, 163, 184, 0.35);
-    
-    /* State Colors */
-    --sidebar-item-active: rgba(148, 163, 255, 0.16);
-    --sidebar-item-hover: rgba(148, 163, 255, 0.10);
-    --chip-bg: rgba(148, 163, 255, 0.12);
-    --chip-text: #4F46E5;
-    
     /* Shadows */
     --shadow-card: 0 10px 30px rgba(15, 23, 42, 0.10);
     --shadow-card-soft: 0 4px 16px rgba(15, 23, 42, 0.06);
     --shadow-elevated: 0 18px 40px rgba(15, 23, 42, 0.16);
     
     /* Radius */
-    --radius-sm: 8px;
-    --radius-md: 12px;
     --radius-lg: 16px;
     --radius-xl: 24px;
-    --radius-pill: 999px;
     
-    /* Spacing */
-    --spacing-xs: 4px;
-    --spacing-sm: 8px;
-    --spacing-md: 12px;
-    --spacing-lg: 16px;
-    --spacing-xl: 24px;
-    --spacing-2xl: 32px;
+    font-feature-settings: "ss01" on, "ss02" on;
   }
 
   body {
-    @apply bg-base-200 text-base-content;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif;
+    @apply bg-brand-background text-slate-900 antialiased;
   }
 }
 

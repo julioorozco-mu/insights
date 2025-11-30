@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "@/styles/globals.css";
 import "@/styles/theme.css";
 import { APP_NAME_FULL } from "@/utils/constants";
 
-const inter = Inter({ subsets: ["latin"] });
+const font = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-plus-jakarta" });
 
 export const metadata: Metadata = {
   title: APP_NAME_FULL,
@@ -18,7 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" data-theme="skillzone" suppressHydrationWarning>
-      <body className={inter.className} suppressHydrationWarning>
+      <body className={`${font.variable} font-sans bg-brand-background text-slate-900`} suppressHydrationWarning>
         {children}
       </body>
     </html>

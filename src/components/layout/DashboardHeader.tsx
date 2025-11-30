@@ -1,19 +1,21 @@
 "use client";
 
+import { ReactNode } from "react";
+
 interface DashboardHeaderProps {
-  title: React.ReactNode;
-  description?: string;
-  action?: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  children?: ReactNode;
 }
 
-export function DashboardHeader({ title, description, action }: DashboardHeaderProps) {
+export function DashboardHeader({ title, subtitle, children }: DashboardHeaderProps) {
   return (
-    <div className="flex justify-between items-start mb-8">
+    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 className="text-4xl font-bold mb-2">{title}</h1>
-        {description && <p className="text-base-content/70">{description}</p>}
+        <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
+        {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
       </div>
-      {action && <div>{action}</div>}
+      {children && <div className="flex items-center gap-3">{children}</div>}
     </div>
   );
 }

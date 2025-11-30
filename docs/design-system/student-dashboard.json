@@ -1,0 +1,415 @@
+{
+  "design_profile": {
+    "name": "Modern LMS Dashboard – Style A",
+    "description": "Soft, card-based, multi-column dashboard layout with dark sidebar, light content area, rounded cards and pastel accent colors.",
+    "brand": {
+      "logo_placement": "top-left in sidebar",
+      "logo_style": "compact icon + wordmark, horizontal, white on dark background"
+    }
+  },
+  "foundations": {
+    "colors": {
+      "mode": "light",
+      "background": {
+        "page": "#F5F5FA",
+        "sidebar": "#111118",
+        "card": "#FFFFFF",
+        "card_alt": "#F8F9FF"
+      },
+      "text": {
+        "primary": "#111827",
+        "secondary": "#6B7280",
+        "muted": "#9CA3AF",
+        "on_dark_primary": "#F9FAFB",
+        "on_accent": "#FFFFFF"
+      },
+      "accent": {
+        "primary": "#6C5CE7",
+        "primary_soft": "#EEE9FF",
+        "secondary": "#FFB347",
+        "success": "#22C55E",
+        "warning": "#F97316",
+        "danger": "#EF4444",
+        "info": "#0EA5E9"
+      },
+      "borders": {
+        "subtle": "rgba(15, 23, 42, 0.06)",
+        "strong": "rgba(15, 23, 42, 0.12)",
+        "divider_on_dark": "rgba(148, 163, 184, 0.35)"
+      },
+      "states": {
+        "sidebar_item_active_bg": "rgba(148, 163, 255, 0.16)",
+        "sidebar_item_hover_bg": "rgba(148, 163, 255, 0.10)",
+        "chip_bg": "rgba(148, 163, 255, 0.12)",
+        "chip_text": "#4F46E5"
+      }
+    },
+    "typography": {
+      "font_family": "system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif",
+      "scale": {
+        "display": { "size": 32, "weight": 700, "line_height": 1.25 },
+        "h1": { "size": 24, "weight": 700, "line_height": 1.35 },
+        "h2": { "size": 20, "weight": 600, "line_height": 1.4 },
+        "h3": { "size": 16, "weight": 600, "line_height": 1.4 },
+        "body_lg": { "size": 15, "weight": 500, "line_height": 1.5 },
+        "body_md": { "size": 14, "weight": 400, "line_height": 1.5 },
+        "body_sm": { "size": 12, "weight": 400, "line_height": 1.45 },
+        "caption": { "size": 11, "weight": 400, "line_height": 1.4 }
+      },
+      "usage": {
+        "page_title": "h1",
+        "section_title": "h2",
+        "card_title": "h3",
+        "meta_label": "caption uppercase with letter-spacing",
+        "numerical_value": { "size": 22, "weight": 700 }
+      }
+    },
+    "spacing": {
+      "unit": 4,
+      "scale": {
+        "xs": 4,
+        "sm": 8,
+        "md": 12,
+        "lg": 16,
+        "xl": 24,
+        "xxl": 32
+      },
+      "page_padding": {
+        "horizontal": 24,
+        "vertical": 24
+      },
+      "card_padding": {
+        "compact": 12,
+        "default": 16,
+        "spacious": 20
+      },
+      "gaps": {
+        "between_columns": 24,
+        "between_cards": 16,
+        "between_list_items": 8
+      }
+    },
+    "radius": {
+      "sm": 8,
+      "md": 12,
+      "lg": 16,
+      "xl": 24,
+      "pill": 999
+    },
+    "shadows": {
+      "card": "0 10px 30px rgba(15, 23, 42, 0.10)",
+      "card_soft": "0 4px 16px rgba(15, 23, 42, 0.06)",
+      "elevated": "0 18px 40px rgba(15, 23, 42, 0.16)"
+    },
+    "iconography": {
+      "style": "outline with rounded corners, consistent stroke width",
+      "size": {
+        "sm": 14,
+        "md": 18,
+        "lg": 20
+      }
+    }
+  },
+  "layout": {
+    "grid_system": {
+      "columns": 12,
+      "gutter": 24,
+      "max_width": 1280,
+      "alignment": "centered"
+    },
+    "page_structure": {
+      "sidebar": {
+        "width": 260,
+        "position": "fixed_left",
+        "background": "colors.background.sidebar",
+        "content_order": [
+          "brand_logo",
+          "primary_navigation",
+          "secondary_navigation_group",
+          "spacer",
+          "support_link",
+          "settings_link"
+        ]
+      },
+      "main_content": {
+        "columns": [
+          {
+            "id": "center",
+            "width_type": "flex",
+            "min_width": 520,
+            "sections": [
+              "top_recommendations_grid",
+              "my_courses_list"
+            ]
+          },
+          {
+            "id": "right",
+            "width_type": "fixed",
+            "width": 320,
+            "sections": [
+              "day_overview",
+              "schedule_cards",
+              "overall_information_stats",
+              "productivity_chart"
+            ]
+          }
+        ]
+      },
+      "top_bar": {
+        "present": true,
+        "items": [
+          "page_title",
+          "spacer",
+          "notification_icon",
+          "user_avatar"
+        ]
+      }
+    }
+  },
+  "components": {
+    "sidebar_nav_item": {
+      "layout": "icon + label, left-aligned",
+      "height": 40,
+      "padding_horizontal": 16,
+      "border_radius": "pill",
+      "states": {
+        "default": {
+          "text_color": "rgba(249, 250, 251, 0.8)",
+          "icon_color": "rgba(249, 250, 251, 0.8)",
+          "background": "transparent"
+        },
+        "hover": {
+          "background": "foundations.colors.states.sidebar_item_hover_bg"
+        },
+        "active": {
+          "background": "foundations.colors.states.sidebar_item_active_bg",
+          "text_color": "#FFFFFF",
+          "icon_color": "#FFFFFF",
+          "indicator": "small vertical bar on left or filled pill"
+        }
+      }
+    },
+    "section_header": {
+      "structure": "title left, optional action link right",
+      "action_style": "text button with accent color and arrow icon",
+      "spacing_bottom": 12
+    },
+    "course_card": {
+      "size": "approx 260x260",
+      "layout": [
+        "media_thumbnail_top",
+        "chip_row_over_media_optional",
+        "content_block",
+        "footer_meta_row"
+      ],
+      "border_radius": "lg",
+      "thumbnail_radius": "lg",
+      "content": {
+        "badge_row": {
+          "items": [
+            {
+              "type": "level_chip",
+              "style": {
+                "background": "soft accent (e.g. green/orange/pink)",
+                "text_style": "caption_semibold"
+              }
+            },
+            {
+              "type": "meta_compact_icon_text_group",
+              "items": ["students_count", "duration_or_lessons"]
+            },
+            {
+              "type": "bookmark_icon_button",
+              "shape": "rounded_square",
+              "elevation": "card_soft"
+            }
+          ]
+        },
+        "title": "single or double line truncation, h3 style",
+        "author": "small avatar + author name link"
+      },
+      "footer": {
+        "alignment": "space-between",
+        "elements": [
+          "rating_star_icon + value",
+          "optional price or other meta"
+        ]
+      }
+    },
+    "course_list_item": {
+      "layout": "thumbnail + text block + progress + avatar group",
+      "height": 56,
+      "thumbnail": {
+        "shape": "rounded_rectangle",
+        "size": { "width": 56, "height": 32 }
+      },
+      "text_block": {
+        "primary": "course name",
+        "secondary": "progress text",
+        "secondary_style": "caption, muted"
+      },
+      "progress": {
+        "type": "inline text or subtle bar",
+        "pipe_separator": true
+      },
+      "avatars": {
+        "type": "avatar_group",
+        "max_visible": 5,
+        "overflow_badge": "small pill with +N"
+      }
+    },
+    "day_overview_header": {
+      "elements": [
+        "weekday_label",
+        "full_date",
+        "profile_avatar_small"
+      ],
+      "alignment": "space-between",
+      "font_styles": {
+        "weekday": "h3",
+        "date": "body_sm, muted"
+      }
+    },
+    "calendar_widget": {
+      "type": "mini_month",
+      "navigation": "left/right chevrons",
+      "active_day_style": {
+        "background": "accent.primary",
+        "text_color": "white",
+        "shape": "pill"
+      },
+      "day_with_events_indicator": "small dot under day number, accent color"
+    },
+    "schedule_card": {
+      "layout": "icon + labels + time range",
+      "border_radius": "lg",
+      "background": "card",
+      "header": {
+        "label": "category (e.g. course/tutoring) with icon",
+        "style": "caption_semibold, muted"
+      },
+      "title": "body_lg_semibold",
+      "meta": "icon + date/time text row"
+    },
+    "stat_card": {
+      "layout": "icon_circle + label + value + delta",
+      "background": "card",
+      "icon_circle": {
+        "size": 32,
+        "background": "accent.primary_soft",
+        "icon_color": "accent.primary"
+      },
+      "value_style": "large numeric, bold",
+      "delta_style": {
+        "positive_color": "colors.accent.success",
+        "negative_color": "colors.accent.danger",
+        "icon": "arrow_up_or_down"
+      }
+    },
+    "productivity_chart": {
+      "type": "vertical_grouped_bar",
+      "x_axis": "weekdays labels",
+      "y_axis": "percentage markers (0–100%)",
+      "series": [
+        { "name": "Mentoring", "style": "solid bar" },
+        { "name": "Self Improve", "style": "solid bar" },
+        { "name": "Student", "style": "solid bar" }
+      ],
+      "legend": {
+        "position": "bottom",
+        "style": "small colored dots + label"
+      },
+      "card_container": {
+        "title": "Productivity",
+        "action_link": "View details"
+      }
+    },
+    "avatar": {
+      "shape": "circle",
+      "sizes": {
+        "xs": 20,
+        "sm": 24,
+        "md": 32,
+        "lg": 40
+      },
+      "border": "1px solid white when overlapping"
+    },
+    "avatar_group": {
+      "overlap": 6,
+      "direction": "left-to-right",
+      "max_visible": 4,
+      "counter_badge": {
+        "shape": "circle",
+        "background": "accent.primary_soft",
+        "text_color": "accent.primary"
+      }
+    },
+    "badge_chip": {
+      "size": "small pill",
+      "padding_horizontal": 10,
+      "padding_vertical": 4,
+      "text_style": "caption_semibold",
+      "variants": {
+        "level_beginner": { "bg": "#DCFCE7", "text": "#15803D" },
+        "level_intermediate": { "bg": "#FEF3C7", "text": "#92400E" },
+        "level_advanced": { "bg": "#FEE2E2", "text": "#B91C1C" }
+      }
+    },
+    "pill_counter": {
+      "usage": "unread messages, counts next to labels",
+      "style": {
+        "background": "accent.primary",
+        "text_color": "white",
+        "font_size": 11,
+        "padding_horizontal": 8,
+        "border_radius": "pill"
+      }
+    },
+    "icons_buttons": {
+      "circular_icon_button": {
+        "size": 36,
+        "shape": "circle",
+        "background": "card_alt",
+        "shadow": "card_soft",
+        "icon": "centered"
+      },
+      "ghost_icon_button": {
+        "background": "transparent",
+        "icon_color": "muted",
+        "hover_background": "rgba(148, 163, 184, 0.18)"
+      }
+    },
+    "inputs": {
+      "search_field": {
+        "appearance": "rounded pill or large radius rectangle",
+        "background": "#F3F4F6",
+        "icon_position": "left",
+        "placeholder_style": "body_sm, muted"
+      }
+    }
+  },
+  "interaction": {
+    "animations": {
+      "card_hover": "slight translate-y(-2px) and shadow increase",
+      "button_hover": "background color fade 150ms",
+      "chip_hover": "subtle background darken"
+    },
+    "feedback": {
+      "active_states": "use stronger accent colors and slightly higher shadow",
+      "focus_outline": "2px solid accent.primary with 4px radius outside element"
+    }
+  },
+  "responsiveness": {
+    "breakpoints": {
+      "sm": 640,
+      "md": 768,
+      "lg": 1024,
+      "xl": 1280
+    },
+    "behavior": {
+      "lg_plus": "three-column layout as in screenshot",
+      "md_to_lg": "collapse right column below main content; keep sidebar",
+      "sm_to_md": "sidebar collapses into top nav or drawer; content becomes single column stacked"
+    }
+  }
+}

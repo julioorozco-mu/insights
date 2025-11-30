@@ -1,0 +1,433 @@
+{
+  "design_profile": {
+    "name": "Course Section Editor – Web Layout",
+    "description": "Three-column course-section editor with dark top header bar, light surface cards, rounded controls and a pastel purple primary accent."
+  },
+  "foundations": {
+    "colors": {
+      "mode": "light",
+      "background": {
+        "app": "#F3F4F8",
+        "header_bar": "#111827",
+        "tabs_bar": "#FFFFFF",
+        "canvas": "#FFFFFF",
+        "sidebar": "#FFFFFF",
+        "sidebar_alt": "#F9FAFF",
+        "right_panel": "#FFFFFF"
+      },
+      "text": {
+        "primary": "#111827",
+        "secondary": "#4B5563",
+        "muted": "#9CA3AF",
+        "placeholder": "#9CA3AF",
+        "on_dark": "#F9FAFB",
+        "on_accent": "#FFFFFF"
+      },
+      "accent": {
+        "primary": "#A855F7",
+        "primary_soft": "#F4E9FF",
+        "secondary": "#6366F1",
+        "border_subtle": "rgba(15,23,42,0.10)",
+        "border_strong": "rgba(15,23,42,0.18)",
+        "focus": "#A855F7"
+      },
+      "status": {
+        "success": "#22C55E",
+        "warning": "#F59E0B",
+        "danger": "#EF4444",
+        "info": "#0EA5E9"
+      },
+      "palette_swatches": [
+        "#000000",
+        "#6B7280",
+        "#E5E7EB",
+        "#F97316",
+        "#FACC15",
+        "#22C55E",
+        "#0EA5E9",
+        "#6366F1",
+        "#A855F7",
+        "#EC4899",
+        "#A3E635",
+        "#4ADE80"
+      ]
+    },
+    "typography": {
+      "font_family": "system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif",
+      "scale": {
+        "header_title": { "size": 15, "weight": 500, "line_height": 1.4 },
+        "section_heading": { "size": 24, "weight": 600, "line_height": 1.35 },
+        "panel_heading": { "size": 14, "weight": 600, "line_height": 1.35 },
+        "body": { "size": 14, "weight": 400, "line_height": 1.6 },
+        "small": { "size": 12, "weight": 400, "line_height": 1.45 },
+        "label": { "size": 12, "weight": 500, "line_height": 1.4 },
+        "mono_meta": { "size": 11, "weight": 400, "line_height": 1.4 }
+      },
+      "styles": {
+        "tab_label": { "size": 13, "weight": 500 },
+        "sidebar_item": { "size": 13, "weight": 500 },
+        "control_label": { "size": 11, "weight": 500, "uppercase": true, "letter_spacing": 0.04 }
+      }
+    },
+    "spacing": {
+      "unit": 4,
+      "page_padding": { "x": 32, "y": 24 },
+      "header_padding": { "x": 32, "y": 12 },
+      "tabs_padding": { "x": 24, "y": 10 },
+      "canvas_padding": { "x": 32, "y": 24 },
+      "sidebar_padding": { "x": 16, "y": 24 },
+      "panel_padding": { "x": 18, "y": 18 },
+      "gaps": {
+        "between_sections": 24,
+        "between_columns": 24,
+        "between_sidebar_items": 8,
+        "between_controls": 12,
+        "between_palette_swatches": 6
+      }
+    },
+    "radius": {
+      "sm": 6,
+      "md": 10,
+      "lg": 16,
+      "xl": 20,
+      "pill": 999
+    },
+    "shadows": {
+      "card": "0 10px 30px rgba(15,23,42,0.10)",
+      "soft": "0 4px 16px rgba(15,23,42,0.06)"
+    },
+    "iconography": {
+      "style": "rounded line icons",
+      "size": { "sm": 14, "md": 18, "lg": 20 }
+    }
+  },
+  "layout": {
+    "grid_system": {
+      "columns": 12,
+      "max_width": 1440,
+      "gutter": 24
+    },
+    "page_structure": {
+      "header_bar": {
+        "background": "colors.background.header_bar",
+        "height": 64,
+        "content": {
+          "left": [
+            "menu_icon",
+            "section_title",
+            "subtitle_meta_chip"
+          ],
+          "right": [
+            "changes_saved_chip",
+            "primary_outline_button"
+          ]
+        }
+      },
+      "tabs_bar": {
+        "background": "colors.background.tabs_bar",
+        "height": 52,
+        "content": {
+          "left": "add_subsection_button",
+          "center": "scrollable_tabs_row",
+          "right": null
+        }
+      },
+      "main_area": {
+        "background": "colors.background.app",
+        "padding": "foundations.spacing.page_padding",
+        "columns": [
+          {
+            "id": "components_sidebar",
+            "span": 2,
+            "min_width": 220
+          },
+          {
+            "id": "content_canvas",
+            "span": 7,
+            "min_width": 600
+          },
+          {
+            "id": "style_panel",
+            "span": 3,
+            "min_width": 280
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "header_bar": {
+      "background": "colors.background.header_bar",
+      "text_color": "colors.text.on_dark",
+      "left": {
+        "title_style": "typography.scale.header_title",
+        "subtitle_style": { "size": 11, "weight": 400, "color": "rgba(249,250,251,0.7)" }
+      },
+      "right": {
+        "status_chip": {
+          "background": "rgba(15,23,42,0.9)",
+          "text_color": "colors.text.on_dark",
+          "border_radius": "radius.pill",
+          "font_size": 11,
+          "padding_x": 10,
+          "padding_y": 4
+        },
+        "primary_button": {
+          "height": 36,
+          "padding_x": 18,
+          "border_radius": "radius.pill",
+          "background": "colors.accent.primary",
+          "text_color": "colors.text.on_accent"
+        }
+      }
+    },
+    "tabs_bar": {
+      "add_button": {
+        "label": "Add subsection",
+        "variant": "ghost",
+        "icon": "plus",
+        "border_radius": "radius.pill",
+        "padding_x": 14,
+        "height": 34,
+        "text_color": "colors.accent.primary"
+      },
+      "tab": {
+        "shape": "pill",
+        "padding_x": 18,
+        "padding_y": 8,
+        "font": "typography.styles.tab_label",
+        "states": {
+          "default": {
+            "background": "transparent",
+            "text_color": "colors.text.secondary"
+          },
+          "hover": {
+            "background": "#F3F4F6"
+          },
+          "active": {
+            "background": "colors.accent.primary_soft",
+            "text_color": "colors.accent.primary"
+          }
+        }
+      }
+    },
+    "components_sidebar": {
+      "container": {
+        "background": "colors.background.sidebar",
+        "border_radius": "radius.lg",
+        "shadow": "shadows.card",
+        "padding": "foundations.spacing.sidebar_padding"
+      },
+      "title": {
+        "text": "Components",
+        "style": "typography.styles.control_label",
+        "margin_bottom": 16
+      },
+      "item_button": {
+        "height": 48,
+        "border_radius": 12,
+        "layout": "icon_left + label_right",
+        "icon_container": {
+          "size": 30,
+          "border_radius": "radius.pill",
+          "background": "#F3F4F6"
+        },
+        "label_style": "typography.styles.sidebar_item",
+        "states": {
+          "default": {
+            "background": "transparent",
+            "text_color": "colors.text.secondary"
+          },
+          "hover": {
+            "background": "#F3F4F6"
+          },
+          "active": {
+            "background": "#111827",
+            "text_color": "colors.text.on_dark",
+            "icon_container_background": "#FFFFFF"
+          }
+        }
+      },
+      "active_item_indicator": {
+        "left_border_width": 0,
+        "background_emphasis": true
+      }
+    },
+    "content_canvas": {
+      "container": {
+        "background": "colors.background.canvas",
+        "border_radius": "radius.lg",
+        "shadow": "shadows.card",
+        "padding": "foundations.spacing.canvas_padding"
+      },
+      "heading": {
+        "style": "typography.scale.section_heading",
+        "margin_bottom": 16
+      },
+      "blocks_order": [
+        "intro_text_block",
+        "hero_video_block",
+        "body_text_block",
+        "bullet_list_block",
+        "image_gallery_block",
+        "closing_paragraph_block"
+      ]
+    },
+    "hero_video_block": {
+      "border_radius": 16,
+      "overflow": "hidden",
+      "aspect_ratio": "16:9",
+      "controls": {
+        "play_button": {
+          "shape": "circle",
+          "size": 74,
+          "background": "rgba(0,0,0,0.4)",
+          "icon_color": "#FFFFFF"
+        },
+        "label_chip": {
+          "position": "top_left",
+          "background": "rgba(0,0,0,0.6)",
+          "text_color": "#FFFFFF",
+          "border_radius": "radius.pill",
+          "font_size": 11,
+          "padding_x": 8,
+          "padding_y": 4
+        }
+      }
+    },
+    "image_gallery_block": {
+      "layout": "two_column_grid",
+      "gap": 16,
+      "image": {
+        "border_radius": 14,
+        "aspect_ratio": "4:3",
+        "object_fit": "cover"
+      }
+    },
+    "style_panel": {
+      "container": {
+        "background": "colors.background.right_panel",
+        "border_radius": "radius.lg",
+        "shadow": "shadows.card",
+        "padding": "foundations.spacing.panel_padding",
+        "display": "flex",
+        "flex_direction": "column",
+        "gap": 18
+      },
+      "toolbar_tabs": {
+        "type": "icon_tabs_row",
+        "tab_shape": "rounded_square",
+        "size": 30,
+        "states": {
+          "default": { "background": "#F3F4F6", "icon_color": "colors.text.secondary" },
+          "active": { "background": "colors.accent.primary", "icon_color": "colors.text.on_accent" }
+        }
+      },
+      "typography_controls": {
+        "title": { "text": "Typography", "style": "typography.styles.control_label" },
+        "controls": [
+          "font_family_select",
+          "font_weight_select",
+          "font_size_number_input",
+          "alignment_buttons_row",
+          "style_toggle_buttons_row"
+        ],
+        "select": {
+          "height": 36,
+          "border_radius": 10,
+          "border": "1px solid colors.accent.border_subtle"
+        },
+        "alignment_buttons": {
+          "button_shape": "rounded_square",
+          "size": 28,
+          "states": {
+            "default": { "background": "#F3F4F6" },
+            "active": { "background": "colors.accent.primary_soft", "icon_color": "colors.accent.primary" }
+          }
+        },
+        "style_toggles": {
+          "options": ["B", "I", "U", "S"],
+          "button_shape": "rounded_square",
+          "size": 28
+        }
+      },
+      "palette_section": {
+        "title": { "text": "Palette", "style": "typography.styles.control_label" },
+        "swatch_size": 24,
+        "swatch_shape": "rounded_square",
+        "selected_indicator": {
+          "border_width": 2,
+          "border_color": "#111827"
+        },
+        "layout": "grid_wrap"
+      },
+      "course_guide_card": {
+        "background": "linear_gradient_vertical_orange_to_purple",
+        "border_radius": 18,
+        "padding": 16,
+        "title_style": { "size": 13, "weight": 600, "color": "#FFFFFF" },
+        "subtitle_style": { "size": 11, "weight": 400, "color": "rgba(249,250,251,0.85)" },
+        "button": {
+          "label": "Start guide",
+          "height": 32,
+          "border_radius": "radius.pill",
+          "background": "#FFFFFF",
+          "text_color": "#111827"
+        }
+      },
+      "controlling_center": {
+        "background": "#111827",
+        "border_radius": 22,
+        "padding": 10,
+        "layout": "row_centered",
+        "buttons": {
+          "shape": "pill",
+          "height": 32,
+          "padding_x": 16,
+          "background": "#1F2933",
+          "text_color": "colors.text.on_dark",
+          "gap": 8
+        }
+      }
+    }
+  },
+  "interaction": {
+    "hover": {
+      "buttons": {
+        "primary": { "brightness": 1.05, "shadow": "shadows.soft" },
+        "ghost": { "background": "#E5E7EB" }
+      },
+      "sidebar_items": { "background": "#F3F4F6" },
+      "tabs": { "background": "colors.accent.primary_soft" },
+      "palette_swatches": { "scale": 1.05 }
+    },
+    "focus": {
+      "outline": "2px solid colors.accent.focus",
+      "outline_offset": 2,
+      "applies_to": ["inputs", "selects", "buttons"]
+    },
+    "drag_and_drop": {
+      "enabled_for": ["components_sidebar_items", "content_blocks"],
+      "shadow_on_drag": "shadows.card",
+      "scale_on_drag": 1.02
+    },
+    "transitions": {
+      "duration_ms": 150,
+      "properties": ["background-color", "box-shadow", "transform", "border-color"],
+      "easing": "ease-out"
+    }
+  },
+  "responsiveness": {
+    "breakpoints": {
+      "md": 768,
+      "lg": 1024,
+      "xl": 1280
+    },
+    "behavior": {
+      "lg_plus": "three-column layout with all panels visible",
+      "md_to_lg": "components sidebar keeps width; style panel shrinks but stays visible",
+      "sm_to_md": "style panel stacks below canvas; components sidebar becomes collapsible",
+      "xs": "single-column editor with toggleable side panels"
+    }
+  }
+}

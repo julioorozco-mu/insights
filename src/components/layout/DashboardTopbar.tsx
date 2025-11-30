@@ -1,8 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
-import { IconMenu2, IconBell } from "@tabler/icons-react";
+import { Menu, Bell } from "lucide-react";
 
 interface DashboardTopbarProps {
   onToggleSidebar: () => void;
@@ -34,108 +35,117 @@ export function DashboardTopbar({ onToggleSidebar }: DashboardTopbarProps) {
 
   // Get current date info
   const now = new Date();
-  const weekday = now.toLocaleDateString('es-ES', { weekday: 'long' });
-  const fullDate = now.toLocaleDateString('es-ES', { 
+  const weekday = now.toLocaleDateString('es-MX', { weekday: 'long' });
+  const fullDate = now.toLocaleDateString('es-MX', { 
+    day: 'numeric',
     month: 'long', 
-    day: 'numeric', 
     year: 'numeric' 
   });
 
+  // Capitalizar primera letra
+  const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
+
   return (
-    <div className="px-6 py-4 bg-dashboard-page">
-      <div className="flex items-center justify-between">
-        {/* Mobile menu button and Date */}
+    <header className="sticky top-0 z-30 bg-white shadow-card-soft">
+      <div className="flex items-center justify-between px-6 py-4">
+        {/* Left: Mobile menu + Date */}
         <div className="flex items-center gap-4">
           {/* Botón hamburguesa para móvil */}
           <button
             onClick={onToggleSidebar}
-            className="lg:hidden p-2 rounded-lg text-dashboard-textSecondary hover:bg-white hover:shadow-cardSoft transition-all"
+            className="lg:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-all"
             aria-label="Abrir menú"
           >
-            <IconMenu2 size={24} />
+            <Menu className="h-6 w-6" />
           </button>
           
           {/* Date Display */}
-          <div className="hidden md:block">
-            <h2 className="text-h3 font-semibold text-dashboard-textPrimary capitalize">{weekday}</h2>
-            <p className="text-body-sm text-dashboard-textMuted capitalize">{fullDate}</p>
+          <div>
+            <p className="text-base font-semibold text-slate-900 capitalize">{capitalize(weekday)}</p>
+            <p className="text-sm text-slate-500 capitalize">{fullDate}</p>
           </div>
         </div>
 
-        {/* Espaciador */}
-        <div className="flex-1"></div>
-
-        {/* User Actions */}
-        <div className="flex items-center gap-3">
+        {/* Right: Notifications + User */}
+        <div className="flex items-center gap-4">
           {/* Notifications */}
           <div className="dropdown dropdown-end">
             <label 
               tabIndex={0} 
-              className="w-10 h-10 rounded-full bg-white shadow-cardSoft flex items-center justify-center cursor-pointer hover:shadow-card transition-all"
+              className="relative flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 cursor-pointer hover:bg-slate-200 transition-all"
             >
-              <div className="indicator">
-                <IconBell size={20} className="text-dashboard-textSecondary" stroke={1.5} />
-                <span className="w-2 h-2 bg-dashboard-danger rounded-full absolute top-0 right-0"></span>
-              </div>
+              <Bell className="h-5 w-5 text-slate-600" />
+              {/* Notification badge */}
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-error text-[10px] font-bold text-white">
+                3
+              </span>
             </label>
             <ul
               tabIndex={0}
-              className="mt-3 z-[1] p-3 shadow-card menu menu-sm dropdown-content bg-white rounded-lg w-80"
+              className="mt-3 z-[1] p-3 shadow-card menu menu-sm dropdown-content bg-white rounded-xl w-80"
             >
               <li className="menu-title px-3 py-2">
-                <span className="text-h3 font-semibold text-dashboard-textPrimary">Notificaciones</span>
+                <span className="text-base font-semibold text-slate-900">Notificaciones</span>
               </li>
               <li>
-                <a className="flex items-start gap-3 py-3 px-3 rounded-lg hover:bg-dashboard-accentSoft transition-colors">
-                  <div className="w-10 h-10 rounded-lg bg-dashboard-accentSoft flex items-center justify-center">
+                <a className="flex items-start gap-3 py-3 px-3 rounded-lg hover:bg-brand-primary/5 transition-colors">
+                  <div className="w-10 h-10 rounded-lg bg-brand-primary/10 flex items-center justify-center">
                     <span className="text-lg">📚</span>
                   </div>
                   <div className="flex-1">
-                    <p className="text-body-md font-medium text-dashboard-textPrimary">Nuevo curso disponible</p>
-                    <p className="text-body-sm text-dashboard-textMuted">Hace 2 horas</p>
+                    <p className="text-sm font-medium text-slate-900">Nuevo curso disponible</p>
+                    <p className="text-xs text-slate-500">Hace 2 horas</p>
                   </div>
                 </a>
               </li>
               <li>
-                <a className="flex items-start gap-3 py-3 px-3 rounded-lg hover:bg-dashboard-accentSoft transition-colors">
-                  <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
+                <a className="flex items-start gap-3 py-3 px-3 rounded-lg hover:bg-brand-primary/5 transition-colors">
+                  <div className="w-10 h-10 rounded-lg bg-brand-success/10 flex items-center justify-center">
                     <span className="text-lg">✅</span>
                   </div>
                   <div className="flex-1">
-                    <p className="text-body-md font-medium text-dashboard-textPrimary">Lección completada</p>
-                    <p className="text-body-sm text-dashboard-textMuted">Hace 5 horas</p>
+                    <p className="text-sm font-medium text-slate-900">Lección completada</p>
+                    <p className="text-xs text-slate-500">Hace 5 horas</p>
                   </div>
                 </a>
               </li>
             </ul>
           </div>
 
-          {/* User Avatar */}
+          {/* User Info */}
           <div className="dropdown dropdown-end">
             <label 
               tabIndex={0} 
-              className="w-10 h-10 rounded-full cursor-pointer overflow-hidden ring-2 ring-white shadow-cardSoft hover:shadow-card transition-all"
+              className="flex items-center gap-3 cursor-pointer"
             >
-              {user?.avatarUrl ? (
-                <img 
-                  src={user.avatarUrl} 
-                  alt={user.name} 
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full bg-dashboard-accent text-white flex items-center justify-center font-semibold text-body-lg">
-                  {user?.name?.charAt(0).toUpperCase() || 'U'}
-                </div>
-              )}
+              {/* Avatar */}
+              <div className="h-10 w-10 rounded-full overflow-hidden ring-2 ring-slate-100">
+                {user?.avatarUrl ? (
+                  <img 
+                    src={user.avatarUrl} 
+                    alt={user.name} 
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-brand-secondary text-white flex items-center justify-center font-semibold text-sm">
+                    {user?.name?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                )}
+              </div>
+              {/* Name and Role */}
+              <div className="hidden sm:block text-right">
+                <p className="text-sm font-semibold text-slate-900">{user?.name || 'Usuario'}</p>
+                <p className="text-xs text-slate-500">{getRoleInSpanish(user?.role)}</p>
+              </div>
             </label>
             <ul
               tabIndex={0}
-              className="mt-3 z-[1] p-3 shadow-card menu menu-sm dropdown-content bg-white rounded-lg w-56"
+              className="mt-3 z-[1] p-3 shadow-card menu menu-sm dropdown-content bg-white rounded-xl w-56"
             >
-              <li className="px-3 py-2 border-b border-gray-100">
+              <li className="px-3 py-2 border-b border-slate-100">
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-body-md font-semibold text-dashboard-textPrimary">{user?.name}</span>
-                  <span className="text-body-sm text-dashboard-textMuted">{getRoleInSpanish(user?.role)}</span>
+                  <span className="text-sm font-semibold text-slate-900">{user?.name}</span>
+                  <span className="text-xs text-slate-500">{getRoleInSpanish(user?.role)}</span>
                 </div>
               </li>
               <li className="mt-2">
@@ -143,7 +153,7 @@ export function DashboardTopbar({ onToggleSidebar }: DashboardTopbarProps) {
                   href={`/profile/${user?.id}`} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="px-3 py-2 rounded-lg text-body-md text-dashboard-textSecondary hover:bg-dashboard-accentSoft hover:text-dashboard-accent transition-colors"
+                  className="px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary transition-colors"
                 >
                   Ver Perfil
                 </a>
@@ -151,15 +161,15 @@ export function DashboardTopbar({ onToggleSidebar }: DashboardTopbarProps) {
               <li>
                 <a 
                   href="/dashboard/settings"
-                  className="px-3 py-2 rounded-lg text-body-md text-dashboard-textSecondary hover:bg-dashboard-accentSoft hover:text-dashboard-accent transition-colors"
+                  className="px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary transition-colors"
                 >
                   Configuración
                 </a>
               </li>
-              <li className="mt-2 pt-2 border-t border-gray-100">
+              <li className="mt-2 pt-2 border-t border-slate-100">
                 <button 
                   onClick={handleSignOut} 
-                  className="px-3 py-2 rounded-lg text-body-md text-dashboard-danger hover:bg-red-50 transition-colors w-full text-left"
+                  className="px-3 py-2 rounded-lg text-sm text-brand-error hover:bg-red-50 transition-colors w-full text-left"
                 >
                   Cerrar Sesión
                 </button>
@@ -168,6 +178,6 @@ export function DashboardTopbar({ onToggleSidebar }: DashboardTopbarProps) {
           </div>
         </div>
       </div>
-    </div>
+    </header>
   );
 }

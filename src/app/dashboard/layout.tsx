@@ -21,7 +21,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-dashboard-page">
+      <div className="min-h-screen flex items-center justify-center bg-brand-background">
         <Loader size="lg" />
       </div>
     );
@@ -32,7 +32,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex h-screen bg-dashboard-page">
+    <div className="flex min-h-screen bg-brand-background">
       {/* Sidebar */}
       <DashboardSidebar 
         isOpen={sidebarOpen}
@@ -42,20 +42,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       />
       
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Bar - Hidden on desktop, shown on mobile */}
-        <div className="lg:hidden">
-          <DashboardTopbar 
-            onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-            sidebarCollapsed={sidebarCollapsed}
-          />
-        </div>
+      <div className="flex-1 flex flex-col min-h-screen bg-brand-background">
+        {/* Top Bar - Sticky header visible en todas las vistas */}
+        <DashboardTopbar 
+          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          sidebarCollapsed={sidebarCollapsed}
+        />
         
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="px-6 py-6">
-            {children}
-          </div>
+        <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-10">
+          {children}
         </main>
       </div>
     </div>

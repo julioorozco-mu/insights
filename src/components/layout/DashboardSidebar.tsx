@@ -1,66 +1,71 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  IconHome,
-  IconBook,
-  IconMicrophone,
-  IconSchool,
-  IconChartBar,
-  IconFolder,
-  IconCertificate,
-  IconUsers,
-  IconSearch,
-  IconBookmark,
-  IconSettings,
-  IconX,
-  IconFileAnalytics,
-  IconHeadset,
-  IconMessage,
-  IconCreditCard,
-} from "@tabler/icons-react";
+  LayoutDashboard,
+  BookOpen,
+  Users,
+  MessageCircle,
+  BarChart3,
+  CreditCard,
+  HelpCircle,
+  Settings,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Package,
+  Mic,
+  GraduationCap,
+  FolderOpen,
+  Award,
+  FileBarChart,
+  Search,
+  Bookmark,
+  X,
+} from "lucide-react";
 import { FC } from "react";
 
 interface MenuItem {
   path: string;
   label: string;
-  icon: FC<{ size?: number; stroke?: number }>;
+  icon: FC<{ className?: string }>;
   roles?: string[];
   badge?: number;
 }
 
 const MENU_ITEMS: MenuItem[] = [
   // Admin menu
-  { path: "/dashboard", label: "Dashboard", icon: IconHome, roles: ["admin", "speaker", "student"] },
-  { path: "/dashboard/courses", label: "Cursos", icon: IconBook, roles: ["admin"] },
-  { path: "/dashboard/speakers", label: "Ponentes", icon: IconMicrophone, roles: ["admin"] },
-  { path: "/dashboard/students", label: "Estudiantes", icon: IconSchool, roles: ["admin"] },
-  { path: "/dashboard/surveys", label: "Encuestas", icon: IconChartBar, roles: ["admin"] },
-  { path: "/dashboard/resources", label: "Recursos", icon: IconFolder, roles: ["admin"] },
-  { path: "/dashboard/certificates", label: "Certificados", icon: IconCertificate, roles: ["admin"] },
-  { path: "/dashboard/reports", label: "Reportes", icon: IconFileAnalytics, roles: ["admin"] },
+  { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "speaker", "student"] },
+  { path: "/dashboard/courses", label: "Cursos", icon: BookOpen, roles: ["admin"] },
+  { path: "/dashboard/speakers", label: "Ponentes", icon: Mic, roles: ["admin"] },
+  { path: "/dashboard/students", label: "Estudiantes", icon: GraduationCap, roles: ["admin"] },
+  { path: "/dashboard/surveys", label: "Encuestas", icon: BarChart3, roles: ["admin"] },
+  { path: "/dashboard/resources", label: "Recursos", icon: FolderOpen, roles: ["admin"] },
+  { path: "/dashboard/certificates", label: "Certificados", icon: Award, roles: ["admin"] },
+  { path: "/dashboard/reports", label: "Reportes", icon: FileBarChart, roles: ["admin"] },
   
   // Speaker menu
-  { path: "/dashboard/my-courses", label: "Mis Cursos", icon: IconBook, roles: ["speaker"] },
-  { path: "/dashboard/my-students", label: "Alumnos", icon: IconUsers, roles: ["speaker"] },
-  { path: "/dashboard/my-resources", label: "Mis Recursos", icon: IconFolder, roles: ["speaker"] },
+  { path: "/dashboard/my-courses", label: "Mis Cursos", icon: BookOpen, roles: ["speaker"] },
+  { path: "/dashboard/my-students", label: "Alumnos", icon: Users, roles: ["speaker"] },
+  { path: "/dashboard/my-resources", label: "Mis Recursos", icon: FolderOpen, roles: ["speaker"] },
   
   // Student menu
-  { path: "/dashboard/available-courses", label: "Cursos Disponibles", icon: IconSearch, roles: ["student"] },
-  { path: "/dashboard/enrolled-courses", label: "Mis Cursos", icon: IconBookmark, roles: ["student"] },
+  { path: "/dashboard/available-courses", label: "Cursos Disponibles", icon: Search, roles: ["student"] },
+  { path: "/dashboard/enrolled-courses", label: "Mis Cursos", icon: Bookmark, roles: ["student"] },
 ];
 
 const SECONDARY_MENU: MenuItem[] = [
-  { path: "/dashboard/messages", label: "Mensajes", icon: IconMessage, roles: ["admin", "speaker", "student"], badge: 8 },
-  { path: "/dashboard/analytics", label: "Analytics", icon: IconChartBar, roles: ["admin", "speaker"] },
-  { path: "/dashboard/payments", label: "Pagos", icon: IconCreditCard, roles: ["admin"] },
+  { path: "/dashboard/messages", label: "Mensajes", icon: MessageCircle, roles: ["admin", "speaker", "student"], badge: 8 },
+  { path: "/dashboard/analytics", label: "Analytics", icon: BarChart3, roles: ["admin", "speaker"] },
+  { path: "/dashboard/payments", label: "Pagos", icon: CreditCard, roles: ["admin"] },
 ];
 
 const FOOTER_MENU: MenuItem[] = [
-  { path: "/dashboard/support", label: "Soporte", icon: IconHeadset, roles: ["admin", "speaker", "student"] },
-  { path: "/dashboard/settings", label: "Configuración", icon: IconSettings, roles: ["admin", "speaker", "student"] },
+  { path: "/dashboard/support", label: "Soporte", icon: HelpCircle, roles: ["admin", "speaker", "student"] },
+  { path: "/dashboard/settings", label: "Configuración", icon: Settings, roles: ["admin", "speaker", "student"] },
 ];
 
 interface DashboardSidebarProps {
@@ -70,7 +75,7 @@ interface DashboardSidebarProps {
   onToggleCollapse: () => void;
 }
 
-export function DashboardSidebar({ isOpen, isCollapsed, onClose }: DashboardSidebarProps) {
+export function DashboardSidebar({ isOpen, isCollapsed, onClose, onToggleCollapse }: DashboardSidebarProps) {
   const pathname = usePathname();
   const { user } = useAuth();
 
@@ -102,19 +107,28 @@ export function DashboardSidebar({ isOpen, isCollapsed, onClose }: DashboardSide
         <Link
           href={item.path}
           onClick={() => onClose()}
-          className={`
-            sidebar-nav-item
-            ${active ? "active" : ""}
-            ${isCollapsed ? 'justify-center tooltip tooltip-right' : ''}
-          `}
-          data-tip={isCollapsed ? item.label : undefined}
+          className={`flex items-center ${isCollapsed ? "justify-center" : "justify-between"} rounded-full px-4 py-2 text-sm font-medium transition relative ${
+            active ? "bg-white/15 text-white" : "text-white/70 hover:bg-white/10"
+          }`}
+          title={isCollapsed ? item.label : undefined}
         >
-          <Icon size={20} stroke={1.5} />
-          {!isCollapsed && (
+          {isCollapsed ? (
             <>
-              <span className="flex-1">{item.label}</span>
+              <Icon className="h-5 w-5" />
               {item.badge && (
-                <span className="pill-counter">{item.badge}</span>
+                <span className="absolute -top-1 -right-1 rounded-full bg-brand-secondary px-1.5 text-xs font-semibold">
+                  {item.badge}
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              <span className="flex items-center gap-3">
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </span>
+              {item.badge && (
+                <span className="rounded-full bg-brand-secondary px-2 text-xs font-semibold">{item.badge}</span>
               )}
             </>
           )}
@@ -135,58 +149,33 @@ export function DashboardSidebar({ isOpen, isCollapsed, onClose }: DashboardSide
       
       {/* Sidebar */}
       <aside 
-        className={`
-          fixed lg:relative
-          inset-y-0 left-0
-          bg-dashboard-sidebar min-h-screen
-          transition-all duration-300 ease-in-out
-          z-50
-          ${isCollapsed ? 'lg:w-20' : 'lg:w-[260px]'}
-          ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-          w-[260px]
-          flex flex-col
-        `}
+        className={`hidden lg:flex bg-brand-primary text-white flex-col py-8 space-y-8 transition-all duration-300 relative ${
+          isCollapsed ? "w-[70px] px-3" : "w-[260px] px-6"
+        } ${isOpen ? 'fixed inset-y-0 left-0 flex z-50' : ''}`}
       >
-        {/* Header with Logo */}
-        <div className="p-6 flex items-center justify-between">
-          {!isCollapsed ? (
-            <div className="flex items-center gap-3">
-              {/* Logo Icon */}
-              <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
-                <svg 
-                  viewBox="0 0 24 24" 
-                  className="w-6 h-6 text-dashboard-sidebar"
-                  fill="currentColor"
-                >
-                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                </svg>
-              </div>
-              {/* Brand Name */}
-              <span className="text-xl font-bold text-white">Skillzone</span>
-            </div>
+        {/* Toggle Button */}
+        <button
+          onClick={onToggleCollapse}
+          className="absolute -right-3 top-8 bg-brand-primary border border-white/20 rounded-full p-1.5 hover:bg-brand-secondary transition-colors z-40 shadow-md"
+          aria-label={isCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
+        >
+          {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+        </button>
+
+        {/* Logo */}
+        <div className={`${isCollapsed ? "flex justify-center" : ""}`}>
+          {isCollapsed ? (
+            <Package className="h-8 w-8" />
           ) : (
-            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center mx-auto">
-              <svg 
-                viewBox="0 0 24 24" 
-                className="w-6 h-6 text-dashboard-sidebar"
-                fill="currentColor"
-              >
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-              </svg>
-            </div>
+            <>
+              <div className="text-2xl font-semibold tracking-tight">Marca UNACH</div>
+              <p className="text-sm text-white/70">Microcredenciales</p>
+            </>
           )}
-          
-          {/* Botón cerrar en móvil */}
-          <button
-            onClick={onClose}
-            className="lg:hidden text-white/80 hover:text-white p-1"
-          >
-            <IconX size={20} />
-          </button>
         </div>
 
-        {/* Primary Navigation */}
-        <nav className="flex-1 px-4 overflow-y-auto">
+        {/* Navigation */}
+        <nav className="space-y-1 flex-1">
           <ul className="space-y-1">
             {filteredMenuItems.map(renderMenuItem)}
           </ul>
@@ -200,13 +189,71 @@ export function DashboardSidebar({ isOpen, isCollapsed, onClose }: DashboardSide
           </ul>
         </nav>
 
-        {/* Footer Navigation */}
-        <div className="px-4 py-6 border-t border-white/10">
-          <ul className="space-y-1">
-            {filteredFooterMenu.map(renderMenuItem)}
-          </ul>
+        {/* Footer Links */}
+        <div className="mt-auto space-y-3">
+          {filteredFooterMenu.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.path}
+                href={item.path}
+                className={`flex items-center ${isCollapsed ? "justify-center" : "gap-3"} text-white/80 hover:text-white transition`}
+                title={isCollapsed ? item.label : undefined}
+              >
+                <Icon className="h-4 w-4" />
+                {!isCollapsed && item.label}
+              </Link>
+            );
+          })}
         </div>
       </aside>
+
+      {/* Mobile Sidebar */}
+      {isOpen && (
+        <aside className="lg:hidden fixed inset-y-0 left-0 w-[260px] bg-brand-primary text-white flex flex-col py-8 px-6 space-y-8 z-50">
+          {/* Close Button */}
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-white/80 hover:text-white"
+          >
+            <X className="h-6 w-6" />
+          </button>
+
+          {/* Logo */}
+          <div>
+            <div className="text-2xl font-semibold tracking-tight">Marca UNACH</div>
+            <p className="text-sm text-white/70">Microcredenciales</p>
+          </div>
+
+          {/* Navigation */}
+          <nav className="space-y-1 flex-1">
+            <ul className="space-y-1">
+              {filteredMenuItems.map(renderMenuItem)}
+            </ul>
+            <div className="my-6 border-t border-white/10" />
+            <ul className="space-y-1">
+              {filteredSecondaryMenu.map(renderMenuItem)}
+            </ul>
+          </nav>
+
+          {/* Footer Links */}
+          <div className="mt-auto space-y-3">
+            {filteredFooterMenu.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.path}
+                  href={item.path}
+                  className="flex items-center gap-3 text-white/80 hover:text-white transition"
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </aside>
+      )}
     </>
   );
 }
