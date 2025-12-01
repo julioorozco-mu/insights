@@ -17,7 +17,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const domain = "epolitica.com.mx";
+    const domain = process.env.MAILGUN_DOMAIN || "microcert.com";
     const apiKey = process.env.MAILGUN_API_KEY!;
 
     if (!apiKey) {
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
-        from: `Instituto Reyes Heroles <InstitutoReyesHeroles@${domain}>`,
+        from: `MicroCert <noreply@${domain}>`,
         to,
         subject,
         html,

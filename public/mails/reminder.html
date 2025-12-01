@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Recordatorio de Lección</title>
+  <title>Recordatorio de Lección - MicroCert</title>
   <style>
     body {
       margin: 0;
@@ -17,24 +17,9 @@
       background-color: #ffffff;
     }
     .header {
-      background: #FD002A;
+      background: #192170;
       padding: 40px 20px;
       text-align: center;
-    }
-    .logos {
-      display: table;
-      margin: 0 auto 20px;
-      background-color: white;
-      padding: 15px 30px;
-      border-radius: 8px;
-    }
-    .logo-img {
-      height: 70px;
-      width: auto;
-      object-fit: contain;
-      display: inline-block;
-      vertical-align: middle;
-      margin: 0 15px;
     }
     .header-title {
       color: #ffffff;
@@ -71,7 +56,7 @@
       display: block;
     }
     .info-box {
-      background-color: #FD002A;
+      background-color: #192170;
       padding: 20px;
       border-radius: 8px;
       margin: 30px 0;
@@ -120,7 +105,7 @@
       border-radius: 50%;
       margin-right: 15px;
       object-fit: cover;
-      background-color: #FD002A;
+      background-color: #3C1970;
       color: #ffffff;
       display: flex;
       align-items: center;
@@ -144,7 +129,7 @@
     }
     .cta-button {
       display: inline-block;
-      background: #000000 !important;
+      background: #192170 !important;
       color: #ffffff !important;
       text-decoration: none !important;
       padding: 16px 40px;
@@ -152,12 +137,12 @@
       font-weight: bold;
       font-size: 16px;
       text-align: center;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+      box-shadow: 0 4px 6px rgba(25, 33, 112, 0.2);
       transition: transform 0.2s;
     }
     .cta-button:hover {
       transform: translateY(-2px);
-      box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 6px 8px rgba(25, 33, 112, 0.3);
       color: #ffffff !important;
     }
     .button-container {
@@ -172,7 +157,7 @@
       font-size: 14px;
     }
     .footer-link {
-      color: #FD002A !important;
+      color: #3C1970 !important;
       text-decoration: none;
     }
     .divider {
@@ -186,10 +171,6 @@
   <div class="email-container">
     <!-- Header -->
     <div class="header">
-      <div class="logos">
-        <img src="https://www.epolitica.com.mx/images/logos/logo_pri_edomex.png" alt="PRI Estado de México" class="logo-img">
-        <img src="https://www.epolitica.com.mx/images/logos/logo-ire-edomex-red.png" alt="Instituto Reyes Heroles" class="logo-img">
-      </div>
       <h1 class="header-title">Recordatorio de ${lessonType}</h1>
     </div>
 
@@ -233,7 +214,7 @@
 
       <!-- Ponentes -->
       <div class="speakers-section" id="speakers-section">
-        <p class="speakers-title">Ponente(s):</p>
+        <p class="speakers-title">Instructor(es):</p>
         <div id="speakers-list">
           ${speakersHtml}
         </div>
@@ -261,11 +242,11 @@
     <!-- Footer -->
     <div class="footer">
       <p style="margin: 0 0 10px 0;">
-        <strong>Instituto Reyes Heroles</strong><br>
-        <strong>Partido Revolucionario Institucional</strong>
+        <strong>MicroCert</strong><br>
+        <strong>Marca UNACH</strong>
       </p>
       <p style="margin: 10px 0;">
-        <a href="https://www.epolitica.com.mx" class="footer-link">www.epolitica.com.mx</a>
+        <a href="https://microcert.marcaunach.com" class="footer-link">microcert.marcaunach.com</a>
       </p>
       <p style="margin: 20px 0 0 0; font-size: 12px; color: #6b7280;">
         Este correo fue enviado automáticamente. Por favor no respondas a este mensaje.

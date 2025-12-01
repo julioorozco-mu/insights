@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   const sessionDate = searchParams.get("sessionDate") || "Lunes 4 de noviembre de 2024";
   const sessionTime = searchParams.get("sessionTime") || "10:00 AM";
   const bannerUrl = searchParams.get("bannerUrl") || undefined;
-  const lessonUrl = searchParams.get("lessonUrl") || "https://www.epolitica.com.mx/dashboard/lessons/123";
+  const lessonUrl = searchParams.get("lessonUrl") || "https://microcert.marcaunach.com/dashboard/lessons/123";
   
   // Parse speakers from query params (formato JSON)
   let speakers: Array<{ name: string; photoURL?: string; role?: string }> | undefined;

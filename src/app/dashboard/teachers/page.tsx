@@ -347,10 +347,8 @@ export default function SpeakersPage() {
       loadSpeakers();
     } catch (error: any) {
       console.error('Error adding speaker:', error);
-      if (error?.message?.includes('email-already-in-use')) {
+      if (error?.message?.includes('email-already-in-use') || error?.message?.includes('already registered')) {
         setFormError('Este correo ya está registrado. Usa otro correo para el acceso a la plataforma.');
-      } else if (error?.message?.includes('Cannot find package')) {
-        setFormError('Para crear acceso a la plataforma, instala firebase-admin: npm i firebase-admin y configura las variables de entorno FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY');
       } else {
         setFormError('Error al agregar profesor. Revisa los datos y vuelve a intentar.');
       }
@@ -474,11 +472,7 @@ export default function SpeakersPage() {
       loadSpeakers();
     } catch (error: any) {
       console.error('Error updating speaker:', error);
-      if (error?.message?.includes('Cannot find package')) {
-        setEditFormError('Para crear acceso a la plataforma, instala firebase-admin: npm i firebase-admin y configura las variables de entorno FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY');
-      } else {
-        setEditFormError('Error al actualizar profesor. Revisa los datos y vuelve a intentar.');
-      }
+      setEditFormError('Error al actualizar profesor. Revisa los datos y vuelve a intentar.');
     } finally {
       setSaving(false);
     }

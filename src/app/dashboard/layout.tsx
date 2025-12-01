@@ -19,6 +19,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [user, loading, router]);
 
+  // Auto-colapsar sidebar después de 10 segundos (solo en la primera carga)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSidebarCollapsed(true);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, []); // Solo se ejecuta una vez al montar
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-brand-background">

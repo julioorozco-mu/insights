@@ -9,10 +9,6 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
-        hostname: "firebasestorage.googleapis.com",
-      },
-      {
-        protocol: "https",
         hostname: "images.unsplash.com",
       },
       {
@@ -32,14 +28,6 @@ const nextConfig: NextConfig = {
     resolveAlias: {
       // Alias para xlsx en el cliente
       'xlsx': 'xlsx/dist/xlsx.mini.min.js',
-      // Alias para Firebase (migración a Supabase)
-      'firebase/firestore': './src/lib/firestore-compat.ts',
-      'firebase/auth': './src/lib/firebase.ts',
-      'firebase/storage': './src/lib/firebase.ts',
-      'firebase-admin': './src/lib/firebase-admin-compat.ts',
-      'firebase-admin/auth': './src/lib/firebase-admin-compat.ts',
-      'firebase-admin/firestore': './src/lib/firebase-admin-compat.ts',
-      'firebase-admin/app': './src/lib/firebase-admin-compat.ts',
     },
   },
 };

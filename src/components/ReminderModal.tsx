@@ -200,7 +200,7 @@ export function ReminderModal({
 
     const speakersJSON = speakers ? encodeURIComponent(JSON.stringify(speakers)) : '';
 
-    const previewUrl = `/api/preview-reminder?studentName=Estudiante de Ejemplo&lessonType=${encodeURIComponent(lessonType)}&lessonTitle=${encodeURIComponent(lessonTitle)}&courseTitle=${encodeURIComponent(courseTitle || '')}&sessionDate=${encodeURIComponent(formattedDate)}&sessionTime=${encodeURIComponent(formattedTime)}&bannerUrl=${encodeURIComponent(bannerUrl || '')}&lessonUrl=https://www.epolitica.com.mx/dashboard/lessons/${lessonId || courseId}&speakers=${speakersJSON}`;
+    const previewUrl = `/api/preview-reminder?studentName=Estudiante de Ejemplo&lessonType=${encodeURIComponent(lessonType)}&lessonTitle=${encodeURIComponent(lessonTitle)}&courseTitle=${encodeURIComponent(courseTitle || '')}&sessionDate=${encodeURIComponent(formattedDate)}&sessionTime=${encodeURIComponent(formattedTime)}&bannerUrl=${encodeURIComponent(bannerUrl || '')}&lessonUrl=https://microcert.marcaunach.com/dashboard/lessons/${lessonId || courseId}&speakers=${speakersJSON}`;
 
     window.open(previewUrl, "_blank");
   };
@@ -236,7 +236,7 @@ export function ReminderModal({
           sessionDate: formattedDate,
           sessionTime: formattedTime,
           bannerUrl,
-          lessonUrl: `https://www.epolitica.com.mx/dashboard/lessons/${lessonId || courseId}`,
+          lessonUrl: `https://microcert.marcaunach.com/dashboard/lessons/${lessonId || courseId}`,
           recipientIds: Array.from(selectedStudents),
           speakers,
           createdBy: userId,
@@ -301,7 +301,7 @@ export function ReminderModal({
           sessionDate: formattedDate,
           sessionTime: formattedTime,
           bannerUrl,
-          lessonUrl: `https://www.epolitica.com.mx/dashboard/lessons/${lessonId || courseId}`,
+          lessonUrl: `https://microcert.marcaunach.com/dashboard/lessons/${lessonId || courseId}`,
           recipientIds: Array.from(selectedStudents),
           speakers,
           scheduledDate: scheduledDateTime,

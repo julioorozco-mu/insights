@@ -121,9 +121,9 @@ export function getReminderEmailTemplate(params: ReminderEmailParams): string {
 }
 
 export function getWelcomeEmailSubject(name: string): string {
-  return `¡Bienvenido ${name}! - Instituto Reyes Heroles`;
+  return `¡Bienvenido ${name}! - MicroCert`;
 }
 
 export function getReminderEmailSubject(lessonTitle: string): string {
-  return `Recordatorio: ${lessonTitle} - Instituto Reyes Heroles`;
+  return `Recordatorio: ${lessonTitle} - MicroCert`;
 }

@@ -30,7 +30,6 @@ import PollResultsPanel from "@/components/live/PollResultsPanel";
 import ScreenShareView from "@/components/live/ScreenShareView";
 import { LivePoll, PollResponse, PollResults } from "@/types/poll";
 import { AudienceQuestion } from "@/types/question";
-// Firebase imports removed - using Supabase
 
 interface Lesson {
   id: string;

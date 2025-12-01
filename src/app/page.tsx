@@ -209,17 +209,9 @@ export default function HomePage() {
       {/* Header */}
       <div className="navbar bg-white border-b-4 border-primary shadow-sm">
         <div className="flex-1">
-          <a className="flex items-center gap-4">
-            <img 
-              src="/images/logos/logo_pri_edomex.png" 
-              alt="PRI Estado de México" 
-              className="h-12 object-contain"
-            />
-            <img 
-              src="/images/logos/logo-ire-edomex-red.png" 
-              alt="Instituto Reyes Heroles" 
-              className="h-12 object-contain"
-            />
+          <a className="flex items-center gap-2">
+            <span className="text-2xl font-bold text-primary">MicroCert</span>
+            <span className="text-sm text-neutral/60">by Marca UNACH</span>
           </a>
         </div>
         <div className="flex-none gap-2">
@@ -531,7 +523,7 @@ export default function HomePage() {
         {/* Footer */}
         <div className="mt-12 text-center">
           <p className="text-sm text-neutral/60">
-            © 2025 epolítica. Plataforma de capacitación política.
+            © 2025 MicroCert by Marca UNACH. Plataforma de microcredenciales.
           </p>
         </div>
       </div>
