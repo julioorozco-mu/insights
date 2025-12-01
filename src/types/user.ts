@@ -1,6 +1,10 @@
-export type UserRole = "student" | "speaker" | "admin";
+/**
+ * MicroCert - Tipos de Usuario
+ */
 
-// Colección: users
+export type UserRole = "student" | "teacher" | "admin" | "support" | "superadmin";
+
+// Tabla: users
 export interface User {
   id: string;
   name: string;
@@ -24,7 +28,7 @@ export interface User {
   updatedAt: string;
 }
 
-// Colección: students
+// Tabla: students
 export interface Student extends User {
   role: "student";
   enrollmentDate: string;
@@ -36,18 +40,21 @@ export interface Student extends User {
   }[];
   completedCourses?: string[];
   certificates?: string[];
-  extraData?: Record<string, any>;
+  extraData?: Record<string, unknown>;
 }
 
-// Colección: speakers
-export interface Speaker extends User {
-  role: "speaker";
+// Tabla: teachers (antes speakers)
+export interface Teacher extends User {
+  role: "teacher";
   expertise: string[];
   resumeUrl?: string;
   signatureUrl?: string; // para certificados
-  events?: string[]; // IDs de cursos o sesiones impartidas
-  extraData?: Record<string, any>;
+  events?: string[]; // IDs de cursos impartidos
+  extraData?: Record<string, unknown>;
 }
+
+// Alias para compatibilidad (deprecado)
+export type Speaker = Teacher;
 
 export interface CreateUserData {
   name: string;
@@ -55,14 +62,14 @@ export interface CreateUserData {
   email: string;
   password: string;
   confirmPassword: string;
-  phone: string;
-  username: string;
-  dateOfBirth: string;
-  gender: "male" | "female" | "other";
-  state: string;
+  phone?: string;
+  username?: string;
+  dateOfBirth?: string;
+  gender?: "male" | "female" | "other";
+  state?: string;
   role?: UserRole;
   bio?: string;
-  expertise?: string[]; // para speakers
+  expertise?: string[]; // para teachers
 }
 
 export interface UpdateUserData {
@@ -74,15 +81,15 @@ export interface UpdateUserData {
     twitter?: string;
     website?: string;
   };
-  expertise?: string[]; // para speakers
-  resumeUrl?: string; // para speakers
-  signatureUrl?: string; // para speakers
+  expertise?: string[]; // para teachers
+  resumeUrl?: string; // para teachers
+  signatureUrl?: string; // para teachers
   // Campos adicionales para perfil público
-  coverImageUrl?: string; // Imagen de portada
-  aboutMe?: string; // Semblanza/Acerca de
-  favoriteBooks?: string[]; // Libros favoritos
-  publishedBooks?: { title: string; url?: string; year?: string }[]; // Libros publicados
-  externalCourses?: { title: string; url: string; platform?: string }[]; // Cursos externos
-  achievements?: string[]; // Logros destacados
-  services?: string[]; // Servicios que ofrece
+  coverImageUrl?: string;
+  aboutMe?: string;
+  favoriteBooks?: string[];
+  publishedBooks?: { title: string; url?: string; year?: string }[];
+  externalCourses?: { title: string; url: string; platform?: string }[];
+  achievements?: string[];
+  services?: string[];
 }

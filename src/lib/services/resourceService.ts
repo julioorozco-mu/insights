@@ -1,118 +1,74 @@
-import { 
-  collection, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  getDocs, 
-  query, 
-  where,
-  Timestamp,
-  getDoc
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { SpeakerResource, CreateSpeakerResourceData, UpdateSpeakerResourceData } from "@/types/resource";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 
-const COLLECTION_NAME = "speakerResources";
+export class ResourceService {
+  async create(data: {
+    ownerId: string;
+    fileName: string;
+    fileType: string;
+    url: string;
+    sizeKB?: number;
+    category?: string;
+    description?: string;
+    tags?: string[];
+  }) {
+    const { data: result, error } = await supabaseClient
+      .from(TABLES.TEACHER_RESOURCES)
+      .insert({
+        owner_id: data.ownerId,
+        file_name: data.fileName,
+        file_type: data.fileType,
+        url: data.url,
+        size_kb: data.sizeKB,
+        category: data.category || "document",
+        description: data.description,
+        tags: data.tags || [],
+      })
+      .select()
+      .single();
 
-export const resourceService = {
-  // Crear un nuevo recurso
-  async create(data: CreateSpeakerResourceData): Promise<string> {
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-      ...data,
-      assignedCourses: [],
-      isDeleted: false,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    });
-    return docRef.id;
-  },
+    if (error) throw error;
+    return result;
+  }
 
-  // Obtener todos los recursos de un speaker
-  async getByOwnerId(ownerId: string): Promise<SpeakerResource[]> {
-    const q = query(
-      collection(db, COLLECTION_NAME),
-      where("ownerId", "==", ownerId),
-      where("isDeleted", "==", false)
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-      updatedAt: doc.data().updatedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-    })) as SpeakerResource[];
-  },
+  async getByOwner(ownerId: string) {
+    const { data } = await supabaseClient
+      .from(TABLES.TEACHER_RESOURCES)
+      .select("*")
+      .eq("owner_id", ownerId)
+      .eq("is_deleted", false)
+      .order("created_at", { ascending: false });
 
-  // Obtener un recurso por ID
-  async getById(id: string): Promise<SpeakerResource | null> {
-    const docRef = doc(db, COLLECTION_NAME, id);
-    const docSnap = await getDoc(docRef);
-    
-    if (!docSnap.exists()) {
-      return null;
-    }
+    return data || [];
+  }
 
-    return {
-      id: docSnap.id,
-      ...docSnap.data(),
-      createdAt: docSnap.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-      updatedAt: docSnap.data().updatedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-    } as SpeakerResource;
-  },
+  async assignToCourses(resourceId: string, courseIds: string[]) {
+    const { error } = await supabaseClient
+      .from(TABLES.TEACHER_RESOURCES)
+      .update({ assigned_courses: courseIds })
+      .eq("id", resourceId);
 
-  // Actualizar un recurso
-  async update(id: string, data: UpdateSpeakerResourceData): Promise<void> {
-    const docRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(docRef, {
-      ...data,
-      updatedAt: Timestamp.now(),
-    });
-  },
+    if (error) throw error;
+  }
 
-  // Eliminar un recurso (soft delete)
-  async delete(id: string): Promise<void> {
-    const docRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(docRef, {
-      isDeleted: true,
-      updatedAt: Timestamp.now(),
-    });
-  },
+  async delete(resourceId: string) {
+    const { error } = await supabaseClient
+      .from(TABLES.TEACHER_RESOURCES)
+      .update({ is_deleted: true })
+      .eq("id", resourceId);
 
-  // Asignar recurso a un curso
-  async assignToCourse(resourceId: string, courseId: string): Promise<void> {
-    const resource = await this.getById(resourceId);
-    if (!resource) throw new Error("Resource not found");
+    if (error) throw error;
+  }
 
-    const assignedCourses = resource.assignedCourses || [];
-    if (!assignedCourses.includes(courseId)) {
-      assignedCourses.push(courseId);
-      await this.update(resourceId, { assignedCourses });
-    }
-  },
+  async getById(resourceId: string) {
+    const { data } = await supabaseClient
+      .from(TABLES.TEACHER_RESOURCES)
+      .select("*")
+      .eq("id", resourceId)
+      .single();
 
-  // Desasignar recurso de un curso
-  async unassignFromCourse(resourceId: string, courseId: string): Promise<void> {
-    const resource = await this.getById(resourceId);
-    if (!resource) throw new Error("Resource not found");
+    return data;
+  }
+}
 
-    const assignedCourses = (resource.assignedCourses || []).filter(id => id !== courseId);
-    await this.update(resourceId, { assignedCourses });
-  },
-
-  // Obtener recursos asignados a un curso
-  async getByCourseId(courseId: string): Promise<SpeakerResource[]> {
-    const q = query(
-      collection(db, COLLECTION_NAME),
-      where("assignedCourses", "array-contains", courseId),
-      where("isDeleted", "==", false)
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-      updatedAt: doc.data().updatedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-    })) as SpeakerResource[];
-  },
-};
+export const resourceService = new ResourceService();

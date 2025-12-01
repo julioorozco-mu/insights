@@ -1,55 +1,70 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  sendPasswordResetEmail,
-  onAuthStateChanged,
-  User as FirebaseUser,
-} from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { User as SupabaseUser, Session } from "@supabase/supabase-js";
+import { supabaseClient } from "@/lib/supabase";
 import { userRepository } from "@/lib/repositories/userRepository";
 import { User, CreateUserData } from "@/types/user";
-import { getFirebaseAuthErrorMessage } from "@/utils/handleError";
+import { getSupabaseAuthErrorMessage } from "@/utils/handleError";
 import { sendWelcomeEmail } from "@/lib/email/sendWelcomeEmail";
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        setFirebaseUser(firebaseUser);
-        // Load user data from Firestore
-        const userData = await userRepository.findById(firebaseUser.uid);
+    // Obtener sesión inicial
+    const getInitialSession = async () => {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      setSession(session);
+      setSupabaseUser(session?.user ?? null);
+      
+      if (session?.user) {
+        const userData = await userRepository.findById(session.user.id);
         setUser(userData);
-      } else {
-        setFirebaseUser(null);
-        setUser(null);
       }
       setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    getInitialSession();
+
+    // Escuchar cambios de autenticación
+    const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(
+      async (event, session) => {
+        setSession(session);
+        setSupabaseUser(session?.user ?? null);
+        
+        if (session?.user) {
+          const userData = await userRepository.findById(session.user.id);
+          setUser(userData);
+        } else {
+          setUser(null);
+        }
+        setLoading(false);
+      }
+    );
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const signIn = async (email: string, password: string) => {
     try {
       setError(null);
       setLoading(true);
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (err: unknown) {
-      const error = err as { code?: string };
-      const message = error.code
-        ? getFirebaseAuthErrorMessage(error.code)
-        : "Error al iniciar sesión";
-      setError(message);
-      throw new Error(message);
+      
+      const { error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        const message = getSupabaseAuthErrorMessage(error.message);
+        setError(message);
+        throw new Error(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -60,47 +75,41 @@ export function useAuth() {
       setError(null);
       setLoading(true);
       
-      // Create Firebase Auth user
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        data.email,
-        data.password
-      );
+      // Crear usuario en Supabase Auth
+      const { data: authData, error: authError } = await supabaseClient.auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: {
+          data: {
+            name: data.name,
+            last_name: data.lastName,
+          },
+        },
+      });
 
-      // Create user document in Firestore
-      try {
-        await userRepository.create(userCredential.user.uid, data);
-        
-        // Send welcome email (non-blocking)
-        sendWelcomeEmail({
-          to: data.email,
-          name: data.name,
-        }).catch((emailError) => {
-          console.error("Error al enviar correo de bienvenida:", emailError);
-          // No interrumpimos el flujo de registro si falla el correo
-        });
-      } catch (firestoreError) {
-        console.error("Error creating Firestore documents:", firestoreError);
-        // If Firestore creation fails, we should still keep the auth user
-        // but log the error for debugging
-        throw new Error("Error al crear el perfil de usuario. Por favor, contacta al administrador.");
+      if (authError) {
+        const message = getSupabaseAuthErrorMessage(authError.message);
+        setError(message);
+        throw new Error(message);
       }
-    } catch (err: unknown) {
-      const error = err as { code?: string; message?: string };
-      let message: string;
-      
-      if (error.code) {
-        // Firebase Auth error
-        message = getFirebaseAuthErrorMessage(error.code);
-      } else if (error.message) {
-        // Custom error message
-        message = error.message;
-      } else {
-        message = "Error al crear la cuenta";
+
+      if (authData.user) {
+        // Crear perfil de usuario en la tabla users
+        try {
+          await userRepository.create(authData.user.id, data);
+          
+          // Enviar correo de bienvenida (non-blocking)
+          sendWelcomeEmail({
+            to: data.email,
+            name: data.name,
+          }).catch((emailError) => {
+            console.error("Error al enviar correo de bienvenida:", emailError);
+          });
+        } catch (dbError) {
+          console.error("Error creando perfil de usuario:", dbError);
+          throw new Error("Error al crear el perfil de usuario. Por favor, contacta al administrador.");
+        }
       }
-      
-      setError(message);
-      throw new Error(message);
     } finally {
       setLoading(false);
     }
@@ -109,7 +118,10 @@ export function useAuth() {
   const signOut = async () => {
     try {
       setError(null);
-      await firebaseSignOut(auth);
+      const { error } = await supabaseClient.auth.signOut();
+      if (error) {
+        throw new Error("Error al cerrar sesión");
+      }
     } catch (err) {
       const message = "Error al cerrar sesión";
       setError(message);
@@ -120,12 +132,18 @@ export function useAuth() {
   const resetPassword = async (email: string) => {
     try {
       setError(null);
-      await sendPasswordResetEmail(auth, email);
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`,
+      });
+      
+      if (error) {
+        const message = getSupabaseAuthErrorMessage(error.message);
+        setError(message);
+        throw new Error(message);
+      }
     } catch (err: unknown) {
-      const error = err as { code?: string };
-      const message = error.code
-        ? getFirebaseAuthErrorMessage(error.code)
-        : "Error al enviar el correo";
+      const error = err as { message?: string };
+      const message = error.message || "Error al enviar el correo";
       setError(message);
       throw new Error(message);
     }
@@ -133,12 +151,14 @@ export function useAuth() {
 
   return {
     user,
-    firebaseUser,
+    session,
+    supabaseUser,
     loading,
     error,
     signIn,
     signUp,
     signOut,
     resetPassword,
+    isAuthenticated: !!session,
   };
 }

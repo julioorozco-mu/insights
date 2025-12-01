@@ -1,56 +1,43 @@
-import { doc, getDoc, setDoc, Timestamp, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { COLLECTIONS } from "@/utils/constants";
-import { HomepageConfig } from "@/types/siteConfig";
-
-const HOMEPAGE_CONFIG_DOC_ID = "homepage";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 
 export class SiteConfigRepository {
-  private docRef = doc(db, COLLECTIONS.SITE_CONFIG, HOMEPAGE_CONFIG_DOC_ID);
+  private table = TABLES.SITE_CONFIG;
 
-  async getHomepageConfig(): Promise<HomepageConfig | null> {
-    const snapshot = await getDoc(this.docRef);
-    if (!snapshot.exists()) {
-      return null;
-    }
-
-    const data = snapshot.data();
-    return {
-      bannerItems: Array.isArray(data.bannerItems)
-        ? data.bannerItems.map((item: any) => ({
-            id: item.id,
-            type: item.type === "lesson" ? "lesson" : "course",
-          }))
-        : [],
-      updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
-    };
+  async get(key: string): Promise<unknown> {
+    const { data } = await supabaseClient
+      .from(this.table)
+      .select("value")
+      .eq("key", key)
+      .single();
+    return data?.value;
   }
 
-  async saveHomepageConfig(config: HomepageConfig): Promise<void> {
-    const data = {
-      bannerItems: config.bannerItems.slice(0, 5).map((item) => ({
-        id: item.id,
-        type: item.type,
-      })),
-      updatedAt: Timestamp.fromDate(new Date()),
-    };
-
-    await setDoc(this.docRef, data, { merge: true });
+  async set(key: string, value: unknown): Promise<void> {
+    const { error } = await supabaseClient
+      .from(this.table)
+      .upsert({ key, value }, { onConflict: "key" });
+    if (error) throw error;
   }
 
-  async updateHomepageConfig(config: Partial<HomepageConfig>): Promise<void> {
-    const data: Record<string, unknown> = {};
+  async getAll(): Promise<Record<string, unknown>> {
+    const { data } = await supabaseClient
+      .from(this.table)
+      .select("key, value");
+    
+    return (data || []).reduce((acc, row) => {
+      acc[row.key] = row.value;
+      return acc;
+    }, {} as Record<string, unknown>);
+  }
 
-    if (config.bannerItems) {
-      data.bannerItems = config.bannerItems.slice(0, 5).map((item) => ({
-        id: item.id,
-        type: item.type,
-      }));
-    }
+  async getHomepageConfig(): Promise<{ bannerCourseIds?: string[] } | null> {
+    const config = await this.get("homepage");
+    return config as { bannerCourseIds?: string[] } | null;
+  }
 
-    data.updatedAt = Timestamp.fromDate(new Date());
-
-    await updateDoc(this.docRef, data);
+  async setHomepageConfig(config: { bannerCourseIds?: string[] }): Promise<void> {
+    await this.set("homepage", config);
   }
 }
 

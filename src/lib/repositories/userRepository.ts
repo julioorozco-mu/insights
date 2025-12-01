@@ -1,138 +1,161 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  Timestamp,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { COLLECTIONS } from "@/utils/constants";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 import { User, CreateUserData, UpdateUserData } from "@/types/user";
 import { studentRepository } from "./studentRepository";
 
-// Helper function to remove undefined values from an object
-function removeUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
-  const result: any = {};
-  Object.keys(obj).forEach((key) => {
-    if (obj[key] !== undefined) {
-      result[key] = obj[key];
-    }
-  });
-  return result;
-}
-
 export class UserRepository {
-  private collectionRef = collection(db, COLLECTIONS.USERS);
+  private table = TABLES.USERS;
 
   async create(id: string, data: CreateUserData): Promise<User> {
-    const now = new Date();
-    const nowString = now.toISOString();
-    
-    const userData: Omit<User, "id"> = {
+    const userData = {
+      id,
       name: data.name,
-      lastName: data.lastName,
+      last_name: data.lastName,
       email: data.email,
       role: data.role || "student",
-      phone: data.phone,
-      username: data.username,
-      dateOfBirth: data.dateOfBirth,
-      gender: data.gender,
-      state: data.state,
-      bio: data.bio,
-      isVerified: false,
-      createdAt: nowString,
-      updatedAt: nowString,
+      phone: data.phone || null,
+      username: data.username || null,
+      date_of_birth: data.dateOfBirth || null,
+      gender: data.gender || null,
+      state: data.state || null,
+      bio: data.bio || null,
+      is_verified: false,
     };
 
-    try {
-      // Create user document - remove undefined fields
-      const cleanUserData = removeUndefined({
-        ...userData,
-        createdAt: Timestamp.fromDate(now),
-        updatedAt: Timestamp.fromDate(now),
+    const { data: insertedUser, error } = await supabaseClient
+      .from(this.table)
+      .insert(userData)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error creating user:", error);
+      throw error;
+    }
+
+    // Si el rol es estudiante, también crear documento de estudiante
+    if (userData.role === "student") {
+      await studentRepository.create({
+        userId: id,
+        name: data.name,
+        lastName: data.lastName,
+        email: data.email,
+        phone: data.phone,
+        username: data.username,
+        dateOfBirth: data.dateOfBirth,
+        gender: data.gender,
+        state: data.state,
       });
-      
-      await setDoc(doc(this.collectionRef, id), cleanUserData);
+    }
 
-      // If role is student, also create student document
-      if (userData.role === "student") {
-        await studentRepository.create({
-          userId: id,
-          name: data.name,
-          lastName: data.lastName,
-          email: data.email,
-          phone: data.phone,
-          username: data.username,
-          dateOfBirth: data.dateOfBirth,
-          gender: data.gender,
-          state: data.state,
-        });
-      }
+    return this.mapToUser(insertedUser);
+  }
 
-      return { id, ...userData };
-    } catch (error) {
-      console.error("Error creating user/student documents:", error);
+  async findById(id: string): Promise<User | null> {
+    const { data, error } = await supabaseClient
+      .from(this.table)
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error || !data) return null;
+    return this.mapToUser(data);
+  }
+
+  async findByEmail(email: string): Promise<User | null> {
+    const { data, error } = await supabaseClient
+      .from(this.table)
+      .select("*")
+      .eq("email", email)
+      .single();
+
+    if (error || !data) return null;
+    return this.mapToUser(data);
+  }
+
+  async findAll(): Promise<User[]> {
+    const { data, error } = await supabaseClient
+      .from(this.table)
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching users:", error);
+      return [];
+    }
+
+    return (data || []).map(this.mapToUser);
+  }
+
+  async findByRole(role: string): Promise<User[]> {
+    const { data, error } = await supabaseClient
+      .from(this.table)
+      .select("*")
+      .eq("role", role)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching users by role:", error);
+      return [];
+    }
+
+    return (data || []).map(this.mapToUser);
+  }
+
+  async update(id: string, data: UpdateUserData): Promise<void> {
+    const updateData: Record<string, unknown> = {};
+    
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.avatarUrl !== undefined) updateData.avatar_url = data.avatarUrl;
+    if (data.bio !== undefined) updateData.bio = data.bio;
+    if (data.socialLinks !== undefined) updateData.social_links = data.socialLinks;
+    if (data.expertise !== undefined) updateData.expertise = data.expertise;
+    if (data.resumeUrl !== undefined) updateData.resume_url = data.resumeUrl;
+    if (data.signatureUrl !== undefined) updateData.signature_url = data.signatureUrl;
+
+    const { error } = await supabaseClient
+      .from(this.table)
+      .update(updateData)
+      .eq("id", id);
+
+    if (error) {
+      console.error("Error updating user:", error);
       throw error;
     }
   }
 
-  async findById(id: string): Promise<User | null> {
-    const docSnap = await getDoc(doc(this.collectionRef, id));
-    if (!docSnap.exists()) return null;
-
-    const data = docSnap.data();
-    return {
-      id: docSnap.id,
-      ...data,
-      createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-      updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
-    } as User;
-  }
-
-  async findByEmail(email: string): Promise<User | null> {
-    const q = query(this.collectionRef, where("email", "==", email));
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) return null;
-
-    const doc = querySnapshot.docs[0];
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-      updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
-    } as User;
-  }
-
-  async findAll(): Promise<User[]> {
-    const querySnapshot = await getDocs(this.collectionRef);
-    return querySnapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
-      } as User;
-    });
-  }
-
-  async update(id: string, data: UpdateUserData): Promise<void> {
-    const updateData = {
-      ...data,
-      updatedAt: Timestamp.fromDate(new Date()),
-    };
-    await updateDoc(doc(this.collectionRef, id), updateData);
-  }
-
   async delete(id: string): Promise<void> {
-    await deleteDoc(doc(this.collectionRef, id));
+    const { error } = await supabaseClient
+      .from(this.table)
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      console.error("Error deleting user:", error);
+      throw error;
+    }
+  }
+
+  // Mapear datos de Supabase (snake_case) a formato de la app (camelCase)
+  private mapToUser(data: Record<string, unknown>): User {
+    return {
+      id: data.id as string,
+      name: data.name as string,
+      lastName: data.last_name as string | undefined,
+      email: data.email as string,
+      role: data.role as "student" | "teacher" | "admin",
+      phone: data.phone as string | undefined,
+      username: data.username as string | undefined,
+      dateOfBirth: data.date_of_birth as string | undefined,
+      gender: data.gender as "male" | "female" | "other" | undefined,
+      state: data.state as string | undefined,
+      avatarUrl: data.avatar_url as string | undefined,
+      bio: data.bio as string | undefined,
+      socialLinks: data.social_links as User["socialLinks"],
+      isVerified: data.is_verified as boolean | undefined,
+      createdAt: data.created_at as string,
+      updatedAt: data.updated_at as string,
+    };
   }
 }
 

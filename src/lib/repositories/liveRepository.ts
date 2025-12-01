@@ -1,147 +1,37 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  Timestamp,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { COLLECTIONS } from "@/utils/constants";
-import { LiveStream, CreateLiveStreamData } from "@/types/live";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 
+// Stub para liveRepository - implementar gradualmente
 export class LiveRepository {
-  private collectionRef = collection(db, COLLECTIONS.LIVE_STREAMS);
-
-  async create(data: CreateLiveStreamData & {
-    agoraChannel: string;
-    agoraAppId: string;
-  }): Promise<LiveStream> {
-    const now = new Date();
-    const streamData = {
-      title: data.title,
-      description: data.description,
-      instructorId: data.instructorId,
-      agoraChannel: data.agoraChannel,
-      agoraAppId: data.agoraAppId,
-      active: false,
-      startAt: data.startAt ? Timestamp.fromDate(data.startAt) : null,
-      createdAt: Timestamp.fromDate(now),
-      updatedAt: Timestamp.fromDate(now),
-    };
-
-    const docRef = await addDoc(this.collectionRef, streamData);
-
-    return {
-      id: docRef.id,
-      title: data.title,
-      description: data.description,
-      instructorId: data.instructorId,
-      agoraChannel: data.agoraChannel,
-      agoraAppId: data.agoraAppId,
-      active: false,
-      startAt: data.startAt,
-      createdAt: now,
-      updatedAt: now,
-    };
+  async createLiveStream(lessonId: string, data: Record<string, unknown>) {
+    const { data: result, error } = await supabaseClient
+      .from(TABLES.LIVE_STREAMS)
+      .insert({ lesson_id: lessonId, ...data })
+      .select()
+      .single();
+    if (error) throw error;
+    return result;
   }
 
-  async findById(id: string): Promise<LiveStream | null> {
-    const docSnap = await getDoc(doc(this.collectionRef, id));
-    if (!docSnap.exists()) return null;
-
-    const data = docSnap.data();
-    return {
-      id: docSnap.id,
-      ...data,
-      startAt: data.startAt?.toDate(),
-      endAt: data.endAt?.toDate(),
-      createdAt: data.createdAt?.toDate(),
-      updatedAt: data.updatedAt?.toDate(),
-    } as LiveStream;
+  async getLiveStream(lessonId: string) {
+    const { data } = await supabaseClient
+      .from(TABLES.LIVE_STREAMS)
+      .select("*")
+      .eq("lesson_id", lessonId)
+      .single();
+    return data;
   }
 
-  async findAll(): Promise<LiveStream[]> {
-    const q = query(this.collectionRef, orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
-
-    return querySnapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        startAt: data.startAt?.toDate(),
-        endAt: data.endAt?.toDate(),
-        createdAt: data.createdAt?.toDate(),
-        updatedAt: data.updatedAt?.toDate(),
-      } as LiveStream;
-    });
+  async updateLiveStatus(lessonId: string, status: string) {
+    const { error } = await supabaseClient
+      .from(TABLES.LESSONS)
+      .update({ live_status: status })
+      .eq("id", lessonId);
+    if (error) throw error;
   }
 
-  async findActive(): Promise<LiveStream[]> {
-    const q = query(
-      this.collectionRef,
-      where("active", "==", true),
-      orderBy("createdAt", "desc")
-    );
-    const querySnapshot = await getDocs(q);
-
-    return querySnapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        startAt: data.startAt?.toDate(),
-        endAt: data.endAt?.toDate(),
-        createdAt: data.createdAt?.toDate(),
-        updatedAt: data.updatedAt?.toDate(),
-      } as LiveStream;
-    });
-  }
-
-  async findByInstructor(instructorId: string): Promise<LiveStream[]> {
-    const q = query(
-      this.collectionRef,
-      where("instructorId", "==", instructorId),
-      orderBy("createdAt", "desc")
-    );
-    const querySnapshot = await getDocs(q);
-
-    return querySnapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        startAt: data.startAt?.toDate(),
-        endAt: data.endAt?.toDate(),
-        createdAt: data.createdAt?.toDate(),
-        updatedAt: data.updatedAt?.toDate(),
-      } as LiveStream;
-    });
-  }
-
-  async updateStatus(id: string, active: boolean): Promise<void> {
-    const updateData: Record<string, unknown> = {
-      active,
-      updatedAt: Timestamp.fromDate(new Date()),
-    };
-
-    if (active) {
-      updateData.startAt = Timestamp.fromDate(new Date());
-    } else {
-      updateData.endAt = Timestamp.fromDate(new Date());
-    }
-
-    await updateDoc(doc(this.collectionRef, id), updateData);
-  }
-
-  async delete(id: string): Promise<void> {
-    await deleteDoc(doc(this.collectionRef, id));
+  async endLiveStream(lessonId: string) {
+    await this.updateLiveStatus(lessonId, "ended");
   }
 }
 

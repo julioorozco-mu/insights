@@ -1,97 +1,73 @@
-import {
-  collection,
-  addDoc,
-  query,
-  orderBy,
-  onSnapshot,
-  Timestamp,
-  deleteDoc,
-  doc,
-  updateDoc,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { COLLECTIONS } from "@/utils/constants";
-import { ChatMessage, CreateMessageData } from "@/types/chat";
-import { AppError } from "@/utils/handleError";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 
 export class ChatService {
-  private getMessagesCollection(streamId: string) {
-    return collection(
-      db,
-      COLLECTIONS.LIVE_CHATS,
-      streamId,
-      COLLECTIONS.MESSAGES
-    );
-  }
+  async sendMessage(lessonId: string, userId: string, userName: string, message: string, userRole: string = "student") {
+    // Primero obtener o crear el chat
+    let { data: chat } = await supabaseClient
+      .from(TABLES.LIVE_CHATS)
+      .select("id")
+      .eq("lesson_id", lessonId)
+      .single();
 
-  async sendMessage(streamId: string, data: CreateMessageData): Promise<string> {
-    try {
-      const messagesRef = this.getMessagesCollection(streamId);
-      const messageData = {
-        ...data,
-        createdAt: Timestamp.fromDate(new Date()),
-      };
-
-      const docRef = await addDoc(messagesRef, messageData);
-      return docRef.id;
-    } catch (error) {
-      console.error("Error sending message:", error);
-      throw new AppError("Error al enviar el mensaje");
+    if (!chat) {
+      const { data: newChat } = await supabaseClient
+        .from(TABLES.LIVE_CHATS)
+        .insert({ lesson_id: lessonId, is_active: true })
+        .select()
+        .single();
+      chat = newChat;
     }
-  }
 
-  subscribeToMessages(
-    streamId: string,
-    callback: (messages: ChatMessage[]) => void
-  ): () => void {
-    const messagesRef = this.getMessagesCollection(streamId);
-    const q = query(messagesRef, orderBy("createdAt", "asc"));
+    if (!chat) throw new Error("No se pudo crear el chat");
 
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const messages: ChatMessage[] = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate(),
-          } as ChatMessage;
-        });
-        callback(messages);
-      },
-      (error) => {
-        console.error("Error subscribing to messages:", error);
-      }
-    );
-
-    return unsubscribe;
-  }
-
-  async deleteMessage(streamId: string, messageId: string): Promise<void> {
-    try {
-      const messagesRef = this.getMessagesCollection(streamId);
-      await deleteDoc(doc(messagesRef, messageId));
-    } catch (error) {
-      console.error("Error deleting message:", error);
-      throw new AppError("Error al eliminar el mensaje");
-    }
-  }
-
-  async highlightMessage(
-    streamId: string,
-    messageId: string,
-    highlighted: boolean
-  ): Promise<void> {
-    try {
-      const messagesRef = this.getMessagesCollection(streamId);
-      await updateDoc(doc(messagesRef, messageId), {
-        isHighlighted: highlighted,
+    const { error } = await supabaseClient
+      .from(TABLES.LIVE_CHAT_MESSAGES)
+      .insert({
+        live_chat_id: chat.id,
+        user_id: userId,
+        user_name: userName,
+        user_role: userRole,
+        message,
       });
-    } catch (error) {
-      console.error("Error highlighting message:", error);
-      throw new AppError("Error al destacar el mensaje");
-    }
+
+    if (error) throw error;
+  }
+
+  async getMessages(lessonId: string) {
+    const { data: chat } = await supabaseClient
+      .from(TABLES.LIVE_CHATS)
+      .select("id")
+      .eq("lesson_id", lessonId)
+      .single();
+
+    if (!chat) return [];
+
+    const { data } = await supabaseClient
+      .from(TABLES.LIVE_CHAT_MESSAGES)
+      .select("*")
+      .eq("live_chat_id", chat.id)
+      .order("created_at", { ascending: true });
+
+    return data || [];
+  }
+
+  subscribeToMessages(lessonId: string, callback: (message: unknown) => void) {
+    // Supabase realtime subscription
+    const channel = supabaseClient
+      .channel(`chat:${lessonId}`)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: TABLES.LIVE_CHAT_MESSAGES,
+      }, (payload) => {
+        callback(payload.new);
+      })
+      .subscribe();
+
+    return () => {
+      supabaseClient.removeChannel(channel);
+    };
   }
 }
 

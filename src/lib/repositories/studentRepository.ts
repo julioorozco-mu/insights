@@ -1,50 +1,13 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  Timestamp,
-  arrayUnion,
-  arrayRemove,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { COLLECTIONS } from "@/utils/constants";
-
-// Helper function to remove undefined values from an object
-function removeUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
-  const result: any = {};
-  Object.keys(obj).forEach((key) => {
-    if (obj[key] !== undefined) {
-      result[key] = obj[key];
-    }
-  });
-  return result;
-}
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 
 export interface StudentData {
+  id: string;
   userId: string;
-  name: string;
-  lastName?: string;
-  email: string;
-  phone?: string;
-  username?: string;
-  dateOfBirth?: string;
-  gender?: "male" | "female" | "other";
-  state?: string;
-  enrolledCourses: {
-    courseId: string;
-    enrolledAt: string;
-    progress?: number;
-    completedLessons?: string[];
-  }[];
-  completedCourses?: string[];
-  certificates?: string[];
   enrollmentDate: string;
+  completedCourses: string[];
+  certificates: string[];
+  extraData?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -62,121 +25,98 @@ export interface CreateStudentData {
 }
 
 export class StudentRepository {
-  private collectionRef = collection(db, COLLECTIONS.STUDENTS);
+  private table = TABLES.STUDENTS;
+  private enrollmentsTable = TABLES.STUDENT_ENROLLMENTS;
 
   async create(data: CreateStudentData): Promise<StudentData> {
-    const now = new Date();
-    const nowString = now.toISOString();
-    
-    const studentData: StudentData = {
-      userId: data.userId,
-      name: data.name,
-      lastName: data.lastName,
-      email: data.email,
-      phone: data.phone,
-      username: data.username,
-      dateOfBirth: data.dateOfBirth,
-      gender: data.gender,
-      state: data.state,
-      enrolledCourses: [],
-      completedCourses: [],
+    const studentData = {
+      user_id: data.userId,
+      enrollment_date: new Date().toISOString(),
+      completed_courses: [],
       certificates: [],
-      enrollmentDate: nowString,
-      createdAt: nowString,
-      updatedAt: nowString,
+      extra_data: {},
     };
 
-    // Remove undefined fields before saving
-    const cleanStudentData = removeUndefined({
-      ...studentData,
-      enrollmentDate: Timestamp.fromDate(now),
-      createdAt: Timestamp.fromDate(now),
-      updatedAt: Timestamp.fromDate(now),
-    });
+    const { data: insertedStudent, error } = await supabaseClient
+      .from(this.table)
+      .insert(studentData)
+      .select()
+      .single();
 
-    await setDoc(doc(this.collectionRef, data.userId), cleanStudentData);
+    if (error) {
+      console.error("Error creating student:", error);
+      throw error;
+    }
 
-    return studentData;
+    return this.mapToStudent(insertedStudent);
   }
 
   async findById(userId: string): Promise<StudentData | null> {
-    const docSnap = await getDoc(doc(this.collectionRef, userId));
-    if (!docSnap.exists()) return null;
+    const { data, error } = await supabaseClient
+      .from(this.table)
+      .select("*")
+      .eq("user_id", userId)
+      .single();
 
-    const data = docSnap.data();
-    return {
-      userId: docSnap.id,
-      ...data,
-      enrollmentDate: data.enrollmentDate?.toDate?.()?.toISOString() || data.enrollmentDate,
-      createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-      updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
-    } as StudentData;
-  }
-
-  async findByEmail(email: string): Promise<StudentData | null> {
-    const q = query(this.collectionRef, where("email", "==", email));
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) return null;
-
-    const doc = querySnapshot.docs[0];
-    const data = doc.data();
-    return {
-      userId: doc.id,
-      ...data,
-      enrollmentDate: data.enrollmentDate?.toDate?.()?.toISOString() || data.enrollmentDate,
-      createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-      updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
-    } as StudentData;
+    if (error || !data) return null;
+    return this.mapToStudent(data);
   }
 
   async findAll(): Promise<StudentData[]> {
-    const querySnapshot = await getDocs(this.collectionRef);
-    return querySnapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        userId: doc.id,
-        ...data,
-        enrollmentDate: data.enrollmentDate?.toDate?.()?.toISOString() || data.enrollmentDate,
-        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
-      } as StudentData;
-    });
+    const { data, error } = await supabaseClient
+      .from(this.table)
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching students:", error);
+      return [];
+    }
+
+    return (data || []).map(this.mapToStudent);
   }
 
-  async enrollInCourse(
-    userId: string,
-    courseId: string
-  ): Promise<void> {
-    const now = new Date();
-    const enrollment = {
-      courseId,
-      enrolledAt: Timestamp.fromDate(now),
+  async enrollInCourse(userId: string, courseId: string): Promise<void> {
+    // Primero obtener el student_id
+    const student = await this.findById(userId);
+    if (!student) {
+      throw new Error("Estudiante no encontrado");
+    }
+
+    const enrollmentData = {
+      student_id: student.id,
+      course_id: courseId,
       progress: 0,
-      completedLessons: [],
+      completed_lessons: [],
     };
 
-    await updateDoc(doc(this.collectionRef, userId), {
-      enrolledCourses: arrayUnion(enrollment),
-      updatedAt: Timestamp.fromDate(now),
-    });
+    const { error } = await supabaseClient
+      .from(this.enrollmentsTable)
+      .insert(enrollmentData);
+
+    if (error) {
+      // Si ya está inscrito, ignorar el error de duplicado
+      if (!error.message.includes("duplicate")) {
+        console.error("Error enrolling student:", error);
+        throw error;
+      }
+    }
   }
 
-  async unenrollFromCourse(
-    userId: string,
-    courseId: string
-  ): Promise<void> {
+  async unenrollFromCourse(userId: string, courseId: string): Promise<void> {
     const student = await this.findById(userId);
     if (!student) return;
 
-    const updatedCourses = student.enrolledCourses.filter(
-      (course) => course.courseId !== courseId
-    );
+    const { error } = await supabaseClient
+      .from(this.enrollmentsTable)
+      .delete()
+      .eq("student_id", student.id)
+      .eq("course_id", courseId);
 
-    await updateDoc(doc(this.collectionRef, userId), {
-      enrolledCourses: updatedCourses,
-      updatedAt: Timestamp.fromDate(new Date()),
-    });
+    if (error) {
+      console.error("Error unenrolling student:", error);
+      throw error;
+    }
   }
 
   async updateProgress(
@@ -188,39 +128,95 @@ export class StudentRepository {
     const student = await this.findById(userId);
     if (!student) return;
 
-    const updatedCourses = student.enrolledCourses.map((course) => {
-      if (course.courseId === courseId) {
-        return {
-          ...course,
-          progress,
-          completedLessons,
-        };
-      }
-      return course;
-    });
+    const { error } = await supabaseClient
+      .from(this.enrollmentsTable)
+      .update({
+        progress,
+        completed_lessons: completedLessons,
+      })
+      .eq("student_id", student.id)
+      .eq("course_id", courseId);
 
-    await updateDoc(doc(this.collectionRef, userId), {
-      enrolledCourses: updatedCourses,
-      updatedAt: Timestamp.fromDate(new Date()),
-    });
+    if (error) {
+      console.error("Error updating progress:", error);
+      throw error;
+    }
+  }
+
+  async getEnrolledCourses(userId: string): Promise<string[]> {
+    const student = await this.findById(userId);
+    if (!student) return [];
+
+    const { data, error } = await supabaseClient
+      .from(this.enrollmentsTable)
+      .select("course_id")
+      .eq("student_id", student.id);
+
+    if (error) {
+      console.error("Error fetching enrolled courses:", error);
+      return [];
+    }
+
+    return (data || []).map((row: { course_id: string }) => row.course_id);
   }
 
   async addCompletedCourse(userId: string, courseId: string): Promise<void> {
-    await updateDoc(doc(this.collectionRef, userId), {
-      completedCourses: arrayUnion(courseId),
-      updatedAt: Timestamp.fromDate(new Date()),
-    });
+    const student = await this.findById(userId);
+    if (!student) return;
+
+    const completedCourses = [...(student.completedCourses || []), courseId];
+
+    const { error } = await supabaseClient
+      .from(this.table)
+      .update({ completed_courses: completedCourses })
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Error adding completed course:", error);
+      throw error;
+    }
   }
 
   async addCertificate(userId: string, certificateId: string): Promise<void> {
-    await updateDoc(doc(this.collectionRef, userId), {
-      certificates: arrayUnion(certificateId),
-      updatedAt: Timestamp.fromDate(new Date()),
-    });
+    const student = await this.findById(userId);
+    if (!student) return;
+
+    const certificates = [...(student.certificates || []), certificateId];
+
+    const { error } = await supabaseClient
+      .from(this.table)
+      .update({ certificates })
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Error adding certificate:", error);
+      throw error;
+    }
   }
 
   async delete(userId: string): Promise<void> {
-    await deleteDoc(doc(this.collectionRef, userId));
+    const { error } = await supabaseClient
+      .from(this.table)
+      .delete()
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Error deleting student:", error);
+      throw error;
+    }
+  }
+
+  private mapToStudent(data: Record<string, unknown>): StudentData {
+    return {
+      id: data.id as string,
+      userId: data.user_id as string,
+      enrollmentDate: data.enrollment_date as string,
+      completedCourses: (data.completed_courses as string[]) || [],
+      certificates: (data.certificates as string[]) || [],
+      extraData: data.extra_data as Record<string, unknown>,
+      createdAt: data.created_at as string,
+      updatedAt: data.updated_at as string,
+    };
   }
 }
 
