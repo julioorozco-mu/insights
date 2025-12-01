@@ -8,6 +8,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createUserSchema, CreateUserInput } from "@/lib/validators/userSchema";
 import { MunicipalitySelector } from "@/components/MunicipalitySelector";
+import { APP_NAME } from "@/utils/constants";
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -116,19 +117,11 @@ export default function SignUpPage() {
       <div className="card w-full max-w-3xl bg-base-100 shadow-2xl">
         <div className="card-body">
           <div className="text-center mb-6">
-            <div className="flex justify-center items-center gap-4 mb-4">
-              <img 
-                src="/images/logos/logo_pri_edomex.png" 
-                alt="PRI Estado de México" 
-                className="h-16 object-contain"
-              />
-              <img 
-                src="/images/logos/logo-ire-edomex-red.png" 
-                alt="Instituto Reyes Heroles" 
-                className="h-16 object-contain"
-              />
+            <div className="mb-4">
+              <h1 className="text-3xl font-bold text-primary">{APP_NAME}</h1>
+              <p className="text-sm text-base-content/60">Plataforma de Microcredenciales</p>
             </div>
-            <p className="text-base-content/70">Crea tu cuenta como alumno</p>
+            <p className="text-base-content/70">Crea tu cuenta para acceder a los cursos</p>
           </div>
 
           {error && (

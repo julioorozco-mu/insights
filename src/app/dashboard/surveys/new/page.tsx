@@ -24,8 +24,8 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { collection, addDoc, Timestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 
 // Componente sortable para cada pregunta
 function SortableQuestion({ 
@@ -164,12 +164,10 @@ export default function NewSurveyPage() {
         description,
         type,
         questions,
-        isActive: true,
-        createdAt: Timestamp.fromDate(now),
-        updatedAt: Timestamp.fromDate(now),
+        is_active: true,
       };
 
-      await addDoc(collection(db, 'surveys'), surveyData);
+      await supabaseClient.from(TABLES.SURVEYS).insert(surveyData);
       
       router.push('/dashboard/surveys');
     } catch (error) {

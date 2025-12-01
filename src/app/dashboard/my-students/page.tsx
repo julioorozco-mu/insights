@@ -20,8 +20,8 @@ import {
   IconVideo,
   IconClipboardList,
 } from "@tabler/icons-react";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 import { LessonAttendance } from "@/types/attendance";
 import { Lesson } from "@/types/lesson";
 import StudentAttendanceDetail from "@/components/students/StudentAttendanceDetail";
@@ -70,17 +70,35 @@ export default function MyStudentsPage() {
           return;
         }
 
-        // 2. Obtener todas las inscripciones de esos cursos
-        const enrollmentsQuery = query(
-          collection(db, 'enrollments'),
-          where('courseId', 'in', myCourseIds)
-        );
-        const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
+        // 2. Obtener todas las inscripciones de esos cursos desde Supabase
+        const { data: enrollmentsData } = await supabaseClient
+          .from(TABLES.STUDENT_ENROLLMENTS)
+          .select(`
+            id,
+            course_id,
+            student_id,
+            enrolled_at,
+            progress,
+            completed_lessons,
+            students:student_id (
+              user_id,
+              users:user_id (
+                id, name, email
+              )
+            )
+          `)
+          .in('course_id', myCourseIds);
         
-        const enrollments = enrollmentsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Enrollment[];
+        const enrollments: Enrollment[] = (enrollmentsData || []).map((e: any) => ({
+          id: e.id,
+          courseId: e.course_id,
+          studentId: e.students?.users?.id || e.student_id,
+          studentName: e.students?.users?.name || 'Sin nombre',
+          studentEmail: e.students?.users?.email || '',
+          enrolledAt: e.enrolled_at,
+          progress: e.progress || 0,
+          completedLessons: e.completed_lessons || [],
+        }));
 
         // 3. Agrupar por estudiante
         const studentsMap = new Map<string, Student>();
@@ -101,7 +119,7 @@ export default function MyStudentsPage() {
           student.enrolledCourses.push({
             courseId: enrollment.courseId,
             courseTitle: course?.title || 'Curso desconocido',
-            enrolledAt: enrollment.enrolledAt?.toDate?.()?.toISOString() || enrollment.enrolledAt,
+            enrolledAt: enrollment.enrolledAt,
             progress: enrollment.progress || 0,
           });
         });

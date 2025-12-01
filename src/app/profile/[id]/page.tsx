@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { userRepository } from "@/lib/repositories/userRepository";
+import { courseRepository } from "@/lib/repositories/courseRepository";
 import { User } from "@/types/user";
 import { Course } from "@/types/course";
 import { Loader } from "@/components/common/Loader";
@@ -35,22 +35,14 @@ export default function PublicProfilePage() {
     try {
       const userId = params.id as string;
 
-      // Cargar usuario
-      const userDoc = await getDoc(doc(db, "users", userId));
-      if (userDoc.exists()) {
-        setUser({ id: userDoc.id, ...userDoc.data() } as User);
+      // Cargar usuario desde Supabase
+      const userData = await userRepository.findById(userId);
+      if (userData) {
+        setUser(userData as User);
 
-        // Si es speaker, cargar sus cursos
-        if (userDoc.data().role === "speaker") {
-          const coursesQuery = query(
-            collection(db, "courses"),
-            where("speakerIds", "array-contains", userId)
-          );
-          const coursesSnapshot = await getDocs(coursesQuery);
-          const coursesData = coursesSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as Course[];
+        // Si es teacher, cargar sus cursos
+        if (userData.role === "teacher") {
+          const coursesData = await courseRepository.findBySpeaker(userId);
 
           setCourses(coursesData);
 
@@ -138,7 +130,7 @@ export default function PublicProfilePage() {
                 {/* Badges */}
                 <div className="flex flex-wrap gap-2 mb-4">
                   <div className="badge badge-primary badge-lg text-white">
-                    {user.role === "speaker" ? "Ponente" : user.role === "admin" ? "Administrador" : "Estudiante"}
+                    {user.role === "teacher" ? "Ponente" : user.role === "admin" ? "Administrador" : "Estudiante"}
                   </div>
                   {courses.length > 0 && (
                     <div className="badge badge-secondary badge-lg text-white">

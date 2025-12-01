@@ -12,8 +12,9 @@ import {
   IconChevronDown,
   IconChevronUp,
 } from "@tabler/icons-react";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
 
 interface StudentAttendanceDetailProps {
   studentId: string;
@@ -42,30 +43,30 @@ export default function StudentAttendanceDetail({
   const loadData = async () => {
     setLoading(true);
     try {
-      // Cargar lecciones del curso
-      const lessonsQuery = query(
-        collection(db, "lessons"),
-        where("courseId", "==", courseId)
-      );
-      const lessonsSnapshot = await getDocs(lessonsQuery);
-      const lessonsData = lessonsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Lesson[];
+      // Cargar lecciones del curso desde Supabase
+      const lessonsData = await lessonRepository.findByCourseId(courseId);
       setLessons(lessonsData);
 
       // Cargar asistencia del estudiante
-      const attendanceQuery = query(
-        collection(db, "lessonAttendance"),
-        where("courseId", "==", courseId),
-        where("studentId", "==", studentId)
-      );
-      const attendanceSnapshot = await getDocs(attendanceQuery);
-      const attendanceData = attendanceSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
+      const { data: attendanceData } = await supabaseClient
+        .from(TABLES.LESSON_ATTENDANCE)
+        .select('*')
+        .eq('course_id', courseId)
+        .eq('student_id', studentId);
+      
+      const attendance = (attendanceData || []).map((a: any) => ({
+        id: a.id,
+        lessonId: a.lesson_id,
+        studentId: a.student_id,
+        courseId: a.course_id,
+        attendedLive: a.attended_live,
+        totalLiveMinutes: a.total_live_minutes || 0,
+        completedEntrySurvey: a.completed_entry_survey,
+        completedExitSurvey: a.completed_exit_survey,
+        livePollsAnswered: a.live_polls_answered || 0,
+        totalLivePolls: a.total_live_polls || 0,
       })) as LessonAttendance[];
-      setAttendance(attendanceData);
+      setAttendance(attendance);
     } catch (error) {
       console.error("Error loading attendance:", error);
     } finally {

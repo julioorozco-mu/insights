@@ -8,8 +8,8 @@ import { Course } from "@/types/course";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader } from "@/components/common/Loader";
 import { IconBook, IconPlus, IconCalendar, IconStar, IconX } from "@tabler/icons-react";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { userRepository } from "@/lib/repositories/userRepository";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
 
 interface Speaker {
   id: string;
@@ -52,9 +52,9 @@ export default function CoursesPage() {
         if (user?.role === "admin") {
           // Admin ve todos los cursos
           data = await courseRepository.findAll();
-        } else if (user?.role === "speaker") {
-          // Speaker ve solo sus cursos
-          data = await courseRepository.findBySpeaker(user.id);
+        } else if (user?.role === "teacher") {
+          // Teacher ve solo sus cursos
+          data = await courseRepository.findByTeacher(user.id);
         } else {
           // Student ve solo cursos activos
           data = await courseRepository.findPublished();
@@ -63,63 +63,41 @@ export default function CoursesPage() {
         // Cargar información de los ponentes para cada curso
         const coursesWithSpeakers = await Promise.all(
           data.map(async (course) => {
+            const speakers: Speaker[] = [];
+            const lessons: LessonSummary[] = [];
+            
+            // Cargar ponentes
             if (course.speakerIds && course.speakerIds.length > 0) {
-              const speakers: Speaker[] = [];
               for (const speakerId of course.speakerIds) {
                 try {
-                  const speakerDoc = await getDoc(doc(db, 'users', speakerId));
-                  if (speakerDoc.exists()) {
-                    const speakerData = speakerDoc.data();
+                  const userData = await userRepository.findById(speakerId);
+                  if (userData) {
                     speakers.push({
                       id: speakerId,
-                      name: speakerData.name || speakerData.email,
-                      email: speakerData.email,
-                      photoURL: speakerData.photoURL,
+                      name: userData.name || userData.email,
+                      email: userData.email,
+                      photoURL: userData.avatarUrl,
                     });
                   }
                 } catch (error) {
                   console.error(`Error loading speaker ${speakerId}:`, error);
                 }
               }
-              const lessons: LessonSummary[] = [];
-              if (course.lessonIds && course.lessonIds.length > 0) {
-                for (const lessonId of course.lessonIds) {
-                  try {
-                    const lessonDoc = await getDoc(doc(db, 'lessons', lessonId));
-                    if (lessonDoc.exists()) {
-                      const lessonData = lessonDoc.data();
-                      lessons.push({
-                        id: lessonId,
-                        title: lessonData.title || `Lección ${lessons.length + 1}`,
-                        startDate: lessonData.startDate || lessonData.scheduledStartTime,
-                      });
-                    }
-                  } catch (error) {
-                    console.error(`Error loading lesson ${lessonId}:`, error);
-                  }
-                }
-              }
-              return { ...course, speakers, lessons };
             }
-            const lessons: LessonSummary[] = [];
+            
+            // Cargar lecciones
             if (course.lessonIds && course.lessonIds.length > 0) {
-              for (const lessonId of course.lessonIds) {
-                try {
-                  const lessonDoc = await getDoc(doc(db, 'lessons', lessonId));
-                  if (lessonDoc.exists()) {
-                    const lessonData = lessonDoc.data();
-                    lessons.push({
-                      id: lessonId,
-                      title: lessonData.title || `Lección ${lessons.length + 1}`,
-                      startDate: lessonData.startDate || lessonData.scheduledStartTime,
-                    });
-                  }
-                } catch (error) {
-                  console.error(`Error loading lesson ${lessonId}:`, error);
-                }
+              const courseLessons = await lessonRepository.findByIds(course.lessonIds);
+              for (const lesson of courseLessons) {
+                lessons.push({
+                  id: lesson.id,
+                  title: lesson.title || `Lección ${lessons.length + 1}`,
+                  startDate: lesson.startDate || lesson.scheduledStartTime,
+                });
               }
             }
-            return { ...course, speakers: [], lessons };
+            
+            return { ...course, speakers, lessons };
           })
         );
         
@@ -131,11 +109,10 @@ export default function CoursesPage() {
       }
     };
 
-    if (user) {
-      loadCourses();
-      if (user.role === "admin") {
-        loadBannerConfig();
-      }
+    // Cargar cursos incluso si user es null (mostrará estado vacío)
+    loadCourses();
+    if (user?.role === "admin") {
+      loadBannerConfig();
     }
   }, [user]);
 
@@ -216,7 +193,7 @@ export default function CoursesPage() {
     return <Loader />;
   }
 
-  const canCreateCourse = user?.role === "speaker" || user?.role === "admin";
+  const canCreateCourse = user?.role === "teacher" || user?.role === "admin";
   const isAdmin = user?.role === "admin";
   const bannerLimitReached = selectedBannerItems.length >= 5;
 

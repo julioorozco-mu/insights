@@ -19,9 +19,8 @@ import {
   IconX,
   IconUpload
 } from "@tabler/icons-react";
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, Timestamp } from "firebase/firestore";
-import { db, storage } from "@/lib/firebase";
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 import { formatDate } from "@/utils/formatDate";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -63,17 +62,24 @@ export default function ResourcesPage() {
 
   const loadResources = async () => {
     try {
-      const resourcesSnapshot = await getDocs(collection(db, "fileAttachments"));
-      const resourcesData = resourcesSnapshot.docs
-        .map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-          };
-        })
-        .filter((resource: any) => resource.status !== 'disabled') as Resource[]; // Filtrar deshabilitados
+      const { data, error } = await supabaseClient
+        .from(TABLES.FILE_ATTACHMENTS)
+        .select('*')
+        .neq('status', 'disabled');
+      
+      if (error) throw error;
+      
+      const resourcesData = (data || []).map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        url: r.url,
+        type: r.type,
+        size: r.size,
+        uploadedBy: r.uploaded_by,
+        uploadedByName: r.uploaded_by_name,
+        createdAt: r.created_at,
+        metadata: r.metadata,
+      })) as Resource[];
       setResources(resourcesData);
     } catch (error) {
       console.error("Error loading resources:", error);
@@ -114,50 +120,52 @@ export default function ResourcesPage() {
     if (!user) return;
 
     const fileId = `${Date.now()}_${file.name}`;
-    const storageRef = ref(storage, `resources/${user.id}/${fileId}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+    const filePath = `resources/${user.id}/${fileId}`;
+    
+    try {
+      setUploadProgress(prev => ({ ...prev, [fileId]: 50 }));
+      
+      const { error: uploadError } = await supabaseClient.storage
+        .from('files')
+        .upload(filePath, file);
+      
+      if (uploadError) throw uploadError;
+      
+      setUploadProgress(prev => ({ ...prev, [fileId]: 80 }));
+      
+      const { data: urlData } = supabaseClient.storage
+        .from('files')
+        .getPublicUrl(filePath);
+      
+      await supabaseClient.from(TABLES.FILE_ATTACHMENTS).insert({
+        name: file.name,
+        url: urlData.publicUrl,
+        type: file.type,
+        size: file.size,
+        uploaded_by: user.id,
+        uploaded_by_name: user.name || user.email,
+        metadata: {
+          title: file.name,
+          description: ''
+        }
+      });
 
-    uploadTask.on(
-      'state_changed',
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress(prev => ({ ...prev, [fileId]: progress }));
-      },
-      (error) => {
-        console.error('Upload error:', error);
-        alert('Error al subir el archivo');
-        setUploadProgress(prev => {
-          const newProgress = { ...prev };
-          delete newProgress[fileId];
-          return newProgress;
-        });
-      },
-      async () => {
-        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-        
-        await addDoc(collection(db, 'fileAttachments'), {
-          name: file.name,
-          url: downloadURL,
-          type: file.type,
-          size: file.size,
-          uploadedBy: user.id,
-          uploadedByName: user.name || user.email,
-          createdAt: Timestamp.now(),
-          metadata: {
-            title: file.name,
-            description: ''
-          }
-        });
+      setUploadProgress(prev => {
+        const newProgress = { ...prev };
+        delete newProgress[fileId];
+        return newProgress;
+      });
 
-        setUploadProgress(prev => {
-          const newProgress = { ...prev };
-          delete newProgress[fileId];
-          return newProgress;
-        });
-
-        loadResources();
-      }
-    );
+      loadResources();
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Error al subir el archivo');
+      setUploadProgress(prev => {
+        const newProgress = { ...prev };
+        delete newProgress[fileId];
+        return newProgress;
+      });
+    }
   };
 
   const handleDeleteSelected = async () => {
@@ -167,12 +175,13 @@ export default function ResourcesPage() {
     try {
       for (const resourceId of selectedResources) {
         // Verificar si el recurso está vinculado a alguna lección
-        const lessonsSnapshot = await getDocs(collection(db, 'lessons'));
-        let isLinked = false;
+        const { data: lessonsData } = await supabaseClient
+          .from(TABLES.LESSONS)
+          .select('id, resource_ids');
         
-        for (const lessonDoc of lessonsSnapshot.docs) {
-          const lessonData = lessonDoc.data();
-          if (lessonData.resourceIds && lessonData.resourceIds.includes(resourceId)) {
+        let isLinked = false;
+        for (const lesson of (lessonsData || [])) {
+          if (lesson.resource_ids && lesson.resource_ids.includes(resourceId)) {
             isLinked = true;
             break;
           }
@@ -180,14 +189,20 @@ export default function ResourcesPage() {
 
         if (isLinked) {
           // Baja lógica: marcar como deshabilitado
-          await updateDoc(doc(db, 'fileAttachments', resourceId), {
-            status: 'disabled',
-            disabledAt: Timestamp.now(),
-            disabledBy: user?.id
-          });
+          await supabaseClient
+            .from(TABLES.FILE_ATTACHMENTS)
+            .update({
+              status: 'disabled',
+              disabled_at: new Date().toISOString(),
+              disabled_by: user?.id
+            })
+            .eq('id', resourceId);
         } else {
           // Eliminación física
-          await deleteDoc(doc(db, 'fileAttachments', resourceId));
+          await supabaseClient
+            .from(TABLES.FILE_ATTACHMENTS)
+            .delete()
+            .eq('id', resourceId);
         }
       }
       setSelectedResources(new Set());
@@ -233,12 +248,15 @@ export default function ResourcesPage() {
     if (!editingResource) return;
 
     try {
-      await updateDoc(doc(db, 'fileAttachments', editingResource.id), {
-        metadata: {
-          title: editTitle,
-          description: editDescription
-        }
-      });
+      await supabaseClient
+        .from(TABLES.FILE_ATTACHMENTS)
+        .update({
+          metadata: {
+            title: editTitle,
+            description: editDescription
+          }
+        })
+        .eq('id', editingResource.id);
       setShowEditModal(false);
       loadResources();
     } catch (error) {

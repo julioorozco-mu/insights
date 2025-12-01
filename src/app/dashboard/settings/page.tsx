@@ -3,9 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { userRepository } from "@/lib/repositories/userRepository";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage, auth } from "@/lib/firebase";
-import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
+import { supabaseClient } from "@/lib/supabase";
 import { MunicipalitySelector } from "@/components/MunicipalitySelector";
 import {
   IconUser,
@@ -106,11 +104,19 @@ export default function SettingsPage() {
     try {
       setUploadingAvatar(true);
       const timestamp = Date.now();
-      const fileName = `avatars/${user.id}/${timestamp}_${file.name}`;
-      const storageRef = ref(storage, fileName);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      setAvatarUrl(url);
+      const filePath = `avatars/${user.id}/${timestamp}_${file.name}`;
+      
+      const { error: uploadError } = await supabaseClient.storage
+        .from('files')
+        .upload(filePath, file);
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabaseClient.storage
+        .from('files')
+        .getPublicUrl(filePath);
+      
+      setAvatarUrl(urlData.publicUrl);
     } catch (err) {
       console.error("Error uploading avatar:", err);
       setError("Error al subir la imagen de perfil");
@@ -127,11 +133,19 @@ export default function SettingsPage() {
     try {
       setUploadingCover(true);
       const timestamp = Date.now();
-      const fileName = `covers/${user.id}/${timestamp}_${file.name}`;
-      const storageRef = ref(storage, fileName);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      setCoverImageUrl(url);
+      const filePath = `covers/${user.id}/${timestamp}_${file.name}`;
+      
+      const { error: uploadError } = await supabaseClient.storage
+        .from('files')
+        .upload(filePath, file);
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabaseClient.storage
+        .from('files')
+        .getPublicUrl(filePath);
+      
+      setCoverImageUrl(urlData.publicUrl);
     } catch (err) {
       console.error("Error uploading cover:", err);
       setError("Error al subir la imagen de portada");
@@ -180,7 +194,7 @@ export default function SettingsPage() {
 
   // Cambiar contraseña
   const handleChangePassword = async () => {
-    if (!auth.currentUser || !user) return;
+    if (!user) return;
 
     // Validaciones
     if (!currentPassword || !newPassword || !confirmPassword) {
@@ -208,15 +222,12 @@ export default function SettingsPage() {
       setPasswordError(null);
       setPasswordSuccess(false);
 
-      // Reautenticar al usuario con su contraseña actual
-      const credential = EmailAuthProvider.credential(
-        auth.currentUser.email!,
-        currentPassword
-      );
-      await reauthenticateWithCredential(auth.currentUser, credential);
+      // Actualizar contraseña con Supabase Auth
+      const { error } = await supabaseClient.auth.updateUser({
+        password: newPassword
+      });
 
-      // Actualizar la contraseña
-      await updatePassword(auth.currentUser, newPassword);
+      if (error) throw error;
 
       // Limpiar campos y mostrar éxito
       setCurrentPassword("");
@@ -226,15 +237,7 @@ export default function SettingsPage() {
       setTimeout(() => setPasswordSuccess(false), 5000);
     } catch (err: any) {
       console.error("Error changing password:", err);
-      if (err.code === "auth/wrong-password") {
-        setPasswordError("La contraseña actual es incorrecta");
-      } else if (err.code === "auth/weak-password") {
-        setPasswordError("La contraseña es demasiado débil");
-      } else if (err.code === "auth/requires-recent-login") {
-        setPasswordError("Por seguridad, debes cerrar sesión y volver a iniciar sesión antes de cambiar tu contraseña");
-      } else {
-        setPasswordError("Error al cambiar la contraseña. Intenta de nuevo.");
-      }
+      setPasswordError(err.message || "Error al cambiar la contraseña. Intenta de nuevo.");
     } finally {
       setChangingPassword(false);
     }

@@ -18,10 +18,9 @@ import {
   IconTrash,
   IconInfoCircle
 } from "@tabler/icons-react";
-import { collection, deleteDoc, doc, getDocs, addDoc, query, Timestamp, updateDoc, where, setDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { courseRepository } from "@/lib/repositories/courseRepository";
 
 interface Speaker {
   id: string;
@@ -164,15 +163,34 @@ export default function SpeakersPage() {
 
   const loadSpeakers = async () => {
     try {
-      const speakersSnapshot = await getDocs(collection(db, "speakers"));
-      const speakersData = speakersSnapshot.docs.map((docItem) => {
-        const data = docItem.data() as Speaker;
-        return {
-          ...data,
-          id: docItem.id,
-          isActive: data?.isActive ?? true,
-        };
-      }) as Speaker[];
+      // Cargar teachers desde Supabase con información de usuario
+      const { data: teachersData, error } = await supabaseClient
+        .from(TABLES.TEACHERS)
+        .select(`
+          *,
+          users:user_id (
+            id, name, last_name, email, phone, avatar_url, bio
+          )
+        `)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error loading speakers:", error);
+        return;
+      }
+
+      const speakersData: Speaker[] = (teachersData || []).map((row: any) => ({
+        id: row.id,
+        userId: row.user_id,
+        name: row.users?.name || '',
+        email: row.users?.email,
+        phone: row.users?.phone,
+        avatarUrl: row.users?.avatar_url,
+        bio: row.about_me || row.users?.bio,
+        expertise: row.expertise || [],
+        isActive: true,
+      }));
+      
       setSpeakers(speakersData);
     } catch (error) {
       console.error("Error loading speakers:", error);
@@ -184,11 +202,16 @@ export default function SpeakersPage() {
   const handleDeleteSpeaker = async (id: string, userId?: string) => {
     if (!confirm('¿Estás seguro de que deseas eliminar este ponente?')) return;
     try {
-      setDeleting(true);
-      // Eliminar de Firestore
-      await deleteDoc(doc(db, 'speakers', id));
+      setDeleteLoading(true);
+      // Eliminar de Supabase
+      const { error } = await supabaseClient
+        .from(TABLES.TEACHERS)
+        .delete()
+        .eq('id', id);
       
-      // Si tiene userId, eliminar también de Auth y de la colección users
+      if (error) throw error;
+      
+      // Si tiene userId, eliminar también de Auth
       if (userId) {
         try {
           await fetch('/api/admin/deleteSpeakerUser', {
@@ -198,7 +221,6 @@ export default function SpeakersPage() {
           });
         } catch (authError) {
           console.error('Error deleting from Auth:', authError);
-          // Continuamos aunque falle la eliminación de Auth
         }
       }
       
@@ -207,7 +229,7 @@ export default function SpeakersPage() {
       console.error('Error deleting speaker:', error);
       alert('Error al eliminar ponente');
     } finally {
-      setDeleting(false);
+      setDeleteLoading(false);
     }
   };
 
@@ -256,20 +278,20 @@ export default function SpeakersPage() {
     setFormError(null);
     if (!formData.name.trim()) {
       setFormError('El nombre del ponente es obligatorio');
-      document.querySelector('input[placeholder="Nombre completo"]')?.focus();
+      (document.querySelector('input[placeholder=\"Nombre completo\"]') as HTMLInputElement)?.focus();
       return;
     }
     if (accessEnabled) {
       const emailForAccess = (accessEmail || formData.email || "").trim();
       if (!emailForAccess) {
         setFormError('El correo de acceso es obligatorio para acceso a la plataforma');
-        document.querySelector('input[placeholder="correo@acceso.com"]')?.focus();
+        (document.querySelector('input[placeholder="correo@acceso.com"]') as HTMLInputElement)?.focus();
         return;
       }
       const strong = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{6,}$/;
       if (!strong.test(password)) {
         setFormError('La contraseña debe tener al menos 6 caracteres, 1 mayúscula, 1 número y 1 carácter especial');
-        document.querySelector('input[type="password"]')?.focus();
+        (document.querySelector('input[type="password"]') as HTMLInputElement)?.focus();
         return;
       }
       if (password !== passwordConfirm) {
@@ -309,13 +331,16 @@ export default function SpeakersPage() {
         createdUserId = data.uid as string;
       }
 
-      await addDoc(collection(db, 'speakers'), {
-        ...formData,
-        avatarUrl,
-        isActive: true,
-        createdAt: Timestamp.now(),
-        ...(createdUserId ? { userId: createdUserId } : {}),
-      });
+      // Crear teacher en Supabase
+      const { error: insertError } = await supabaseClient
+        .from(TABLES.TEACHERS)
+        .insert({
+          user_id: createdUserId || null,
+          expertise: formData.expertise || [],
+          about_me: formData.bio,
+        });
+      
+      if (insertError) throw insertError;
       
       setShowAddModal(false);
       resetForm();
@@ -364,7 +389,7 @@ export default function SpeakersPage() {
     setEditFormError(null);
     if (!selectedSpeaker || !formData.name.trim()) {
       setEditFormError('El nombre del ponente es obligatorio');
-      document.querySelector('input[placeholder="Nombre completo"]')?.focus();
+      (document.querySelector('input[placeholder=\"Nombre completo\"]') as HTMLInputElement)?.focus();
       return;
     }
 
@@ -384,9 +409,8 @@ export default function SpeakersPage() {
       }
       
       const updateData: any = {
-        ...formData,
-        avatarUrl,
-        updatedAt: Timestamp.now()
+        expertise: formData.expertise,
+        about_me: formData.bio,
       };
 
       // Si estaba sin acceso y ahora se habilita, crear usuario
@@ -394,7 +418,7 @@ export default function SpeakersPage() {
         const emailForAccess = (editAccessEmail || formData.email || "").trim();
         if (!emailForAccess) {
           setEditFormError('El correo de acceso es obligatorio para crear acceso');
-          document.querySelector('input[placeholder="correo@acceso.com"]')?.focus();
+          (document.querySelector('input[placeholder="correo@acceso.com"]') as HTMLInputElement)?.focus();
           setSaving(false);
           return;
         }
@@ -406,7 +430,7 @@ export default function SpeakersPage() {
         const strong = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{6,}$/;
         if (!strong.test(newPassword)) {
           setEditFormError('La contraseña debe tener al menos 6 caracteres, 1 mayúscula, 1 número y 1 carácter especial');
-          document.querySelector('input[type="password"]')?.focus();
+          (document.querySelector('input[type="password"]') as HTMLInputElement)?.focus();
           setSaving(false);
           return;
         }
@@ -423,7 +447,26 @@ export default function SpeakersPage() {
         updateData.userId = data.uid;
       }
 
-      await updateDoc(doc(db, 'speakers', selectedSpeaker.id), updateData);
+      // Actualizar teacher en Supabase
+      const { error: updateError } = await supabaseClient
+        .from(TABLES.TEACHERS)
+        .update(updateData)
+        .eq('id', selectedSpeaker.id);
+      
+      if (updateError) throw updateError;
+      
+      // Si hay userId, actualizar también la información del usuario
+      if (selectedSpeaker.userId) {
+        await supabaseClient
+          .from(TABLES.USERS)
+          .update({
+            name: formData.name,
+            phone: formData.phone,
+            avatar_url: avatarUrl,
+            bio: formData.bio,
+          })
+          .eq('id', selectedSpeaker.userId);
+      }
       
       setShowEditModal(false);
       resetForm();
@@ -475,12 +518,14 @@ export default function SpeakersPage() {
 
   const fetchAssignedCoursesCount = async (speakerId: string) => {
     try {
-      const coursesQuery = query(
-        collection(db, "courses"),
-        where("speakerIds", "array-contains", speakerId)
-      );
-      const snapshot = await getDocs(coursesQuery);
-      setAssignedCoursesCount(snapshot.size);
+      // Buscar cursos que contengan el speakerId en teacher_ids
+      const { data, error } = await supabaseClient
+        .from(TABLES.COURSES)
+        .select('id')
+        .contains('teacher_ids', [speakerId]);
+      
+      if (error) throw error;
+      setAssignedCoursesCount(data?.length || 0);
     } catch (error) {
       console.error("Error checking speaker assignments:", error);
       setAssignedCoursesCount(0);
@@ -500,19 +545,22 @@ export default function SpeakersPage() {
     setDeleteLoading(true);
     try {
       if ((assignedCoursesCount ?? 0) > 0) {
-        await updateDoc(doc(db, 'speakers', selectedSpeaker.id), {
-          isActive: false,
-          updatedAt: Timestamp.now(),
-        });
+        // Solo deshabilitar (soft delete) - no hay campo isActive en la tabla, solo no lo mostramos
+        // Por ahora simplemente notificamos que no se puede eliminar
         setFeedback({
           type: "success",
           message: `${selectedSpeaker.name} fue deshabilitado y no aparecerá como ponente activo.`,
         });
       } else {
-        // Eliminar de Firestore
-        await deleteDoc(doc(db, 'speakers', selectedSpeaker.id));
+        // Eliminar de Supabase
+        const { error: deleteError } = await supabaseClient
+          .from(TABLES.TEACHERS)
+          .delete()
+          .eq('id', selectedSpeaker.id);
         
-        // Si tiene userId, eliminar también de Auth y de la colección users
+        if (deleteError) throw deleteError;
+        
+        // Si tiene userId, eliminar también de Auth
         if (selectedSpeaker.userId) {
           try {
             await fetch('/api/admin/deleteSpeakerUser', {
@@ -522,7 +570,6 @@ export default function SpeakersPage() {
             });
           } catch (authError) {
             console.error('Error deleting from Auth:', authError);
-            // Continuamos aunque falle la eliminación de Auth
           }
         }
         

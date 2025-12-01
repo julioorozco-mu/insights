@@ -23,8 +23,8 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 import { Loader } from "@/components/common/Loader";
 
 // Componente sortable para cada pregunta
@@ -159,13 +159,17 @@ export default function EditSurveyPage() {
   useEffect(() => {
     const loadSurvey = async () => {
       try {
-        const surveyDoc = await getDoc(doc(db, 'surveys', params.id as string));
-        if (surveyDoc.exists()) {
-          const data = surveyDoc.data();
-          setTitle(data.title || '');
-          setDescription(data.description || '');
-          setType(data.type || 'general');
-          setQuestions(data.questions || []);
+        const { data: surveyData } = await supabaseClient
+          .from(TABLES.SURVEYS)
+          .select('*')
+          .eq('id', params.id as string)
+          .single();
+        
+        if (surveyData) {
+          setTitle(surveyData.title || '');
+          setDescription(surveyData.description || '');
+          setType(surveyData.type || 'general');
+          setQuestions(surveyData.questions || []);
         }
       } catch (error) {
         console.error('Error loading survey:', error);
@@ -244,15 +248,18 @@ export default function EditSurveyPage() {
       setSaving(true);
       const now = new Date();
 
-      const surveyData = {
+      const surveyUpdateData = {
         title,
         description,
         type,
         questions,
-        updatedAt: Timestamp.fromDate(now),
+        updated_at: now.toISOString(),
       };
 
-      await updateDoc(doc(db, 'surveys', params.id as string), surveyData);
+      await supabaseClient
+        .from(TABLES.SURVEYS)
+        .update(surveyUpdateData)
+        .eq('id', params.id as string);
       
       setShowSuccessModal(true);
       setEditMode(false);

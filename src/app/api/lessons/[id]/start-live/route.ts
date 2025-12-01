@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { agoraService } from "@/lib/services/agoraService";
-import { doc, updateDoc, Timestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 
 export async function POST(
   request: NextRequest,
@@ -15,15 +15,19 @@ export async function POST(
       channelName: `lesson-${id}-${Date.now()}`,
     });
 
-    // Actualizar la lección en Firestore
-    await updateDoc(doc(db, 'lessons', id), {
-      isLive: true,
-      agoraChannel: stream.channelName,
-      agoraAppId: stream.appId,
-      liveStatus: 'active',
-      actualStartTime: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    });
+    // Actualizar la lección en Supabase
+    const { error: updateError } = await supabaseClient
+      .from(TABLES.LESSONS)
+      .update({
+        is_live: true,
+        agora_channel: stream.channelName,
+        agora_app_id: stream.appId,
+        live_status: 'active',
+        actual_start_time: new Date().toISOString(),
+      })
+      .eq('id', id);
+    
+    if (updateError) throw updateError;
 
     return NextResponse.json({
       success: true,

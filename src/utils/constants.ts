@@ -34,6 +34,8 @@ export const TABLES = {
   LIVE_STREAM_SESSIONS: "live_stream_sessions",
   LESSON_ATTENDANCE: "lesson_attendance",
   SITE_CONFIG: "site_config",
+  SCHEDULED_EMAILS: "scheduled_emails",
+  CERTIFICATE_DOWNLOADS: "certificate_downloads",
 } as const;
 
 // Alias para compatibilidad (deprecado - usar TABLES)

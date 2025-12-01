@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { agoraService } from "@/lib/services/agoraService";
-import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 
 export async function POST(
   request: NextRequest,
@@ -10,17 +10,21 @@ export async function POST(
   try {
     const { id } = await params;
     
-    // Obtener la lección
-    const lessonDoc = await getDoc(doc(db, 'lessons', id));
-    if (!lessonDoc.exists()) {
+    // Obtener la lección de Supabase
+    const { data: lesson, error: fetchError } = await supabaseClient
+      .from(TABLES.LESSONS)
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (fetchError || !lesson) {
       return NextResponse.json(
         { error: 'Lesson not found' },
         { status: 404 }
       );
     }
 
-    const lesson = lessonDoc.data();
-    const agoraChannel = lesson.agoraChannel;
+    const agoraChannel = lesson.agora_channel;
 
     if (!agoraChannel) {
       return NextResponse.json(
@@ -32,18 +36,20 @@ export async function POST(
     // Limpiar canal de Agora
     await agoraService.deleteLiveStream(agoraChannel);
 
-    // Actualizar la lección
-    const updateData: any = {
-      isLive: false,
-      liveStatus: 'ended',
-      actualEndTime: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    };
+    // Actualizar la lección en Supabase
+    const { error: updateError } = await supabaseClient
+      .from(TABLES.LESSONS)
+      .update({
+        is_live: false,
+        live_status: 'ended',
+        actual_end_time: new Date().toISOString(),
+      })
+      .eq('id', id);
+    
+    if (updateError) throw updateError;
 
     // Nota: Para grabaciones, necesitarías implementar Agora Cloud Recording
     // Ver: https://docs.agora.io/en/cloud-recording/overview/product-overview
-
-    await updateDoc(doc(db, 'lessons', id), updateData);
 
     return NextResponse.json({
       success: true,

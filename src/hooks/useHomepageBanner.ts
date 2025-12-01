@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { Course } from "@/types/course";
 import { siteConfigRepository } from "@/lib/repositories/siteConfigRepository";
 import { courseRepository } from "@/lib/repositories/courseRepository";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
+import { teacherRepository } from "@/lib/repositories/teacherRepository";
+import { userRepository } from "@/lib/repositories/userRepository";
 import { HomepageBannerItem } from "@/types/siteConfig";
 
 type BannerItemResolved = Course & {
@@ -57,10 +58,9 @@ export function useHomepageBanner(): UseHomepageBannerResult {
         const resolveBannerItem = async (item: HomepageBannerItem): Promise<BannerItemResolved | null> => {
           if (item.type === "lesson") {
             try {
-              const lessonDoc = await getDoc(doc(db, "lessons", item.id));
-              if (!lessonDoc.exists()) return null;
-              const lessonData = lessonDoc.data();
-              if (!lessonData?.courseId) return null;
+              const lessonData = await lessonRepository.findById(item.id);
+              if (!lessonData) return null;
+              if (!lessonData.courseId) return null;
               const course = await courseRepository.findById(lessonData.courseId);
               if (!course) return null;
               const lessonStart = lessonData.startDate || lessonData.scheduledStartTime;
@@ -96,16 +96,28 @@ export function useHomepageBanner(): UseHomepageBannerResult {
             const speakers: Speaker[] = [];
             for (const speakerId of course.speakerIds) {
               try {
-                const speakerDoc = await getDoc(doc(db, "speakers", speakerId));
-                if (speakerDoc.exists()) {
-                  const data = speakerDoc.data() as any;
+                // Buscar en teachers primero, luego en users
+                const teacher = await teacherRepository.findById(speakerId);
+                if (teacher) {
                   speakers.push({
                     id: speakerId,
-                    name: `${data.name || ''} ${data.lastName || ''}`.trim() || data.email,
-                    email: data.email,
-                    photoURL: data.avatarUrl || data.photoURL, // Usar avatarUrl de Firestore
-                    bio: data.bio,
+                    name: `${teacher.name || ''} ${teacher.lastName || ''}`.trim() || teacher.email || '',
+                    email: teacher.email || '',
+                    photoURL: teacher.avatarUrl,
+                    bio: teacher.bio,
                   });
+                } else {
+                  // Fallback a users
+                  const user = await userRepository.findById(speakerId);
+                  if (user) {
+                    speakers.push({
+                      id: speakerId,
+                      name: `${user.name || ''} ${user.lastName || ''}`.trim() || user.email,
+                      email: user.email,
+                      photoURL: user.avatarUrl,
+                      bio: user.bio,
+                    });
+                  }
                 }
               } catch (err) {
                 console.error(`Error fetching speaker ${speakerId} for course ${course.id}`, err);

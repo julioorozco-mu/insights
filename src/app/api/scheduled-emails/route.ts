@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { collection, getDocs, doc, updateDoc, query, where, orderBy } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 
 // GET - Obtener todos los correos programados
 export async function GET(req: Request) {
@@ -8,26 +8,20 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
     
-    let q = query(
-      collection(db, 'scheduledEmails'),
-      orderBy('scheduledDate', 'desc')
-    );
+    let query = supabaseClient
+      .from(TABLES.SCHEDULED_EMAILS)
+      .select('*')
+      .order('scheduled_date', { ascending: false });
 
     if (status) {
-      q = query(
-        collection(db, 'scheduledEmails'),
-        where('status', '==', status),
-        orderBy('scheduledDate', 'desc')
-      );
+      query = query.eq('status', status);
     }
 
-    const snapshot = await getDocs(q);
-    const scheduledEmails = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    const { data: scheduledEmails, error } = await query;
 
-    return NextResponse.json({ scheduledEmails });
+    if (error) throw error;
+
+    return NextResponse.json({ scheduledEmails: scheduledEmails || [] });
   } catch (error) {
     console.error("Error obteniendo correos programados:", error);
     return NextResponse.json(
@@ -49,12 +43,16 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const docRef = doc(db, 'scheduledEmails', id);
-    await updateDoc(docRef, {
-      status: 'cancelled',
-      cancelledAt: new Date().toISOString(),
-      cancelledBy,
-    });
+    const { error } = await supabaseClient
+      .from(TABLES.SCHEDULED_EMAILS)
+      .update({
+        status: 'cancelled',
+        cancelled_at: new Date().toISOString(),
+        cancelled_by: cancelledBy,
+      })
+      .eq('id', id);
+
+    if (error) throw error;
 
     return NextResponse.json({
       success: true,

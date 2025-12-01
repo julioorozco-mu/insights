@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { doc, getDoc, getDocs, addDoc, query, where, onSnapshot, collection, Timestamp, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
+import { courseRepository } from "@/lib/repositories/courseRepository";
 import { Loader } from "@/components/common/Loader";
 import AgoraStream from "@/components/live/AgoraStream";
 import { ChatBox } from "@/components/chat/ChatBox";
@@ -90,29 +92,38 @@ export default function StudentLivestreamPage() {
 
       try {
         console.log('🔵 Cargando lección:', params.lessonId);
-        const lessonDoc = await getDoc(doc(db, 'lessons', params.lessonId as string));
-        if (!lessonDoc.exists()) {
+        const lessonData = await lessonRepository.findById(params.lessonId as string);
+        if (!lessonData) {
           console.log('❌ Lección no existe');
           router.push(`/dashboard/student/courses/${params.id}`);
           return;
         }
 
-        const lessonData = {
-          id: lessonDoc.id,
-          ...lessonDoc.data(),
+        const mappedLesson = {
+          id: lessonData.id,
+          title: lessonData.title,
+          description: lessonData.description,
+          type: lessonData.type as 'video' | 'livestream' | 'hybrid',
+          videoUrl: lessonData.videoUrl,
+          isLive: lessonData.isLive,
+          agoraChannel: lessonData.agoraChannel,
+          agoraAppId: lessonData.agoraAppId,
+          liveStatus: lessonData.liveStatus as 'idle' | 'active' | 'ended' | undefined,
+          streamingType: lessonData.streamingType as 'agora' | 'external_link' | undefined,
+          liveStreamUrl: lessonData.liveStreamUrl,
+          recordedVideoUrl: lessonData.recordedVideoUrl,
+          scheduledStartTime: lessonData.scheduledStartTime,
         } as Lesson;
-        setLesson(lessonData);
+        setLesson(mappedLesson);
         console.log('✅ Lección cargada');
 
         // Obtener el instructor del curso
         console.log('🔵 Intentando cargar curso con ID:', params.id);
-        const courseDoc = await getDoc(doc(db, 'courses', params.id as string));
-        console.log('✅ Curso obtenido. Existe?', courseDoc.exists());
+        const courseData = await courseRepository.findById(params.id as string);
+        console.log('✅ Curso obtenido. Existe?', !!courseData);
         
-        if (courseDoc.exists()) {
-          const courseData = courseDoc.data();
+        if (courseData) {
           console.log('📦 Course data completo:', courseData);
-          console.log('🔑 Campos disponibles:', Object.keys(courseData));
           
           // El curso tiene speakerIds (array), tomar el primero
           let instructorIdFromCourse = null;
@@ -120,12 +131,6 @@ export default function StudentLivestreamPage() {
           if (courseData.speakerIds && Array.isArray(courseData.speakerIds) && courseData.speakerIds.length > 0) {
             instructorIdFromCourse = courseData.speakerIds[0];
             console.log('✅ Instructor ID obtenido de speakerIds[0]:', instructorIdFromCourse);
-          } else if (courseData.speakerId) {
-            instructorIdFromCourse = courseData.speakerId;
-            console.log('✅ Instructor ID obtenido de speakerId:', instructorIdFromCourse);
-          } else if (courseData.instructorId) {
-            instructorIdFromCourse = courseData.instructorId;
-            console.log('✅ Instructor ID obtenido de instructorId:', instructorIdFromCourse);
           } else {
             console.log('❌ No se encontró instructor ID en ningún campo');
           }
@@ -133,11 +138,11 @@ export default function StudentLivestreamPage() {
           console.log('✅ Instructor ID final:', instructorIdFromCourse);
           setInstructorId(instructorIdFromCourse);
         } else {
-          console.log('❌ El curso NO existe en Firestore');
+          console.log('❌ El curso NO existe');
         }
 
         // Si está en vivo, obtener token de Agora
-        if (lessonData.isLive && lessonData.agoraChannel) {
+        if (mappedLesson.isLive && mappedLesson.agoraChannel) {
           const numericUid = getUserIdForAgora(user.id);
           const tokenRes = await fetch(
             `/api/agora-token?channel=${lessonData.agoraChannel}&uid=${numericUid}&role=audience`
@@ -155,167 +160,183 @@ export default function StudentLivestreamPage() {
     loadLesson();
   }, [params.lessonId, params.id, user, router]);
 
-  // Suscripción en tiempo real al documento de la lección para reflejar cambios de estado sin recargar
+  // Polling para actualizar estado de la lección
   useEffect(() => {
     if (!user || !params.lessonId) return;
 
-    const unsub = onSnapshot(doc(db, 'lessons', params.lessonId as string), async (snap) => {
-      if (!snap.exists()) return;
-      const data = { id: snap.id, ...snap.data() } as Lesson;
+    const pollLesson = async () => {
+      const data = await lessonRepository.findById(params.lessonId as string);
+      if (!data) return;
+      
+      const mappedData = {
+        id: data.id,
+        title: data.title,
+        description: data.description,
+        type: data.type as 'video' | 'livestream' | 'hybrid',
+        videoUrl: data.videoUrl,
+        isLive: data.isLive,
+        agoraChannel: data.agoraChannel,
+        agoraAppId: data.agoraAppId,
+        liveStatus: data.liveStatus as 'idle' | 'active' | 'ended' | undefined,
+        streamingType: data.streamingType as 'agora' | 'external_link' | undefined,
+        liveStreamUrl: data.liveStreamUrl,
+        recordedVideoUrl: data.recordedVideoUrl,
+        scheduledStartTime: data.scheduledStartTime,
+      } as Lesson;
       
       // Si la lección se desactiva, redirigir al estudiante
-      if (lesson && lesson.isLive && !data.isLive) {
+      if (lesson && lesson.isLive && !mappedData.isLive) {
         console.log('⚠️ Lección desactivada, redirigiendo...');
         router.push(`/dashboard/student/courses/${params.id}`);
         return;
       }
       
-      setLesson(data);
+      setLesson(mappedData);
 
       // Si el live está activo asegúrate de tener/agregar token de audiencia
-      if (data.isLive && data.agoraChannel) {
+      if (mappedData.isLive && mappedData.agoraChannel) {
         if (!agoraToken) {
           const numericUid = getUserIdForAgora(user.id);
           try {
             const tokenRes = await fetch(
-              `/api/agora-token?channel=${data.agoraChannel}&uid=${numericUid}&role=audience`
+              `/api/agora-token?channel=${mappedData.agoraChannel}&uid=${numericUid}&role=audience`
             );
             const tokenData = await tokenRes.json();
             if (tokenData?.token) setAgoraToken(tokenData.token);
           } catch (e) {
-            console.error('Error obteniendo token de audiencia (snapshot):', e);
+            console.error('Error obteniendo token de audiencia:', e);
           }
         }
       } else {
-        // Live apagado: desmontar AgoraStream
         setAgoraToken(null);
       }
-    });
+    };
 
-    return () => unsub();
-  }, [params.lessonId, user, agoraToken]);
+    pollLesson();
+    const interval = setInterval(pollLesson, 3000);
+    return () => clearInterval(interval);
+  }, [params.lessonId, user, agoraToken, lesson, router, params.id]);
 
-  // Nombres de ponentes desde liveHosts
+  // Nombres de ponentes desde liveHosts (polling)
   useEffect(() => {
     if (!params.lessonId) return;
-    const unsub = onSnapshot(collection(db, 'lessons', params.lessonId as string, 'liveHosts'), (snap) => {
+    
+    const pollHosts = async () => {
+      const { data } = await supabaseClient
+        .from('live_hosts')
+        .select('*')
+        .eq('lesson_id', params.lessonId as string);
+      
       const map: Record<number, string> = {};
-      snap.forEach((d) => {
-        const data: any = d.data();
-        if (typeof data?.uid === 'number') {
-          map[data.uid] = data?.name || 'Ponente';
+      (data || []).forEach((d: any) => {
+        if (typeof d?.uid === 'number') {
+          map[d.uid] = d?.name || 'Ponente';
         }
       });
       setHostNames(map);
-    });
-    return () => unsub();
+    };
+    
+    pollHosts();
+    const interval = setInterval(pollHosts, 5000);
+    return () => clearInterval(interval);
   }, [params.lessonId]);
 
-  // Listener para encuestas activas
+  // Polling para encuestas activas
   useEffect(() => {
     if (!params.lessonId || !user) return;
 
-    const pollsQuery = query(
-      collection(db, 'livePolls'),
-      where('lessonId', '==', params.lessonId),
-      where('isActive', '==', true)
-    );
+    const pollPolls = async () => {
+      const { data: pollsData } = await supabaseClient
+        .from('live_polls')
+        .select('*')
+        .eq('lesson_id', params.lessonId as string)
+        .eq('is_active', true)
+        .limit(1);
 
-    let responsesUnsubscribe: (() => void) | null = null;
-
-    const unsubscribe = onSnapshot(pollsQuery, async (snapshot) => {
-      // Limpiar listener anterior de respuestas
-      if (responsesUnsubscribe) {
-        responsesUnsubscribe();
-        responsesUnsubscribe = null;
-      }
-
-      if (snapshot.empty) {
+      if (!pollsData || pollsData.length === 0) {
         setActivePoll(null);
         setPollResults(null);
         setHasVoted(false);
         return;
       }
 
-      const pollDoc = snapshot.docs[0];
-      const pollData = pollDoc.data();
+      const pollDoc = pollsData[0];
       const poll: LivePoll = { 
         id: pollDoc.id, 
-        lessonId: pollData.lessonId,
-        question: pollData.question,
-        options: pollData.options,
-        duration: pollData.duration,
-        createdAt: pollData.createdAt?.toDate() || new Date(),
-        expiresAt: pollData.expiresAt?.toDate() || new Date(),
-        isActive: pollData.isActive,
-        createdBy: pollData.createdBy
+        lessonId: pollDoc.lesson_id,
+        question: pollDoc.question,
+        options: pollDoc.options,
+        duration: pollDoc.duration,
+        createdAt: new Date(pollDoc.created_at),
+        expiresAt: new Date(pollDoc.expires_at),
+        isActive: pollDoc.is_active,
+        createdBy: pollDoc.created_by
       };
       setActivePoll(poll);
 
       // Verificar si ya votó
-      const votedQuery = query(
-        collection(db, 'pollResponses'),
-        where('pollId', '==', pollDoc.id),
-        where('userId', '==', user.id)
-      );
-      const votedSnapshot = await getDocs(votedQuery);
-      setHasVoted(!votedSnapshot.empty);
+      const { data: votedData } = await supabaseClient
+        .from('poll_responses')
+        .select('id')
+        .eq('poll_id', pollDoc.id)
+        .eq('user_id', user.id)
+        .limit(1);
+      setHasVoted((votedData || []).length > 0);
 
-      // Obtener resultados en tiempo real
-      const responsesQuery = query(
-        collection(db, 'pollResponses'),
-        where('pollId', '==', pollDoc.id)
-      );
+      // Obtener resultados
+      const { data: responsesData } = await supabaseClient
+        .from('poll_responses')
+        .select('*')
+        .eq('poll_id', pollDoc.id);
       
-      responsesUnsubscribe = onSnapshot(responsesQuery, (responsesSnapshot) => {
-        const responses = responsesSnapshot.docs.map((doc) => doc.data() as PollResponse);
-        const totalResponses = responses.length;
-        const responseCounts = poll.options.map((option, index) => {
-          const count = responses.filter((r: PollResponse) => r.selectedOption === index).length;
-          return {
-            option,
-            count,
-            percentage: totalResponses > 0 ? (count / totalResponses) * 100 : 0
-          };
-        });
-
-        setPollResults({
-          pollId: pollDoc.id,
-          question: poll.question,
-          options: poll.options,
-          totalResponses,
-          responses: responseCounts,
-          expiresAt: poll.expiresAt,
-          isActive: poll.isActive
-        });
+      const responses = responsesData || [];
+      const totalResponses = responses.length;
+      const responseCounts = poll.options.map((option: string, index: number) => {
+        const count = responses.filter((r: any) => r.selected_option === index).length;
+        return {
+          option,
+          count,
+          percentage: totalResponses > 0 ? (count / totalResponses) * 100 : 0
+        };
       });
-    });
 
-    return () => {
-      unsubscribe();
-      if (responsesUnsubscribe) {
-        responsesUnsubscribe();
-      }
+      setPollResults({
+        pollId: pollDoc.id,
+        question: poll.question,
+        options: poll.options,
+        totalResponses,
+        responses: responseCounts,
+        expiresAt: poll.expiresAt,
+        isActive: poll.isActive
+      });
     };
+
+    pollPolls();
+    const interval = setInterval(pollPolls, 3000);
+    return () => clearInterval(interval);
   }, [params.lessonId, user]);
 
-  // Cargar preguntas de la audiencia
+  // Polling para preguntas de la audiencia
   useEffect(() => {
     if (!params.lessonId) return;
 
-    const questionsQuery = query(
-      collection(db, 'audienceQuestions'),
-      where('lessonId', '==', params.lessonId)
-    );
-
-    const unsubscribe = onSnapshot(questionsQuery, (snapshot) => {
-      const questionsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+    const pollQuestions = async () => {
+      const { data } = await supabaseClient
+        .from('audience_questions')
+        .select('*')
+        .eq('lesson_id', params.lessonId as string)
+        .order('created_at', { ascending: false });
+      
+      const questionsData = (data || []).map((q: any) => ({
+        id: q.id,
+        lessonId: q.lesson_id,
+        userId: q.user_id,
+        userName: q.user_name,
+        question: q.question,
+        isAnswered: q.is_answered,
+        createdAt: { toMillis: () => new Date(q.created_at).getTime() },
       })) as AudienceQuestion[];
       
-      // Ordenar por fecha de creación
-      questionsData.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
       setQuestions(questionsData);
 
       // Contar preguntas del usuario actual
@@ -323,9 +344,11 @@ export default function StudentLivestreamPage() {
         const userQuestions = questionsData.filter(q => q.userId === user.id);
         setUserQuestionCount(userQuestions.length);
       }
-    });
+    };
 
-    return () => unsubscribe();
+    pollQuestions();
+    const interval = setInterval(pollQuestions, 5000);
+    return () => clearInterval(interval);
   }, [params.lessonId, user]);
 
   // Cargar notas del estudiante para esta lección
@@ -336,19 +359,18 @@ export default function StudentLivestreamPage() {
       try {
         console.log('Cargando notas para:', { studentId: user.id, lessonId: params.lessonId });
         
-        const notesQuery = query(
-          collection(db, 'lessonNotes'),
-          where('studentId', '==', user.id),
-          where('lessonId', '==', params.lessonId as string)
-        );
-        const notesSnapshot = await getDocs(notesQuery);
+        const { data: notesData } = await supabaseClient
+          .from('lesson_notes')
+          .select('*')
+          .eq('student_id', user.id)
+          .eq('lesson_id', params.lessonId as string)
+          .limit(1);
         
-        console.log('Notas encontradas:', notesSnapshot.size);
+        console.log('Notas encontradas:', notesData?.length || 0);
         
-        if (!notesSnapshot.empty) {
-          const notesData = notesSnapshot.docs[0].data();
-          console.log('Datos de notas:', notesData);
-          setLessonNotes(notesData.notes || '');
+        if (notesData && notesData.length > 0) {
+          console.log('Datos de notas:', notesData[0]);
+          setLessonNotes(notesData[0].notes || '');
         } else {
           console.log('No hay notas guardadas aún');
           setLessonNotes('');
@@ -369,35 +391,38 @@ export default function StudentLivestreamPage() {
     try {
       console.log('Guardando notas:', { lessonNotes, lessonId: lesson.id, studentId: user.id });
       
-      const notesQuery = query(
-        collection(db, 'lessonNotes'),
-        where('studentId', '==', user.id),
-        where('lessonId', '==', lesson.id)
-      );
-      const notesSnapshot = await getDocs(notesQuery);
+      const { data: existingNotes } = await supabaseClient
+        .from('lesson_notes')
+        .select('id')
+        .eq('student_id', user.id)
+        .eq('lesson_id', lesson.id)
+        .limit(1);
 
-      if (notesSnapshot.empty) {
+      if (!existingNotes || existingNotes.length === 0) {
         // Crear nuevo documento de notas
         console.log('Creando nuevo documento de notas');
-        const docRef = await addDoc(collection(db, 'lessonNotes'), {
-          studentId: user.id,
-          studentName: user.name || 'Anónimo',
-          lessonId: lesson.id,
-          courseId: params.id,
-          notes: lessonNotes,
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now()
-        });
-        console.log('Notas guardadas con ID:', docRef.id);
+        const { data: newDoc, error } = await supabaseClient
+          .from('lesson_notes')
+          .insert({
+            student_id: user.id,
+            student_name: user.name || 'Anónimo',
+            lesson_id: lesson.id,
+            course_id: params.id,
+            notes: lessonNotes,
+          })
+          .select('id')
+          .single();
+        if (error) throw error;
+        console.log('Notas guardadas con ID:', newDoc?.id);
       } else {
         // Actualizar notas existentes
         console.log('Actualizando notas existentes');
-        const notesDocId = notesSnapshot.docs[0].id;
-        await updateDoc(doc(db, 'lessonNotes', notesDocId), {
-          notes: lessonNotes,
-          updatedAt: Timestamp.now()
-        });
-        console.log('Notas actualizadas:', notesDocId);
+        const { error } = await supabaseClient
+          .from('lesson_notes')
+          .update({ notes: lessonNotes, updated_at: new Date().toISOString() })
+          .eq('id', existingNotes[0].id);
+        if (error) throw error;
+        console.log('Notas actualizadas:', existingNotes[0].id);
       }
       
       // Mostrar modal de confirmación
@@ -414,12 +439,11 @@ export default function StudentLivestreamPage() {
     if (!activePoll || !user || hasVoted) return;
 
     try {
-      await addDoc(collection(db, 'pollResponses'), {
-        pollId: activePoll.id,
-        userId: user.id,
-        userName: user.name || 'Anónimo',
-        selectedOption: optionIndex,
-        timestamp: Timestamp.now()
+      await supabaseClient.from('poll_responses').insert({
+        poll_id: activePoll.id,
+        user_id: user.id,
+        user_name: user.name || 'Anónimo',
+        selected_option: optionIndex,
       });
 
       setHasVoted(true);
@@ -434,13 +458,12 @@ export default function StudentLivestreamPage() {
 
     setSubmittingQuestion(true);
     try {
-      await addDoc(collection(db, 'audienceQuestions'), {
-        lessonId: lesson.id,
-        userId: user.id,
-        userName: user.name || 'Anónimo',
+      await supabaseClient.from('audience_questions').insert({
+        lesson_id: lesson.id,
+        user_id: user.id,
+        user_name: user.name || 'Anónimo',
         question: newQuestion.trim(),
-        isAnswered: false,
-        createdAt: Timestamp.now()
+        is_answered: false,
       });
 
       setNewQuestion('');

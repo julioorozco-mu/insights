@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { courseRepository } from "@/lib/repositories/courseRepository";
 import { Loader } from "@/components/common/Loader";
 import { IconBook, IconPlayerPlay, IconClock, IconUsers } from "@tabler/icons-react";
 
@@ -35,25 +36,42 @@ export default function EnrolledCoursesPage() {
       if (!user) return;
 
       try {
-        // Obtener inscripciones del estudiante
-        const enrollmentsQuery = query(
-          collection(db, "enrollments"),
-          where("studentId", "==", user.id)
-        );
-        const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
+        // Obtener el student record primero
+        const { data: studentData } = await supabaseClient
+          .from(TABLES.STUDENTS)
+          .select('id')
+          .eq('user_id', user.id)
+          .single();
         
-        const enrollments: Enrollment[] = enrollmentsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as Enrollment));
+        if (!studentData) {
+          setCourses([]);
+          return;
+        }
+
+        // Obtener inscripciones del estudiante desde Supabase
+        const { data: enrollmentsData } = await supabaseClient
+          .from(TABLES.STUDENT_ENROLLMENTS)
+          .select('id, course_id, student_id, enrolled_at')
+          .eq('student_id', studentData.id);
+        
+        const enrollments: Enrollment[] = (enrollmentsData || []).map((e: any) => ({
+          id: e.id,
+          courseId: e.course_id,
+          studentId: e.student_id,
+          enrolledAt: e.enrolled_at,
+        }));
 
         // Obtener información de cada curso
         const coursesPromises = enrollments.map(async (enrollment) => {
-          const courseDoc = await getDoc(doc(db, "courses", enrollment.courseId));
-          if (courseDoc.exists()) {
+          const course = await courseRepository.findById(enrollment.courseId);
+          if (course) {
             return {
-              id: courseDoc.id,
-              ...courseDoc.data(),
+              id: course.id,
+              title: course.title,
+              description: course.description,
+              coverImageUrl: course.coverImageUrl,
+              lessonIds: course.lessonIds,
+              createdAt: course.createdAt,
             } as Course;
           }
           return null;

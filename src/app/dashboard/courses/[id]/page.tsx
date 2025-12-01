@@ -17,8 +17,10 @@ import {
   IconMail
 } from "@tabler/icons-react";
 import { ReminderModal } from "@/components/ReminderModal";
-import { collection, getDocs, doc, getDoc, updateDoc, deleteDoc, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { userRepository } from "@/lib/repositories/userRepository";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
 import { useAuth } from "@/hooks/useAuth";
 
 interface Speaker {
@@ -88,27 +90,24 @@ export default function CourseDetailPage() {
         const data = await courseRepository.findById(params.id as string);
         setCourse(data);
         
-        // Contar estudiantes inscritos
-        const enrollmentsQuery = query(
-          collection(db, 'enrollments'),
-          where('courseId', '==', params.id)
-        );
-        const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
-        setEnrolledStudentsCount(enrollmentsSnapshot.size);
+        // Contar estudiantes inscritos desde Supabase
+        const { count } = await supabaseClient
+          .from(TABLES.STUDENT_ENROLLMENTS)
+          .select('*', { count: 'exact', head: true })
+          .eq('course_id', params.id);
+        setEnrolledStudentsCount(count || 0);
         
         // Cargar información de los speakers
         if (data && data.speakerIds && data.speakerIds.length > 0) {
           const speakersData: Speaker[] = [];
           for (const speakerId of data.speakerIds) {
-            const speakerDocRef = doc(db, 'users', speakerId);
-            const speakerDoc = await getDoc(speakerDocRef);
-            if (speakerDoc.exists()) {
-              const speakerData = speakerDoc.data();
+            const user = await userRepository.findById(speakerId);
+            if (user) {
               speakersData.push({
                 id: speakerId,
-                name: speakerData.name || speakerData.email,
-                email: speakerData.email,
-                photoURL: speakerData.photoURL,
+                name: user.name || user.email,
+                email: user.email,
+                photoURL: user.avatarUrl,
               });
             }
           }
@@ -117,22 +116,14 @@ export default function CourseDetailPage() {
         
         // Cargar información de las lecciones
         if (data && data.lessonIds && data.lessonIds.length > 0) {
-          const lessonsData: Lesson[] = [];
-          for (const lessonId of data.lessonIds) {
-            const lessonDocRef = doc(db, 'lessons', lessonId);
-            const lessonDoc = await getDoc(lessonDocRef);
-            if (lessonDoc.exists()) {
-              const lessonData = lessonDoc.data();
-              lessonsData.push({
-                id: lessonId,
-                title: lessonData.title || `Lección ${lessonsData.length + 1}`,
-                scheduledDate: lessonData.scheduledDate,
-                isLive: lessonData.isLive || false,
-                coverImage: lessonData.coverImage,
-              });
-            }
-          }
-          setLessons(lessonsData);
+          const lessonsData = await lessonRepository.findByIds(data.lessonIds);
+          setLessons(lessonsData.map(lesson => ({
+            id: lesson.id,
+            title: lesson.title || `Lección`,
+            scheduledDate: lesson.scheduledStartTime || lesson.startDate,
+            isLive: lesson.isLive || false,
+            coverImage: undefined,
+          })));
         }
       } catch (error) {
         console.error("Error loading course:", error);
@@ -149,7 +140,7 @@ export default function CourseDetailPage() {
     
     try {
       setDeleting(true);
-      await deleteDoc(doc(db, 'courses', course.id));
+      await courseRepository.delete(course.id);
       setShowDeleteModal(false);
       router.push('/dashboard/courses');
     } catch (error) {
@@ -165,9 +156,7 @@ export default function CourseDetailPage() {
     
     try {
       setDisabling(true);
-      await updateDoc(doc(db, 'courses', course.id), {
-        isActive: false
-      });
+      await courseRepository.update(course.id, { isActive: false });
       setCourse({ ...course, isActive: false });
       setShowDisableModal(false);
     } catch (error) {
@@ -345,7 +334,7 @@ export default function CourseDetailPage() {
                           </button>
                         )}
                         {/* Botón Iniciar Conferencia - Solo para speakers */}
-                        {user?.role === 'speaker' && (
+                        {user?.role === 'teacher' && (
                           <Link
                             href={`/dashboard/lessons/${lesson.id}`}
                             className={`btn btn-sm gap-1 ${

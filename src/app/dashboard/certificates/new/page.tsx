@@ -5,9 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import CertificateEditor from "@/components/certificate/CertificateEditor";
 import { CertificateElement, CertificatePageSize, CertificateOrientation } from "@/types/certificate";
-import { collection, addDoc, Timestamp } from "firebase/firestore";
-import { db, storage } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 import { IconUpload, IconPhoto } from "@tabler/icons-react";
 
 export default function NewCertificateTemplatePage() {
@@ -42,13 +41,19 @@ export default function NewCertificateTemplatePage() {
     try {
       setUploadingImage(true);
       const timestamp = Date.now();
-      const fileName = `certificates/backgrounds/${timestamp}_${selectedFile.name}`;
-      const storageRef = ref(storage, fileName);
+      const filePath = `certificates/backgrounds/${timestamp}_${selectedFile.name}`;
       
-      await uploadBytes(storageRef, selectedFile);
-      const downloadURL = await getDownloadURL(storageRef);
+      const { error: uploadError } = await supabaseClient.storage
+        .from('files')
+        .upload(filePath, selectedFile);
       
-      return downloadURL;
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabaseClient.storage
+        .from('files')
+        .getPublicUrl(filePath);
+      
+      return urlData.publicUrl;
     } catch (error) {
       console.error("Error uploading image:", error);
       throw error;
@@ -108,19 +113,17 @@ export default function NewCertificateTemplatePage() {
       const templateData = {
         title,
         description,
-        backgroundUrl: finalBackgroundUrl,
+        background_url: finalBackgroundUrl,
         elements,
-        isActive: true,
-        createdBy: user.id,
-        createdAt: Timestamp.fromDate(now),
-        updatedAt: Timestamp.fromDate(now),
-        pageSize,
+        is_active: true,
+        created_by: user.id,
+        page_size: pageSize,
         orientation,
-        designWidth,
-        designHeight,
+        design_width: designWidth,
+        design_height: designHeight,
       };
 
-      await addDoc(collection(db, 'certificateTemplates'), templateData);
+      await supabaseClient.from(TABLES.CERTIFICATE_TEMPLATES).insert(templateData);
       
       router.push('/dashboard/certificates');
     } catch (error) {

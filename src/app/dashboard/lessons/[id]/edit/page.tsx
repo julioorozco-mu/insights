@@ -2,9 +2,10 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { doc, getDoc, updateDoc, collection, getDocs, query, where, addDoc, Timestamp } from "firebase/firestore";
-import { db, storage } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
+import { teacherRepository } from "@/lib/repositories/teacherRepository";
 import { Loader } from "@/components/common/Loader";
 import { useAuth } from "@/hooks/useAuth";
 import { IconBook, IconFileText, IconClipboardList, IconDeviceFloppy, IconUpload, IconCheck, IconSearch, IconFilter, IconSortAscending, IconSortDescending, IconX } from "@tabler/icons-react";
@@ -113,9 +114,8 @@ export default function EditLessonPage() {
     const loadData = async () => {
       try {
         // Cargar la lección
-        const lessonDoc = await getDoc(doc(db, 'lessons', params.id as string));
-        if (lessonDoc.exists()) {
-          const lessonData = { id: lessonDoc.id, ...lessonDoc.data() } as Lesson;
+        const lessonData = await lessonRepository.findById(params.id as string);
+        if (lessonData) {
           setLesson(lessonData);
           setTitle(lessonData.title);
           setDescription(lessonData.description || "");
@@ -156,47 +156,40 @@ export default function EditLessonPage() {
           setRecordedVideoUrl(lessonData.recordedVideoUrl || '');
           
           // Cargar encuestas disponibles
-          const surveysSnapshot = await getDocs(collection(db, 'surveys'));
-          const surveysData = surveysSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          })) as Survey[];
-          setSurveys(surveysData);
+          const { data: surveysData } = await supabaseClient
+            .from(TABLES.SURVEYS)
+            .select('id, title, type')
+            .or('is_deleted.is.null,is_deleted.eq.false');
+          setSurveys((surveysData || []).map((s: any) => ({
+            id: s.id,
+            title: s.title,
+            type: s.type,
+          })));
           
           // Cargar TODOS los recursos disponibles en la plataforma (excluyendo deshabilitados)
-          const resourcesSnapshot = await getDocs(collection(db, 'fileAttachments'));
-          const resourcesData = resourcesSnapshot.docs
-            .map(doc => {
-              const data = doc.data();
-              return {
-                id: doc.id,
-                title: data.metadata?.title || data.name || 'Sin título',
-                fileUrl: data.url,
-                fileType: data.type,
-                fileName: data.name,
-                fileSize: data.size,
-                createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-                status: data.status,
-              };
-            })
-            .filter(resource => resource.status !== 'disabled') as Resource[];
-          console.log('Recursos cargados:', resourcesData.length, resourcesData);
-          setAvailableResources(resourcesData);
-          setAllResources(resourcesData);
-          setFilteredResources(resourcesData);
+          const { data: resourcesData } = await supabaseClient
+            .from(TABLES.FILE_ATTACHMENTS)
+            .select('*')
+            .neq('status', 'disabled');
           
-          // Cargar ponentes disponibles desde la colección 'speakers'
-          const speakersSnapshot = await getDocs(collection(db, 'speakers'));
-          const speakersData = speakersSnapshot.docs
-            .filter(doc => {
-              const data = doc.data();
-              return data.isActive !== false; // Mostrar todos los ponentes activos
-            })
-            .map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            }));
-          setSpeakers(speakersData);
+          const mappedResources = (resourcesData || []).map((r: any) => ({
+            id: r.id,
+            title: r.metadata?.title || r.name || 'Sin título',
+            fileUrl: r.url,
+            fileType: r.type,
+            fileName: r.name,
+            fileSize: r.size,
+            createdAt: r.created_at,
+            status: r.status,
+          })) as Resource[];
+          console.log('Recursos cargados:', mappedResources.length, mappedResources);
+          setAvailableResources(mappedResources);
+          setAllResources(mappedResources);
+          setFilteredResources(mappedResources);
+          
+          // Cargar ponentes disponibles
+          const speakersData = await teacherRepository.findAll();
+          setSpeakers(speakersData.filter((s: any) => s.isActive !== false));
         }
       } catch (error) {
         console.error('Error loading lesson:', error);
@@ -330,14 +323,21 @@ export default function EditLessonPage() {
       setUploadingCover(true);
       const file = coverFiles[0].file as File;
       
-      // Subir imagen a Firebase Storage
+      // Subir imagen a Supabase Storage
       const timestamp = Date.now();
-      const fileName = `lessons/covers/${timestamp}_${file.name}`;
-      const storageRef = ref(storage, fileName);
-      await uploadBytes(storageRef, file);
-      const fileUrl = await getDownloadURL(storageRef);
+      const filePath = `lessons/covers/${timestamp}_${file.name}`;
       
-      setCoverImage(fileUrl);
+      const { error: uploadError } = await supabaseClient.storage
+        .from('files')
+        .upload(filePath, file);
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabaseClient.storage
+        .from('files')
+        .getPublicUrl(filePath);
+      
+      setCoverImage(urlData.publicUrl);
       setCoverFiles([]);
       setShowCoverUpload(false);
     } catch (error) {
@@ -355,29 +355,42 @@ export default function EditLessonPage() {
       setUploading(true);
       const file = filePondFiles[0].file as File;
       
-      // Subir archivo a Firebase Storage
+      // Subir archivo a Supabase Storage
       const timestamp = Date.now();
       const fileName = `${timestamp}_${file.name}`;
-      const storageRef = ref(storage, `resources/${user.id}/${fileName}`);
-      await uploadBytes(storageRef, file);
-      const fileUrl = await getDownloadURL(storageRef);
+      const filePath = `resources/${user.id}/${fileName}`;
       
-      // Crear recurso en Firestore (usando la colección fileAttachments)
-      const resourceData = {
-        name: file.name,
-        url: fileUrl,
-        type: file.type,
-        size: file.size,
-        uploadedBy: user.id,
-        uploadedByName: user.name,
-        createdAt: Timestamp.now(),
-        metadata: {
-          title: uploadTitle,
-          description: '',
-        },
-      };
+      const { error: uploadError } = await supabaseClient.storage
+        .from('files')
+        .upload(filePath, file);
       
-      const resourceDoc = await addDoc(collection(db, 'fileAttachments'), resourceData);
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabaseClient.storage
+        .from('files')
+        .getPublicUrl(filePath);
+      
+      const fileUrl = urlData.publicUrl;
+      
+      // Crear recurso en Supabase
+      const { data: resourceDoc, error: insertError } = await supabaseClient
+        .from(TABLES.FILE_ATTACHMENTS)
+        .insert({
+          name: file.name,
+          url: fileUrl,
+          type: file.type,
+          size: file.size,
+          uploaded_by: user.id,
+          uploaded_by_name: user.name,
+          metadata: {
+            title: uploadTitle,
+            description: '',
+          },
+        })
+        .select('id')
+        .single();
+      
+      if (insertError) throw insertError;
       
       // Agregar a la lista de recursos disponibles (formato adaptado)
       const newResource: Resource = {
@@ -434,7 +447,7 @@ export default function EditLessonPage() {
       if (selectedEntrySurvey) updateData.entrySurveyId = selectedEntrySurvey;
       if (selectedExitSurvey) updateData.exitSurveyId = selectedExitSurvey;
 
-      await updateDoc(doc(db, 'lessons', lesson.id), updateData);
+      await lessonRepository.update(lesson.id, updateData);
       
       setShowSuccessModal(true);
     } catch (error) {

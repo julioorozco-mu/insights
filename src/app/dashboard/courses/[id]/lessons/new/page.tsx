@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { IconUpload, IconVideo, IconLink } from "@tabler/icons-react";
-import { collection, addDoc, Timestamp, doc, updateDoc, arrayUnion, getDocs } from "firebase/firestore";
-import { db, storage } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { teacherRepository } from "@/lib/repositories/teacherRepository";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
+import { courseRepository } from "@/lib/repositories/courseRepository";
 
 export default function NewLessonPage() {
   const params = useParams();
@@ -61,18 +63,8 @@ export default function NewLessonPage() {
   useEffect(() => {
     const loadSpeakers = async () => {
       try {
-        // Cargar desde la colección 'speakers' en lugar de 'users'
-        const speakersSnapshot = await getDocs(collection(db, 'speakers'));
-        const speakersData = speakersSnapshot.docs
-          .filter(doc => {
-            const data = doc.data();
-            return data.isActive !== false; // Mostrar todos los ponentes activos
-          })
-          .map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-        setSpeakers(speakersData);
+        const speakersData = await teacherRepository.findAll();
+        setSpeakers(speakersData.filter((s: any) => s.isActive !== false));
       } catch (error) {
         console.error('Error loading speakers:', error);
       }
@@ -105,13 +97,19 @@ export default function NewLessonPage() {
     try {
       setUploadingCover(true);
       const timestamp = Date.now();
-      const fileName = `lessons/covers/${timestamp}_${coverFile.name}`;
-      const storageRef = ref(storage, fileName);
+      const filePath = `lessons/covers/${timestamp}_${coverFile.name}`;
       
-      await uploadBytes(storageRef, coverFile);
-      const downloadURL = await getDownloadURL(storageRef);
+      const { error: uploadError } = await supabaseClient.storage
+        .from('files')
+        .upload(filePath, coverFile);
       
-      return downloadURL;
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabaseClient.storage
+        .from('files')
+        .getPublicUrl(filePath);
+      
+      return urlData.publicUrl;
     } catch (error) {
       console.error("Error uploading cover:", error);
       throw error;
@@ -151,13 +149,19 @@ export default function NewLessonPage() {
     try {
       setUploadingVideo(true);
       const timestamp = Date.now();
-      const fileName = `lessons/videos/${timestamp}_${videoFile.name}`;
-      const storageRef = ref(storage, fileName);
+      const filePath = `lessons/videos/${timestamp}_${videoFile.name}`;
       
-      await uploadBytes(storageRef, videoFile);
-      const downloadURL = await getDownloadURL(storageRef);
+      const { error: uploadError } = await supabaseClient.storage
+        .from('files')
+        .upload(filePath, videoFile);
       
-      return downloadURL;
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabaseClient.storage
+        .from('files')
+        .getPublicUrl(filePath);
+      
+      return urlData.publicUrl;
     } catch (error) {
       console.error("Error uploading video:", error);
       throw error;
@@ -202,40 +206,39 @@ export default function NewLessonPage() {
       // Construir fecha y hora programada
       const scheduledDateTime = buildScheduledDateTime();
 
-      // Crear la lección
+      // Crear la lección usando el repositorio
       const lessonData = {
         courseId: params.id as string,
         title,
         description,
         content,
         type: lessonType,
-        videoUrl: lessonType === 'video' || lessonType === 'hybrid' ? finalVideoUrl || null : null,
-        scheduledStartTime: lessonType === 'livestream' || lessonType === 'hybrid' ? scheduledDateTime || null : null,
-        scheduledDate: scheduledDateTime || null,
+        videoUrl: lessonType === 'video' || lessonType === 'hybrid' ? finalVideoUrl || undefined : undefined,
+        scheduledStartTime: lessonType === 'livestream' || lessonType === 'hybrid' ? scheduledDateTime || undefined : undefined,
         isLive: false,
         liveStatus: 'idle' as const,
         durationMinutes,
         order,
         isPublished: true,
-        coverImage: finalCoverUrl || null,
+        coverImage: finalCoverUrl || undefined,
         speakerIds: selectedSpeakers,
         coHostIds: selectedCoHosts,
-        // Configuración de streaming
-        streamingType: lessonType === 'livestream' || lessonType === 'hybrid' ? streamingType : null,
-        liveStreamUrl: streamingType === 'external_link' && (lessonType === 'livestream' || lessonType === 'hybrid') ? liveStreamUrl || null : null,
-        recordedVideoUrl: recordedVideoUrl || null,
+        streamingType: lessonType === 'livestream' || lessonType === 'hybrid' ? streamingType : undefined,
+        liveStreamUrl: streamingType === 'external_link' && (lessonType === 'livestream' || lessonType === 'hybrid') ? liveStreamUrl || undefined : undefined,
+        recordedVideoUrl: recordedVideoUrl || undefined,
         createdBy: user.id,
-        createdAt: Timestamp.fromDate(now),
-        updatedAt: Timestamp.fromDate(now),
       };
 
-      const lessonRef = await addDoc(collection(db, 'lessons'), lessonData);
+      const newLesson = await lessonRepository.create(lessonData);
 
       // Actualizar el curso para agregar el ID de la lección
-      await updateDoc(doc(db, 'courses', params.id as string), {
-        lessonIds: arrayUnion(lessonRef.id),
-        updatedAt: Timestamp.fromDate(now),
-      });
+      const course = await courseRepository.findById(params.id as string);
+      if (course) {
+        const currentLessonIds = course.lessonIds || [];
+        await courseRepository.update(params.id as string, {
+          lessonIds: [...currentLessonIds, newLesson.id],
+        });
+      }
 
       router.push(`/dashboard/courses/${params.id}`);
     } catch (error) {

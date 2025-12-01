@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader } from "@/components/common/Loader";
 import { IconChartBar, IconPlus, IconEdit, IconTrash, IconAlertTriangle, IconCopy } from "@tabler/icons-react";
-import { collection, getDocs, deleteDoc, doc, updateDoc, query, where, addDoc, Timestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { courseRepository } from "@/lib/repositories/courseRepository";
 import { formatDate } from "@/utils/formatDate";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -38,17 +39,23 @@ export default function SurveysPage() {
 
   const loadSurveys = async () => {
     try {
-      const surveysSnapshot = await getDocs(collection(db, "surveys"));
-      const surveysData = surveysSnapshot.docs
-        .map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-          } as Survey;
-        })
-        .filter((survey) => !survey.isDeleted); // Filtrar encuestas eliminadas
+      const { data, error } = await supabaseClient
+        .from(TABLES.SURVEYS)
+        .select('*')
+        .or('is_deleted.is.null,is_deleted.eq.false');
+      
+      if (error) throw error;
+      
+      const surveysData = (data || []).map((s: any) => ({
+        id: s.id,
+        title: s.title,
+        description: s.description,
+        type: s.type,
+        questions: s.questions || [],
+        isActive: s.is_active,
+        isDeleted: s.is_deleted,
+        createdAt: s.created_at,
+      })) as Survey[];
       setSurveys(surveysData);
     } catch (error) {
       console.error("Error loading surveys:", error);
@@ -60,13 +67,11 @@ export default function SurveysPage() {
   const checkSurveyUsage = async (surveyId: string): Promise<boolean> => {
     try {
       // Verificar si la encuesta está siendo usada en algún curso
-      const coursesSnapshot = await getDocs(collection(db, "courses"));
-      const isUsed = coursesSnapshot.docs.some((doc) => {
-        const data = doc.data();
+      const courses = await courseRepository.findAll();
+      const isUsed = courses.some((course) => {
         return (
-          data.entrySurveyId === surveyId ||
-          data.exitSurveyId === surveyId ||
-          data.surveys?.includes(surveyId)
+          course.entrySurveyId === surveyId ||
+          course.exitSurveyId === surveyId
         );
       });
       return isUsed;
@@ -90,14 +95,20 @@ export default function SurveysPage() {
     try {
       if (isUsedInCourses) {
         // Baja lógica: marcar como eliminada
-        await updateDoc(doc(db, "surveys", surveyToDelete.id), {
-          isDeleted: true,
-          isActive: false,
-          deletedAt: new Date()
-        });
+        await supabaseClient
+          .from(TABLES.SURVEYS)
+          .update({
+            is_deleted: true,
+            is_active: false,
+            deleted_at: new Date().toISOString()
+          })
+          .eq('id', surveyToDelete.id);
       } else {
         // Eliminación física
-        await deleteDoc(doc(db, "surveys", surveyToDelete.id));
+        await supabaseClient
+          .from(TABLES.SURVEYS)
+          .delete()
+          .eq('id', surveyToDelete.id);
       }
       
       setShowDeleteModal(false);
@@ -122,13 +133,12 @@ export default function SurveysPage() {
         description: survey.description || '',
         type: survey.type,
         questions: survey.questions || [],
-        isActive: false, // Crear como inactiva para que el admin la revise
-        isDeleted: false,
-        createdAt: Timestamp.now(),
-        createdBy: user.id,
+        is_active: false, // Crear como inactiva para que el admin la revise
+        is_deleted: false,
+        created_by: user.id,
       };
 
-      await addDoc(collection(db, 'surveys'), clonedSurvey);
+      await supabaseClient.from(TABLES.SURVEYS).insert(clonedSurvey);
       
       // Recargar encuestas
       await loadSurveys();

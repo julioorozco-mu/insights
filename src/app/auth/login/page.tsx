@@ -41,17 +41,9 @@ export default function LoginPage() {
       <div className="card w-full max-w-md bg-base-100 shadow-2xl">
         <div className="card-body">
           <div className="text-center mb-6">
-            <div className="flex justify-center items-center gap-4 mb-4">
-              <img 
-                src="/images/logos/logo_pri_edomex.png" 
-                alt="PRI Estado de México" 
-                className="h-16 object-contain"
-              />
-              <img 
-                src="/images/logos/logo-ire-edomex-red.png" 
-                alt="Instituto Reyes Heroles" 
-                className="h-16 object-contain"
-              />
+            <div className="mb-4">
+              <h1 className="text-3xl font-bold text-primary">{APP_NAME}</h1>
+              <p className="text-sm text-base-content/60">Plataforma de Microcredenciales</p>
             </div>
             <p className="text-base-content/70">Inicia sesión en tu cuenta</p>
           </div>

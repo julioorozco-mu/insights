@@ -1,22 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import admin from 'firebase-admin';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
-
-// Initialize Firebase Admin if not already initialized
-if (!admin.apps.length) {
-  const projectId = process.env.FIREBASE_PROJECT_ID as string;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL as string;
-  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-  
-  if (!projectId || !clientEmail || !privateKey) {
-    console.error('Missing Firebase Admin environment variables');
-  } else {
-    admin.initializeApp({
-      credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
-    });
-  }
-}
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { TABLES } from '@/utils/constants';
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,31 +9,57 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });
     }
 
-    if (!admin.apps.length) {
-      return NextResponse.json({ 
-        error: 'Firebase Admin no está configurado. Configura FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL y FIREBASE_PRIVATE_KEY' 
-      }, { status: 500 });
-    }
+    const supabaseAdmin = getSupabaseAdmin();
 
-    const auth = getAuth();
-    const db = getFirestore();
-
-    const userRecord = await auth.createUser({
+    // Crear usuario en Supabase Auth
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      displayName: name,
-      emailVerified: false,
-      disabled: false,
+      email_confirm: true,
+      user_metadata: {
+        name,
+        role: 'teacher',
+      },
     });
 
-    await db.collection('users').doc(userRecord.uid).set({
-      name,
-      email,
-      role: 'speaker',
-      createdAt: new Date(),
-    });
+    if (authError) {
+      console.error('Error creating auth user:', authError);
+      return NextResponse.json({ error: authError.message }, { status: 400 });
+    }
 
-    return NextResponse.json({ uid: userRecord.uid }, { status: 200 });
+    const userId = authData.user.id;
+
+    // Crear registro en la tabla users
+    const { error: userError } = await supabaseAdmin
+      .from(TABLES.USERS)
+      .insert({
+        id: userId,
+        name,
+        email,
+        role: 'teacher',
+      });
+
+    if (userError) {
+      console.error('Error creating user record:', userError);
+      // Intentar eliminar el usuario de auth si falla la creación en la base de datos
+      await supabaseAdmin.auth.admin.deleteUser(userId);
+      return NextResponse.json({ error: userError.message }, { status: 500 });
+    }
+
+    // Crear registro en la tabla teachers
+    const { error: teacherError } = await supabaseAdmin
+      .from(TABLES.TEACHERS)
+      .insert({
+        user_id: userId,
+        expertise: [],
+      });
+
+    if (teacherError) {
+      console.error('Error creating teacher record:', teacherError);
+      // No es crítico, el usuario ya existe
+    }
+
+    return NextResponse.json({ uid: userId }, { status: 200 });
   } catch (e: any) {
     console.error('createSpeakerUser error:', e);
     return NextResponse.json({ error: e?.message || 'Error interno' }, { status: 500 });

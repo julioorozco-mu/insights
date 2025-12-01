@@ -5,9 +5,8 @@ import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import CertificateEditor from "@/components/certificate/CertificateEditor";
 import { CertificateElement, CertificatePageSize, CertificateOrientation } from "@/types/certificate";
-import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore";
-import { db, storage } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 import { Loader } from "@/components/common/Loader";
 
 export default function EditCertificateTemplatePage() {
@@ -32,21 +31,24 @@ export default function EditCertificateTemplatePage() {
   useEffect(() => {
     const loadTemplate = async () => {
       try {
-        const templateRef = doc(db, 'certificateTemplates', templateId);
-        const templateDoc = await getDoc(templateRef);
+        const { data: templateDoc, error } = await supabaseClient
+          .from(TABLES.CERTIFICATE_TEMPLATES)
+          .select('*')
+          .eq('id', templateId)
+          .single();
 
-        if (!templateDoc.exists()) {
+        if (error || !templateDoc) {
           alert('Plantilla no encontrada');
           router.push('/dashboard/certificates');
           return;
         }
 
-        const data = templateDoc.data();
+        const data = templateDoc;
         setTitle(data.title || '');
         setDescription(data.description || '');
-        setBackgroundUrl(data.backgroundUrl || '');
-        setBackgroundPreview(data.backgroundUrl || '');
-        setPageSize(data.pageSize || 'letter');
+        setBackgroundUrl(data.background_url || '');
+        setBackgroundPreview(data.background_url || '');
+        setPageSize(data.page_size || 'letter');
         setOrientation(data.orientation || 'landscape');
         setExistingElements(data.elements || []);
       } catch (error) {
@@ -79,13 +81,19 @@ export default function EditCertificateTemplatePage() {
     try {
       setUploadingImage(true);
       const timestamp = Date.now();
-      const fileName = `certificates/backgrounds/${timestamp}_${selectedFile.name}`;
-      const storageRef = ref(storage, fileName);
+      const filePath = `certificates/backgrounds/${timestamp}_${selectedFile.name}`;
+      
+      const { error: uploadError } = await supabaseClient.storage
+        .from('files')
+        .upload(filePath, selectedFile);
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabaseClient.storage
+        .from('files')
+        .getPublicUrl(filePath);
 
-      await uploadBytes(storageRef, selectedFile);
-      const downloadURL = await getDownloadURL(storageRef);
-
-      return downloadURL;
+      return urlData.publicUrl;
     } catch (error) {
       console.error("Error uploading image:", error);
       throw error;
@@ -145,17 +153,19 @@ export default function EditCertificateTemplatePage() {
       const templateData = {
         title,
         description,
-        backgroundUrl: finalBackgroundUrl,
+        background_url: finalBackgroundUrl,
         elements,
-        pageSize,
+        page_size: pageSize,
         orientation,
-        designWidth,
-        designHeight,
-        updatedAt: Timestamp.fromDate(now),
+        design_width: designWidth,
+        design_height: designHeight,
+        updated_at: now.toISOString(),
       };
 
-      const templateRef = doc(db, 'certificateTemplates', templateId);
-      await updateDoc(templateRef, templateData);
+      await supabaseClient
+        .from(TABLES.CERTIFICATE_TEMPLATES)
+        .update(templateData)
+        .eq('id', templateId);
 
       router.push('/dashboard/certificates');
     } catch (error) {

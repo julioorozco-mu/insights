@@ -16,8 +16,10 @@ import {
   IconPlayerPlay,
   IconCalendar
 } from "@tabler/icons-react";
-import { doc, getDoc, setDoc, Timestamp, collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { userRepository } from "@/lib/repositories/userRepository";
+import { studentRepository } from "@/lib/repositories/studentRepository";
 
 interface Enrollment {
   id: string;
@@ -57,19 +59,22 @@ export default function AvailableCoursesPage() {
         const activeCourses = allCourses.filter(c => c.isActive);
         setCourses(activeCourses);
 
-        // Cargar inscripciones del estudiante
-        const enrollmentsQuery = query(
-          collection(db, 'enrollments'),
-          where('studentId', '==', user.id)
-        );
-        const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
-        const enrollmentsData = enrollmentsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          enrolledAt: doc.data().enrolledAt?.toDate?.()?.toISOString() || doc.data().enrolledAt,
+        // Cargar inscripciones del estudiante desde Supabase
+        const { data: enrollmentsData } = await supabaseClient
+          .from(TABLES.STUDENT_ENROLLMENTS)
+          .select('id, course_id, student_id, enrolled_at, progress, completed_lessons')
+          .eq('student_id', user.id);
+        
+        const enrollments = (enrollmentsData || []).map((e: any) => ({
+          id: e.id,
+          courseId: e.course_id,
+          studentId: e.student_id,
+          enrolledAt: e.enrolled_at,
+          progress: e.progress || 0,
+          completedLessons: e.completed_lessons || [],
         })) as Enrollment[];
         
-        setEnrollments(enrollmentsData);
+        setEnrollments(enrollments);
 
         // Cargar información de los speakers
         const speakerIds = new Set<string>();
@@ -79,15 +84,14 @@ export default function AvailableCoursesPage() {
 
         const speakersMap = new Map<string, Speaker>();
         for (const speakerId of speakerIds) {
-          const speakerDoc = await getDoc(doc(db, 'users', speakerId));
-          if (speakerDoc.exists()) {
-            const speakerData = speakerDoc.data();
+          const user = await userRepository.findById(speakerId);
+          if (user) {
             speakersMap.set(speakerId, {
-              id: speakerDoc.id,
-              name: speakerData.name,
-              lastName: speakerData.lastName,
-              email: speakerData.email,
-              avatarUrl: speakerData.avatarUrl,
+              id: user.id,
+              name: user.name,
+              lastName: '',
+              email: user.email,
+              avatarUrl: user.avatarUrl,
             });
           }
         }
@@ -133,18 +137,34 @@ export default function AvailableCoursesPage() {
     try {
       setEnrolling(courseId);
       
-      const enrollmentData = {
-        courseId,
-        studentId: user.id,
-        studentName: user.name,
-        studentEmail: user.email,
-        enrolledAt: Timestamp.now(),
-        progress: 0,
-        completedLessons: [],
-        isActive: true,
-      };
+      // Primero obtener o crear el student record
+      let studentId = user.id;
+      const { data: existingStudent } = await supabaseClient
+        .from(TABLES.STUDENTS)
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (!existingStudent) {
+        const { data: newStudent } = await supabaseClient
+          .from(TABLES.STUDENTS)
+          .insert({ user_id: user.id })
+          .select('id')
+          .single();
+        if (newStudent) studentId = newStudent.id;
+      } else {
+        studentId = existingStudent.id;
+      }
 
-      await setDoc(doc(collection(db, 'enrollments')), enrollmentData);
+      // Crear enrollment
+      await supabaseClient
+        .from(TABLES.STUDENT_ENROLLMENTS)
+        .insert({
+          course_id: courseId,
+          student_id: studentId,
+          progress: 0,
+          completed_lessons: [],
+        });
 
       // Actualizar estado local
       setEnrollments(prev => [...prev, {

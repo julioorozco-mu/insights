@@ -2,14 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 import { CertificateTemplate, CertificatePageSize, CertificateOrientation } from "@/types/certificate";
 import { Loader } from "@/components/common/Loader";
 import { IconDownload, IconRefresh, IconUpload, IconX } from "@tabler/icons-react";
 import { convertImageToPngDataUrl } from "@/utils/image";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "@/lib/firebase";
 import CertificateDOM from "@/components/certificate/CertificateDOM";
 
 export default function CertificatePreviewPage() {
@@ -66,19 +64,31 @@ export default function CertificatePreviewPage() {
 
     const loadTemplate = async () => {
       try {
-        const templateDoc = await getDoc(doc(db, 'certificateTemplates', params.id as string));
-        if (templateDoc.exists()) {
-          const data = templateDoc.data();
+        const { data: templateDoc } = await supabaseClient
+          .from(TABLES.CERTIFICATE_TEMPLATES)
+          .select('*')
+          .eq('id', params.id as string)
+          .single();
+        if (templateDoc) {
           const t = {
             id: templateDoc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-            updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
+            title: templateDoc.title,
+            description: templateDoc.description,
+            backgroundUrl: templateDoc.background_url,
+            elements: templateDoc.elements,
+            isActive: templateDoc.is_active,
+            pageSize: templateDoc.page_size,
+            orientation: templateDoc.orientation,
+            designWidth: templateDoc.design_width,
+            designHeight: templateDoc.design_height,
+            createdAt: templateDoc.created_at,
+            updatedAt: templateDoc.updated_at,
+            signatures: templateDoc.signatures,
           } as CertificateTemplate;
           setTemplate(t);
           setSignatures((t as any).signatures || []);
-          setPageSize((t as any).pageSize || 'letter');
-          setOrientation((t as any).orientation || 'landscape');
+          setPageSize(t.pageSize || 'letter');
+          setOrientation(t.orientation || 'landscape');
 
           // Procesar background a data URL para PDF (server proxy + fallback)
           if (t.backgroundUrl) {
@@ -180,13 +190,16 @@ export default function CertificatePreviewPage() {
     if (!template) return;
     try {
       const { designWidth, designHeight } = computeDesignDimensions(pageSize, orientation);
-      await updateDoc(doc(db, 'certificateTemplates', template.id), {
-        pageSize,
-        orientation,
-        designWidth,
-        designHeight,
-        updatedAt: new Date(),
-      });
+      await supabaseClient
+        .from(TABLES.CERTIFICATE_TEMPLATES)
+        .update({
+          page_size: pageSize,
+          orientation,
+          design_width: designWidth,
+          design_height: designHeight,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', template.id);
       const updated = { ...template, pageSize, orientation, designWidth, designHeight } as CertificateTemplate;
       setTemplate(updated);
       setPdfTemplate(prev => prev ? ({ ...prev, pageSize, orientation, designWidth, designHeight }) : updated);
@@ -214,14 +227,20 @@ export default function CertificatePreviewPage() {
     try {
       setUploadingSignature(true);
       const timestamp = Date.now();
-      const fileName = `certificates/signatures/${timestamp}_${file.name}`;
-      const storageRef = ref(storage, fileName);
+      const filePath = `certificates/signatures/${timestamp}_${file.name}`;
       
-      await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(storageRef);
+      const { error: uploadError } = await supabaseClient.storage
+        .from('files')
+        .upload(filePath, file);
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabaseClient.storage
+        .from('files')
+        .getPublicUrl(filePath);
       
       setSignatures(signatures.map(sig => 
-        sig.id === id ? { ...sig, imageUrl: downloadURL } : sig
+        sig.id === id ? { ...sig, imageUrl: urlData.publicUrl } : sig
       ));
     } catch (error) {
       console.error("Error uploading signature:", error);
@@ -240,10 +259,13 @@ export default function CertificatePreviewPage() {
   const saveSignaturesToTemplate = async () => {
     if (!template) return;
     try {
-      await updateDoc(doc(db, 'certificateTemplates', template.id), {
-        signatures: signatures,
-        updatedAt: new Date(),
-      });
+      await supabaseClient
+        .from(TABLES.CERTIFICATE_TEMPLATES)
+        .update({
+          signatures: signatures,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', template.id);
       const updated = { ...template, signatures } as CertificateTemplate;
       setTemplate(updated);
       setPdfTemplate(prev => prev ? ({ ...prev, signatures }) : updated);

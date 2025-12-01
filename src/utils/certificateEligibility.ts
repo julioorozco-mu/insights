@@ -1,6 +1,6 @@
 import { Course } from "@/types/course";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 
 interface EligibilityResult {
   eligible: boolean;
@@ -60,13 +60,14 @@ export async function checkCertificateEligibility(
       }
     } else if (rules.availability?.mode === 'after_last_lesson') {
       try {
-        const lessonsSnapshot = await getDocs(
-          query(collection(db, 'lessons'), where('courseId', '==', courseId))
-        );
+        const { data: lessonsData } = await supabaseClient
+          .from(TABLES.LESSONS)
+          .select('end_date, start_date, scheduled_start_time')
+          .eq('course_id', courseId);
+        
         let lastDate: Date | null = null;
-        lessonsSnapshot.forEach((docSnap) => {
-          const d: any = docSnap.data();
-          const s = d.endDate || d.startDate || d.scheduledStartTime;
+        (lessonsData || []).forEach((lesson: any) => {
+          const s = lesson.end_date || lesson.start_date || lesson.scheduled_start_time;
           if (s) {
             const dt = new Date(s);
             const year = dt.getUTCFullYear();
@@ -105,15 +106,29 @@ export async function checkCertificateEligibility(
     }
   }
 
-  // Verificar inscripción
-  const enrollmentQuery = query(
-    collection(db, "enrollments"),
-    where("courseId", "==", courseId),
-    where("studentId", "==", studentId)
-  );
-  const enrollmentSnapshot = await getDocs(enrollmentQuery);
+  // Verificar inscripción desde Supabase
+  // Primero obtener el student record
+  const { data: studentData } = await supabaseClient
+    .from(TABLES.STUDENTS)
+    .select('id')
+    .eq('user_id', studentId)
+    .single();
+  
+  if (!studentData) {
+    return {
+      eligible: false,
+      reasons: ["No estás inscrito en este curso"],
+    };
+  }
 
-  if (enrollmentSnapshot.empty) {
+  const { data: enrollment } = await supabaseClient
+    .from(TABLES.STUDENT_ENROLLMENTS)
+    .select('id')
+    .eq('course_id', courseId)
+    .eq('student_id', studentData.id)
+    .single();
+
+  if (!enrollment) {
     return {
       eligible: false,
       reasons: ["No estás inscrito en este curso"],
@@ -131,27 +146,27 @@ export async function checkCertificateEligibility(
   // Verificar encuestas por curso si es requerido (compatibilidad)
   if (rules.requireSurveys && (!rules.perLessonMode || rules.perLessonMode === 'none')) {
     if (course.entrySurveyId) {
-      const entryResponseQuery = query(
-        collection(db, "surveyResponses"),
-        where("surveyId", "==", course.entrySurveyId),
-        where("userId", "==", studentId)
-      );
-      const entryResponseSnapshot = await getDocs(entryResponseQuery);
+      const { data: entryResponse } = await supabaseClient
+        .from(TABLES.SURVEY_RESPONSES)
+        .select('id')
+        .eq('survey_id', course.entrySurveyId)
+        .eq('user_id', studentId)
+        .single();
 
-      if (entryResponseSnapshot.empty) {
+      if (!entryResponse) {
         reasons.push("Debes completar la encuesta de entrada");
       }
     }
 
     if (course.exitSurveyId) {
-      const exitResponseQuery = query(
-        collection(db, "surveyResponses"),
-        where("surveyId", "==", course.exitSurveyId),
-        where("userId", "==", studentId)
-      );
-      const exitResponseSnapshot = await getDocs(exitResponseQuery);
+      const { data: exitResponse } = await supabaseClient
+        .from(TABLES.SURVEY_RESPONSES)
+        .select('id')
+        .eq('survey_id', course.exitSurveyId)
+        .eq('user_id', studentId)
+        .single();
 
-      if (exitResponseSnapshot.empty) {
+      if (!exitResponse) {
         reasons.push("Debes completar la encuesta de salida");
       }
     }
@@ -160,26 +175,28 @@ export async function checkCertificateEligibility(
   // Validaciones por lección (nuevo)
   if (rules.perLessonMode && rules.perLessonMode !== 'none') {
     try {
-      const lessonsSnapshot = await getDocs(
-        query(collection(db, 'lessons'), where('courseId', '==', courseId))
-      );
-      const lessonIds: string[] = lessonsSnapshot.docs.map((d) => d.id);
+      const { data: lessonsData } = await supabaseClient
+        .from(TABLES.LESSONS)
+        .select('id, entry_survey_id, exit_survey_id')
+        .eq('course_id', courseId);
+      
+      const lessonIds: string[] = (lessonsData || []).map((l: any) => l.id);
 
       for (const lessonId of lessonIds) {
         // Asistencia si se requiere "complete_all"
         if (rules.perLessonMode === 'complete_all') {
-          const attendanceQuery = query(
-            collection(db, 'attendance'),
-            where('lessonId', '==', lessonId),
-            where('studentId', '==', studentId)
-          );
-          const attendanceSnapshot = await getDocs(attendanceQuery);
-          if (attendanceSnapshot.empty) {
+          const { data: attendance } = await supabaseClient
+            .from(TABLES.LESSON_ATTENDANCE)
+            .select('duration_minutes')
+            .eq('lesson_id', lessonId)
+            .eq('student_id', studentId)
+            .single();
+          
+          if (!attendance) {
             reasons.push('Falta asistencia en una o más lecciones');
             break;
           } else {
-            const attendanceData = attendanceSnapshot.docs[0].data() as any;
-            const durationMinutes = attendanceData.durationMinutes || 0;
+            const durationMinutes = attendance.duration_minutes || 0;
             if (durationMinutes < 5) {
               reasons.push('Debes asistir al menos 5 minutos a todas las lecciones');
               break;
@@ -187,33 +204,33 @@ export async function checkCertificateEligibility(
           }
         }
 
-        // Encuestas por lección: entrada y salida si existen
-        // Nota: solo se valida si la lección tiene asignadas encuestas
-        const lessonDoc = lessonsSnapshot.docs.find((d) => d.id === lessonId);
-        const ld: any = lessonDoc?.data() || {};
-        const entrySurveyId = ld.entrySurveyId;
-        const exitSurveyId = ld.exitSurveyId;
+        // Encuestas por lección
+        const lessonDoc = (lessonsData || []).find((l: any) => l.id === lessonId);
+        const entrySurveyId = lessonDoc?.entry_survey_id;
+        const exitSurveyId = lessonDoc?.exit_survey_id;
 
         if (entrySurveyId) {
-          const entryResponseQuery = query(
-            collection(db, 'surveyResponses'),
-            where('surveyId', '==', entrySurveyId),
-            where('userId', '==', studentId)
-          );
-          const entryResponseSnapshot = await getDocs(entryResponseQuery);
-          if (entryResponseSnapshot.empty) {
+          const { data: entryResponse } = await supabaseClient
+            .from(TABLES.SURVEY_RESPONSES)
+            .select('id')
+            .eq('survey_id', entrySurveyId)
+            .eq('user_id', studentId)
+            .single();
+          
+          if (!entryResponse) {
             reasons.push('Debes completar la encuesta de entrada de todas las lecciones');
             break;
           }
         }
         if (exitSurveyId) {
-          const exitResponseQuery = query(
-            collection(db, 'surveyResponses'),
-            where('surveyId', '==', exitSurveyId),
-            where('userId', '==', studentId)
-          );
-          const exitResponseSnapshot = await getDocs(exitResponseQuery);
-          if (exitResponseSnapshot.empty) {
+          const { data: exitResponse } = await supabaseClient
+            .from(TABLES.SURVEY_RESPONSES)
+            .select('id')
+            .eq('survey_id', exitSurveyId)
+            .eq('user_id', studentId)
+            .single();
+          
+          if (!exitResponse) {
             reasons.push('Debes completar la encuesta de salida de todas las lecciones');
             break;
           }
@@ -223,24 +240,24 @@ export async function checkCertificateEligibility(
       reasons.push('No se pudieron validar todas las lecciones');
     }
   } else if (rules.requireAttendance) {
-    // Compatibilidad: asistencia a todas las lecciones cuando no hay modo por lección
+    // Compatibilidad: asistencia a todas las lecciones
     const lessonIds = course.lessonIds || [];
     if (lessonIds.length === 0) {
       reasons.push('El curso no tiene lecciones configuradas');
     } else {
       for (const lessonId of lessonIds) {
-        const attendanceQuery = query(
-          collection(db, 'attendance'),
-          where('lessonId', '==', lessonId),
-          where('studentId', '==', studentId)
-        );
-        const attendanceSnapshot = await getDocs(attendanceQuery);
-        if (attendanceSnapshot.empty) {
+        const { data: attendance } = await supabaseClient
+          .from(TABLES.LESSON_ATTENDANCE)
+          .select('duration_minutes')
+          .eq('lesson_id', lessonId)
+          .eq('student_id', studentId)
+          .single();
+        
+        if (!attendance) {
           reasons.push('Falta asistencia a una o más lecciones');
           break;
         } else {
-          const attendanceData = attendanceSnapshot.docs[0].data() as any;
-          const durationMinutes = attendanceData.durationMinutes || 0;
+          const durationMinutes = attendance.duration_minutes || 0;
           if (durationMinutes < 5) {
             reasons.push('Debes asistir al menos 5 minutos a todas las lecciones');
             break;

@@ -5,8 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { resourceService } from "@/lib/services/resourceService";
 import { SpeakerResource } from "@/types/resource";
 import { Course } from "@/types/course";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { courseRepository } from "@/lib/repositories/courseRepository";
 import { IconX, IconCheck, IconBook } from "@tabler/icons-react";
 
 interface ResourceAssignModalProps {
@@ -37,15 +36,7 @@ export default function ResourceAssignModal({
 
     try {
       setLoading(true);
-      const q = query(
-        collection(db, "courses"),
-        where("speakerIds", "array-contains", user.id)
-      );
-      const snapshot = await getDocs(q);
-      const coursesData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Course[];
+      const coursesData = await courseRepository.findBySpeaker(user.id);
       setCourses(coursesData);
     } catch (error) {
       console.error("Error loading courses:", error);
@@ -65,9 +56,7 @@ export default function ResourceAssignModal({
   const handleSave = async () => {
     try {
       setSaving(true);
-      await resourceService.update(resource.id, {
-        assignedCourses: selectedCourses,
-      });
+      await resourceService.assignToCourses(resource.id, selectedCourses);
       onSuccess();
     } catch (error) {
       console.error("Error saving assignments:", error);

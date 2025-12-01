@@ -15,9 +15,9 @@ import {
   IconCheck
 } from "@tabler/icons-react";
 import { EnrollmentCalendar } from "@/components/EnrollmentCalendar";
-import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { teacherRepository } from "@/lib/repositories/teacherRepository";
 
 // FilePond imports
 import { FilePond, registerPlugin } from 'react-filepond';
@@ -183,32 +183,31 @@ export default function ManageCoursePage() {
           }
         }
 
-        // Cargar ponentes desde colección 'speakers' (incluye ponentes sin cuenta de usuario)
-        const speakersSnapshot = await getDocs(collection(db, 'speakers'));
-        const speakersData = speakersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          name: (doc.data() as any).name,
-          lastName: (doc.data() as any).lastName,
-          email: (doc.data() as any).email || '',
-        })) as Speaker[];
-        setSpeakers(speakersData);
+        // Cargar ponentes desde Supabase
+        const speakersData = await teacherRepository.findAll();
+        setSpeakers(speakersData.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          lastName: s.lastName,
+          email: s.email || '',
+        })));
 
         // Cargar certificados
-        const certsSnapshot = await getDocs(collection(db, "certificateTemplates"));
-        const certsData = certsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          title: doc.data().title,
-        })) as CertificateTemplate[];
-        setCertificates(certsData);
+        const { data: certsData } = await supabaseClient
+          .from(TABLES.CERTIFICATE_TEMPLATES)
+          .select('id, title');
+        setCertificates((certsData || []) as CertificateTemplate[]);
 
         // Cargar encuestas
-        const surveysSnapshot = await getDocs(collection(db, "surveys"));
-        const surveysData = surveysSnapshot.docs.map(doc => ({
-          id: doc.id,
-          title: doc.data().title,
-          type: doc.data().type,
-        })) as Survey[];
-        setSurveys(surveysData);
+        const { data: surveysData } = await supabaseClient
+          .from(TABLES.SURVEYS)
+          .select('id, title, type')
+          .or('is_deleted.is.null,is_deleted.eq.false');
+        setSurveys((surveysData || []).map((s: any) => ({
+          id: s.id,
+          title: s.title,
+          type: s.type,
+        })));
 
       } catch (error) {
         console.error("Error loading data:", error);
@@ -263,10 +262,19 @@ export default function ManageCoursePage() {
       let finalImageUrl: string | undefined = coverImageUrl || undefined;
       if (selectedFile) {
         const timestamp = Date.now();
-        const fileName = `courses/${timestamp}_${selectedFile.name}`;
-        const storageRef = ref(storage, fileName);
-        await uploadBytes(storageRef, selectedFile);
-        finalImageUrl = await getDownloadURL(storageRef);
+        const filePath = `courses/${timestamp}_${selectedFile.name}`;
+        
+        const { error: uploadError } = await supabaseClient.storage
+          .from('files')
+          .upload(filePath, selectedFile);
+        
+        if (uploadError) throw uploadError;
+        
+        const { data: urlData } = supabaseClient.storage
+          .from('files')
+          .getPublicUrl(filePath);
+        
+        finalImageUrl = urlData.publicUrl;
       }
 
       // Construir fecha y hora de inicio
@@ -353,7 +361,7 @@ export default function ManageCoursePage() {
       if (enrollmentRuleType === 'date_range' && enrollmentStartDate) updateData.enrollmentStartDate = enrollmentStartDate;
       if (enrollmentRuleType === 'date_range' && enrollmentEndDate) updateData.enrollmentEndDate = enrollmentEndDate;
 
-      await updateDoc(doc(db, "courses", params.id as string), updateData);
+      await courseRepository.update(params.id as string, updateData);
 
       setShowSuccessModal(true);
     } catch (error) {

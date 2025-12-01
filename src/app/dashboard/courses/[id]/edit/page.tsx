@@ -11,11 +11,11 @@ import { updateCourseSchema, UpdateCourseInput } from "@/lib/validators/courseSc
 import { MEXICO_STATES } from "@/types/catalog";
 import { IconUpload, IconX } from "@tabler/icons-react";
 import { EnrollmentCalendar } from "@/components/EnrollmentCalendar";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage, db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { userRepository } from "@/lib/repositories/userRepository";
 import CourseResourceSelector from "@/components/resources/CourseResourceSelector";
 import { useAuth } from "@/hooks/useAuth";
-import { collection, getDocs, query, where } from "firebase/firestore";
 
 interface Speaker {
   id: string;
@@ -70,28 +70,25 @@ export default function EditCoursePage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Cargar speakers
-        const usersQuery = query(
-          collection(db, 'users'),
-          where('role', '==', 'speaker')
-        );
-        const usersSnapshot = await getDocs(usersQuery);
-        const speakersData = usersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          name: doc.data().name,
-          lastName: doc.data().lastName,
-          email: doc.data().email,
-        })) as Speaker[];
-        setSpeakers(speakersData);
+        // Cargar speakers desde Supabase
+        const speakersData = await userRepository.findByRole('teacher');
+        setSpeakers(speakersData.map(u => ({
+          id: u.id,
+          name: u.name,
+          lastName: (u as any).lastName,
+          email: u.email,
+        })));
 
         // Cargar encuestas
-        const surveysSnapshot = await getDocs(collection(db, 'surveys'));
-        const surveysData = surveysSnapshot.docs.map(doc => ({
-          id: doc.id,
-          title: doc.data().title,
-          type: doc.data().type,
-        })) as Survey[];
-        setSurveys(surveysData);
+        const { data: surveysData } = await supabaseClient
+          .from(TABLES.SURVEYS)
+          .select('id, title, type')
+          .or('is_deleted.is.null,is_deleted.eq.false');
+        setSurveys((surveysData || []).map((s: any) => ({
+          id: s.id,
+          title: s.title,
+          type: s.type,
+        })));
 
         // Cargar curso
         const id = params.id as string;
@@ -185,13 +182,19 @@ export default function EditCoursePage() {
     try {
       setUploadingImage(true);
       const timestamp = Date.now();
-      const fileName = `courses/${timestamp}_${selectedFile.name}`;
-      const storageRef = ref(storage, fileName);
+      const filePath = `courses/${timestamp}_${selectedFile.name}`;
       
-      await uploadBytes(storageRef, selectedFile);
-      const downloadURL = await getDownloadURL(storageRef);
+      const { error: uploadError } = await supabaseClient.storage
+        .from('files')
+        .upload(filePath, selectedFile);
       
-      return downloadURL;
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabaseClient.storage
+        .from('files')
+        .getPublicUrl(filePath);
+      
+      return urlData.publicUrl;
     } catch (error) {
       console.error("Error uploading image:", error);
       throw error;

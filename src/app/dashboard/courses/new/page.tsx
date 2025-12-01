@@ -7,8 +7,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createCourseSchema, CreateCourseInput } from "@/lib/validators/courseSchema";
 import { courseRepository } from "@/lib/repositories/courseRepository";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { teacherRepository } from "@/lib/repositories/teacherRepository";
 import { IconX, IconUpload } from "@tabler/icons-react";
 import { EnrollmentCalendar } from "@/components/EnrollmentCalendar";
 import { useUploadFile } from "@/hooks/useUploadFile";
@@ -65,29 +66,26 @@ export default function NewCoursePage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Cargar speakers (incluye ponentes sin cuenta de usuario)
-        const speakersSnapshot = await getDocs(collection(db, 'speakers'));
-        const speakersData = speakersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          name: doc.data().name,
-          lastName: doc.data().lastName,
-          email: doc.data().email || '',
+        // Cargar speakers desde Supabase
+        const teachers = await teacherRepository.findAll();
+        const speakersData = teachers.map(t => ({
+          id: t.id,
+          name: t.name || '',
+          lastName: '',
+          email: t.email || '',
         })) as Speaker[];
         setSpeakers(speakersData);
 
-        // Inicializar con el usuario actual si es speaker
-        if (user?.id && user?.role === 'speaker') {
+        // Inicializar con el usuario actual si es teacher
+        if (user?.id && user?.role === 'teacher') {
           setSelectedSpeakers([user.id]);
         }
 
-        // Cargar encuestas
-        const surveysSnapshot = await getDocs(collection(db, 'surveys'));
-        const surveysData = surveysSnapshot.docs.map(doc => ({
-          id: doc.id,
-          title: doc.data().title,
-          type: doc.data().type,
-        })) as Survey[];
-        setSurveys(surveysData);
+        // Cargar encuestas desde Supabase
+        const { data: surveysData } = await supabaseClient
+          .from(TABLES.SURVEYS)
+          .select('id, title, type');
+        setSurveys(surveysData || []);
       } catch (error) {
         console.error('Error loading data:', error);
       }

@@ -12,8 +12,8 @@ import {
   IconTrophy,
   IconX
 } from "@tabler/icons-react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { userRepository } from "@/lib/repositories/userRepository";
+import { studentRepository } from "@/lib/repositories/studentRepository";
 import { formatDate } from "@/utils/formatDate";
 
 interface Student {
@@ -43,20 +43,40 @@ export default function StudentsPage() {
   useEffect(() => {
     const loadStudents = async () => {
       try {
-        // Cargar usuarios con rol "student"
-        const usersSnapshot = await getDocs(collection(db, "users"));
-        const studentsData = usersSnapshot.docs
-          .map((doc) => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              ...data,
-              createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-            };
-          })
-          .filter((user: any) => user.role === "student") as Student[];
+        // Cargar usuarios con rol "student" desde Supabase
+        const users = await userRepository.findByRole("student");
+        const studentsData: Student[] = users.map((user) => ({
+          id: user.id,
+          name: user.name,
+          lastName: user.lastName,
+          email: user.email,
+          phone: user.phone,
+          dateOfBirth: user.dateOfBirth,
+          gender: user.gender,
+          state: user.state,
+          avatarUrl: user.avatarUrl,
+          username: user.username,
+          createdAt: user.createdAt,
+        }));
         
-        setStudents(studentsData);
+        // Cargar información adicional de estudiantes (cursos completados, certificados)
+        const studentsWithDetails = await Promise.all(
+          studentsData.map(async (student) => {
+            try {
+              const studentDetail = await studentRepository.findById(student.id);
+              return {
+                ...student,
+                enrollmentDate: studentDetail?.enrollmentDate,
+                completedCourses: studentDetail?.completedCourses || [],
+                certificates: studentDetail?.certificates || [],
+              };
+            } catch {
+              return student;
+            }
+          })
+        );
+        
+        setStudents(studentsWithDetails);
       } catch (error) {
         console.error("Error loading students:", error);
       } finally {

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 import {
   IconX,
   IconMail,
@@ -114,49 +114,50 @@ export function ReminderModal({
   const loadStudents = async () => {
     setLoading(true);
     try {
-      // Cargar estudiantes del curso
-      const enrollmentsQuery = query(
-        collection(db, "enrollments"),
-        where("courseId", "==", courseId)
-      );
-      const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
+      // Cargar estudiantes del curso desde enrollments
+      const { data: enrollments, error: enrollError } = await supabaseClient
+        .from(TABLES.STUDENT_ENROLLMENTS)
+        .select(`
+          student_id,
+          students:student_id (
+            user_id,
+            users:user_id (
+              id, name, email, avatar_url
+            )
+          )
+        `)
+        .eq('course_id', courseId);
 
-      const courseStudentsData: Student[] = [];
-      for (const enrollDoc of enrollmentsSnapshot.docs) {
-        const enrollment = enrollDoc.data();
-        const userDoc = await getDoc(doc(db, "users", enrollment.studentId));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          courseStudentsData.push({
-            id: enrollment.studentId,
-            name: userData.name || enrollment.studentName || "Sin nombre",
-            email: userData.email || enrollment.studentEmail,
-            avatarUrl: userData.avatarUrl,
-          });
-        }
-      }
+      if (enrollError) throw enrollError;
+
+      const courseStudentsData: Student[] = (enrollments || []).map((enrollment: any) => {
+        const user = enrollment.students?.users;
+        return {
+          id: user?.id || enrollment.student_id,
+          name: user?.name || "Sin nombre",
+          email: user?.email || "",
+          avatarUrl: user?.avatar_url,
+        };
+      }).filter((s: Student) => s.email);
 
       setStudents(courseStudentsData);
 
       // Cargar todos los estudiantes de la plataforma
-      const allStudentsQuery = query(
-        collection(db, "users"),
-        where("role", "==", "student")
-      );
-      const allStudentsSnapshot = await getDocs(allStudentsQuery);
+      const { data: allStudentsData, error: allError } = await supabaseClient
+        .from(TABLES.USERS)
+        .select('*')
+        .eq('role', 'student');
 
-      const allStudentsData: Student[] = [];
-      for (const userDoc of allStudentsSnapshot.docs) {
-        const userData = userDoc.data();
-        allStudentsData.push({
-          id: userDoc.id,
-          name: userData.name || "Sin nombre",
-          email: userData.email,
-          avatarUrl: userData.avatarUrl,
-        });
-      }
+      if (allError) throw allError;
 
-      setAllPlatformStudents(allStudentsData);
+      const allStudents: Student[] = (allStudentsData || []).map((user: any) => ({
+        id: user.id,
+        name: user.name || "Sin nombre",
+        email: user.email,
+        avatarUrl: user.avatar_url,
+      }));
+
+      setAllPlatformStudents(allStudents);
     } catch (error) {
       console.error("Error cargando estudiantes:", error);
     } finally {

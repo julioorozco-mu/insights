@@ -4,8 +4,10 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
-import { doc, getDoc, getDocs, query, where, collection, addDoc, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { courseRepository } from "@/lib/repositories/courseRepository";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
 import { Loader } from "@/components/common/Loader";
 import { 
   IconBook, 
@@ -124,25 +126,32 @@ export default function StudentCoursePage() {
 
       try {
         // Cargar curso
-        const courseDoc = await getDoc(doc(db, 'courses', params.id as string));
-        if (!courseDoc.exists()) {
+        const courseData = await courseRepository.findById(params.id as string);
+        if (!courseData) {
           router.push('/dashboard/enrolled-courses');
           return;
         }
-
-        const courseData = {
-          id: courseDoc.id,
-          ...courseDoc.data(),
-        } as FullCourse;
         setCourse(courseData);
 
         // Cargar plantilla de certificado si existe
         if (courseData.certificateTemplateId) {
-          const templateDoc = await getDoc(doc(db, 'certificateTemplates', courseData.certificateTemplateId));
-          if (templateDoc.exists()) {
+          const { data: templateDoc } = await supabaseClient
+            .from(TABLES.CERTIFICATE_TEMPLATES)
+            .select('*')
+            .eq('id', courseData.certificateTemplateId)
+            .single();
+          if (templateDoc) {
             const tpl = {
               id: templateDoc.id,
-              ...templateDoc.data(),
+              title: templateDoc.title,
+              description: templateDoc.description,
+              backgroundUrl: templateDoc.background_url,
+              elements: templateDoc.elements,
+              pageSize: templateDoc.page_size,
+              orientation: templateDoc.orientation,
+              designWidth: templateDoc.design_width,
+              designHeight: templateDoc.design_height,
+              signatures: templateDoc.signatures,
             } as any;
             setCertificateTemplate(tpl);
 
@@ -177,14 +186,14 @@ export default function StudentCoursePage() {
         }
 
         // Verificar inscripción
-        const enrollmentQuery = query(
-          collection(db, 'enrollments'),
-          where('courseId', '==', params.id),
-          where('studentId', '==', user.id)
-        );
-        const enrollmentSnapshot = await getDocs(enrollmentQuery);
+        const { data: enrollmentData } = await supabaseClient
+          .from(TABLES.STUDENT_ENROLLMENTS)
+          .select('id')
+          .eq('course_id', params.id)
+          .eq('student_id', user.id)
+          .limit(1);
         
-        if (enrollmentSnapshot.empty) {
+        if (!enrollmentData || enrollmentData.length === 0) {
           alert('No estás inscrito en este curso');
           router.push('/dashboard/enrolled-courses');
           return;
@@ -192,12 +201,26 @@ export default function StudentCoursePage() {
 
         // Cargar lecciones
         if (courseData.lessonIds && courseData.lessonIds.length > 0) {
-          const lessonsPromises = courseData.lessonIds.map(async (lessonId) => {
-            const lessonDoc = await getDoc(doc(db, 'lessons', lessonId));
-            if (lessonDoc.exists()) {
+          const lessonsPromises = courseData.lessonIds.map(async (lessonId: string) => {
+            const lessonData = await lessonRepository.findById(lessonId);
+            if (lessonData) {
               return {
-                id: lessonDoc.id,
-                ...lessonDoc.data(),
+                id: lessonData.id,
+                title: lessonData.title,
+                description: lessonData.description,
+                type: lessonData.type as 'video' | 'livestream' | 'hybrid',
+                videoUrl: lessonData.videoUrl,
+                recordedVideoUrl: lessonData.recordedVideoUrl,
+                isLive: lessonData.isLive,
+                agoraChannel: lessonData.agoraChannel,
+                agoraAppId: lessonData.agoraAppId,
+                liveStatus: lessonData.liveStatus as 'idle' | 'active' | 'ended' | undefined,
+                durationMinutes: lessonData.durationMinutes,
+                order: lessonData.order || 0,
+                resourceIds: lessonData.resourceIds,
+                scheduledDate: (lessonData as any).scheduledDate || lessonData.scheduledStartTime,
+                entrySurveyId: (lessonData as any).entrySurveyId,
+                exitSurveyId: (lessonData as any).exitSurveyId,
               } as Lesson;
             }
             return null;
@@ -223,32 +246,42 @@ export default function StudentCoursePage() {
 
             // Encuesta de entrada
             if ((l as any).entrySurveyId) {
-              const sDoc = await getDoc(doc(db, 'surveys', (l as any).entrySurveyId));
-              if (sDoc.exists()) {
-                map[l.id].entrySurvey = { id: sDoc.id, ...sDoc.data() } as Survey;
-                const respQ = await getDocs(query(
-                  collection(db, 'surveyResponses'),
-                  where('surveyId', '==', sDoc.id),
-                  where('userId', '==', user.id)
-                ));
-                if (!respQ.empty) {
-                  map[l.id].entryResponse = { id: respQ.docs[0].id, ...respQ.docs[0].data() } as any;
+              const { data: sDoc } = await supabaseClient
+                .from(TABLES.SURVEYS)
+                .select('*')
+                .eq('id', (l as any).entrySurveyId)
+                .single();
+              if (sDoc) {
+                map[l.id].entrySurvey = { id: sDoc.id, title: sDoc.title, type: sDoc.type, questions: sDoc.questions } as Survey;
+                const { data: respQ } = await supabaseClient
+                  .from(TABLES.SURVEY_RESPONSES)
+                  .select('*')
+                  .eq('survey_id', sDoc.id)
+                  .eq('user_id', user.id)
+                  .limit(1);
+                if (respQ && respQ.length > 0) {
+                  map[l.id].entryResponse = { id: respQ[0].id, surveyId: respQ[0].survey_id, answers: respQ[0].answers } as any;
                 }
               }
             }
 
             // Encuesta de salida
             if ((l as any).exitSurveyId) {
-              const sDoc = await getDoc(doc(db, 'surveys', (l as any).exitSurveyId));
-              if (sDoc.exists()) {
-                map[l.id].exitSurvey = { id: sDoc.id, ...sDoc.data() } as Survey;
-                const respQ = await getDocs(query(
-                  collection(db, 'surveyResponses'),
-                  where('surveyId', '==', sDoc.id),
-                  where('userId', '==', user.id)
-                ));
-                if (!respQ.empty) {
-                  map[l.id].exitResponse = { id: respQ.docs[0].id, ...respQ.docs[0].data() } as any;
+              const { data: sDoc } = await supabaseClient
+                .from(TABLES.SURVEYS)
+                .select('*')
+                .eq('id', (l as any).exitSurveyId)
+                .single();
+              if (sDoc) {
+                map[l.id].exitSurvey = { id: sDoc.id, title: sDoc.title, type: sDoc.type, questions: sDoc.questions } as Survey;
+                const { data: respQ } = await supabaseClient
+                  .from(TABLES.SURVEY_RESPONSES)
+                  .select('*')
+                  .eq('survey_id', sDoc.id)
+                  .eq('user_id', user.id)
+                  .limit(1);
+                if (respQ && respQ.length > 0) {
+                  map[l.id].exitResponse = { id: respQ[0].id, surveyId: respQ[0].survey_id, answers: respQ[0].answers } as any;
                 }
               }
             }
@@ -311,51 +344,48 @@ export default function StudentCoursePage() {
 
         // Cargar ponentes
         if (courseData.speakerIds && courseData.speakerIds.length > 0) {
-          const speakersPromises = courseData.speakerIds.map(async (speakerId) => {
-            const speakerDoc = await getDoc(doc(db, 'users', speakerId));
-            if (speakerDoc.exists()) {
-              return {
-                id: speakerDoc.id,
-                ...speakerDoc.data(),
-              };
-            }
-            return null;
-          });
-
-          const speakersData = (await Promise.all(speakersPromises)).filter((s) => s !== null);
-          setSpeakers(speakersData);
+          const { data: speakersData } = await supabaseClient
+            .from(TABLES.USERS)
+            .select('id, name, email, avatar_url')
+            .in('id', courseData.speakerIds);
+          setSpeakers((speakersData || []).map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            email: s.email,
+            avatarUrl: s.avatar_url,
+          })));
         }
 
         // Cargar encuestas de entrada y salida del curso
-        // Primero intentar cargar por courseId directo
         console.log('🔍 Buscando encuestas para courseId:', params.id);
-        const surveysQuery = query(
-          collection(db, 'surveys'),
-          where('courseId', '==', params.id)
-        );
-        const surveysSnapshot = await getDocs(surveysQuery);
-        console.log('📊 Encuestas encontradas con courseId:', surveysSnapshot.size);
+        const { data: surveysData } = await supabaseClient
+          .from(TABLES.SURVEYS)
+          .select('*')
+          .eq('course_id', params.id);
+        console.log('📊 Encuestas encontradas con courseId:', surveysData?.length || 0);
         
-        if (surveysSnapshot.empty) {
+        if (!surveysData || surveysData.length === 0) {
           // Si no hay encuestas con courseId, buscar en el curso las referencias
           console.log('🔍 Buscando encuestas en el documento del curso...');
           if (courseData.entrySurveyId) {
             console.log('📋 Cargando encuesta de entrada:', courseData.entrySurveyId);
-            const entryDoc = await getDoc(doc(db, 'surveys', courseData.entrySurveyId));
-            if (entryDoc.exists()) {
-              setEntrySurvey({ id: entryDoc.id, ...entryDoc.data() } as Survey);
+            const { data: entryDoc } = await supabaseClient
+              .from(TABLES.SURVEYS).select('*').eq('id', courseData.entrySurveyId).single();
+            if (entryDoc) {
+              setEntrySurvey({ id: entryDoc.id, title: entryDoc.title, type: entryDoc.type, questions: entryDoc.questions } as Survey);
             }
           }
           if (courseData.exitSurveyId) {
             console.log('📋 Cargando encuesta de salida:', courseData.exitSurveyId);
-            const exitDoc = await getDoc(doc(db, 'surveys', courseData.exitSurveyId));
-            if (exitDoc.exists()) {
-              setExitSurvey({ id: exitDoc.id, ...exitDoc.data() } as Survey);
+            const { data: exitDoc } = await supabaseClient
+              .from(TABLES.SURVEYS).select('*').eq('id', courseData.exitSurveyId).single();
+            if (exitDoc) {
+              setExitSurvey({ id: exitDoc.id, title: exitDoc.title, type: exitDoc.type, questions: exitDoc.questions } as Survey);
             }
           }
         } else {
-          surveysSnapshot.forEach((surveyDoc) => {
-            const surveyData = { id: surveyDoc.id, ...surveyDoc.data() } as Survey;
+          surveysData.forEach((surveyDoc: any) => {
+            const surveyData = { id: surveyDoc.id, title: surveyDoc.title, type: surveyDoc.type, questions: surveyDoc.questions } as Survey;
             console.log('📋 Encuesta:', surveyData.title, 'Tipo:', surveyData.type);
             if (surveyData.type === 'entry') {
               setEntrySurvey(surveyData);
@@ -366,16 +396,15 @@ export default function StudentCoursePage() {
         }
 
         // Cargar respuestas del estudiante
-        const responsesQuery = query(
-          collection(db, 'surveyResponses'),
-          where('courseId', '==', params.id),
-          where('userId', '==', user.id)
-        );
-        const responsesSnapshot = await getDocs(responsesQuery);
-        responsesSnapshot.forEach((responseDoc) => {
-          const responseData = { id: responseDoc.id, ...responseDoc.data() } as SurveyResponse;
+        const { data: responsesData } = await supabaseClient
+          .from(TABLES.SURVEY_RESPONSES)
+          .select('*')
+          .eq('course_id', params.id)
+          .eq('user_id', user.id);
+        (responsesData || []).forEach((responseDoc: any) => {
+          const responseData = { id: responseDoc.id, surveyId: responseDoc.survey_id, answers: responseDoc.answers } as SurveyResponse;
           
-          // Asignar respuesta basándose en el surveyId específico, no solo en el tipo
+          // Asignar respuesta basándose en el surveyId específico
           if (responseData.surveyId === courseData.entrySurveyId) {
             setEntryResponse(responseData);
           } else if (responseData.surveyId === courseData.exitSurveyId) {
@@ -392,31 +421,44 @@ export default function StudentCoursePage() {
     loadCourseData();
   }, [params.id, user, router]);
 
-  // Listener en tiempo real para actualizar estado de lecciones (isLive)
+  // Polling para actualizar estado de lecciones (isLive)
   useEffect(() => {
     if (!course?.lessonIds || course.lessonIds.length === 0) return;
 
-    const unsubscribers = course.lessonIds.map((lessonId) => {
-      return onSnapshot(doc(db, 'lessons', lessonId), (lessonDoc) => {
-        if (lessonDoc.exists()) {
+    const pollLessons = async () => {
+      for (const lessonId of course.lessonIds) {
+        const lessonData = await lessonRepository.findById(lessonId);
+        if (lessonData) {
           const updatedLesson = {
-            id: lessonDoc.id,
-            ...lessonDoc.data(),
+            id: lessonData.id,
+            title: lessonData.title,
+            description: lessonData.description,
+            type: lessonData.type as 'video' | 'livestream' | 'hybrid',
+            videoUrl: lessonData.videoUrl,
+            recordedVideoUrl: lessonData.recordedVideoUrl,
+            isLive: lessonData.isLive,
+            agoraChannel: lessonData.agoraChannel,
+            agoraAppId: lessonData.agoraAppId,
+            liveStatus: lessonData.liveStatus as 'idle' | 'active' | 'ended' | undefined,
+            durationMinutes: lessonData.durationMinutes,
+            order: lessonData.order || 0,
+            resourceIds: lessonData.resourceIds,
+            scheduledDate: (lessonData as any).scheduledDate || lessonData.scheduledStartTime,
+            entrySurveyId: (lessonData as any).entrySurveyId,
+            exitSurveyId: (lessonData as any).exitSurveyId,
           } as Lesson;
           
-          // Actualizar la lección en el estado
           setLessons((prevLessons) =>
             prevLessons.map((l) =>
               l.id === lessonId ? updatedLesson : l
             )
           );
         }
-      });
-    });
-
-    return () => {
-      unsubscribers.forEach((unsub) => unsub());
+      }
     };
+
+    const interval = setInterval(pollLessons, 5000);
+    return () => clearInterval(interval);
   }, [course?.lessonIds]);
 
   const toggleLesson = (lessonId: string) => {
@@ -763,13 +805,14 @@ export default function StudentCoursePage() {
         responseData.lessonId = currentLessonId;
       }
 
-      const responseRef = await getDocs(query(
-        collection(db, 'surveyResponses'),
-        where('surveyId', '==', currentSurvey.id),
-        where('userId', '==', user.id)
-      ));
+      const { data: existingResponse } = await supabaseClient
+        .from(TABLES.SURVEY_RESPONSES)
+        .select('id')
+        .eq('survey_id', currentSurvey.id)
+        .eq('user_id', user.id)
+        .limit(1);
 
-      if (!responseRef.empty) {
+      if (existingResponse && existingResponse.length > 0) {
         setSurveyResultType('error');
         setSurveyResultMessage('Ya has respondido esta encuesta');
         setShowSurveyResultModal(true);
@@ -777,9 +820,21 @@ export default function StudentCoursePage() {
         return;
       }
 
-      const docRef = await addDoc(collection(db, 'surveyResponses'), responseData);
+      const { data: docRef, error: insertError } = await supabaseClient
+        .from(TABLES.SURVEY_RESPONSES)
+        .insert({
+          survey_id: currentSurvey.id,
+          user_id: user.id,
+          course_id: params.id,
+          lesson_id: currentLessonId || null,
+          answers: responseData.answers,
+          submitted_at: responseData.submittedAt,
+        })
+        .select('id')
+        .single();
+      if (insertError) throw insertError;
       
-      const newResponse = { id: docRef.id, ...responseData } as SurveyResponse;
+      const newResponse = { id: docRef?.id, ...responseData } as SurveyResponse;
       if (currentLessonId && lessonSurveyData[currentLessonId]) {
         const map = { ...lessonSurveyData } as Record<string, any>;
         const d = { ...(map[currentLessonId] || {}) };
@@ -836,23 +891,20 @@ export default function StudentCoursePage() {
     }
 
     try {
-      const resourcesPromises = lesson.resourceIds.map(async (resourceId) => {
-        const resourceDoc = await getDoc(doc(db, 'fileAttachments', resourceId));
-        if (resourceDoc.exists()) {
-          const data = resourceDoc.data();
-          return {
-            id: resourceDoc.id,
-            title: data.metadata?.title || data.name || 'Sin título',
-            fileUrl: data.url,
-            fileType: data.type,
-            fileName: data.name,
-            fileSize: data.size,
-          } as Resource;
-        }
-        return null;
-      });
-
-      const resources = (await Promise.all(resourcesPromises)).filter((r): r is Resource => r !== null);
+      const { data: resourcesData } = await supabaseClient
+        .from(TABLES.FILE_ATTACHMENTS)
+        .select('*')
+        .in('id', lesson.resourceIds);
+      
+      const resources = (resourcesData || []).map((data: any) => ({
+        id: data.id,
+        title: data.metadata?.title || data.name || 'Sin título',
+        fileUrl: data.url,
+        fileType: data.type,
+        fileName: data.name,
+        fileSize: data.size,
+      })) as Resource[];
+      
       setCurrentLessonResources(resources);
       setShowResourcesModal(true);
     } catch (error) {
@@ -1520,13 +1572,13 @@ export default function StudentCoursePage() {
 
                           // Registrar descarga de certificado en la base de datos
                           try {
-                            await addDoc(collection(db, 'certificateDownloads'), {
-                              courseId: course.id,
-                              studentId: user.id,
-                              studentName: user.name,
-                              studentEmail: user.email,
-                              downloadedAt: new Date().toISOString(),
-                              certificateTemplateId: course.certificateTemplateId,
+                            await supabaseClient.from(TABLES.CERTIFICATE_DOWNLOADS).insert({
+                              course_id: course.id,
+                              student_id: user.id,
+                              student_name: user.name,
+                              student_email: user.email,
+                              downloaded_at: new Date().toISOString(),
+                              certificate_template_id: course.certificateTemplateId,
                             });
                             console.log('Descarga de certificado registrada exitosamente');
                           } catch (error) {

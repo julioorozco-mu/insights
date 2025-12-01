@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getReminderEmailTemplate, getReminderEmailSubject } from "@/lib/email/templates";
-import { collection, getDocs, doc, getDoc, addDoc, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
 
 interface ReminderRequest {
   lessonId?: string;
@@ -37,21 +37,20 @@ export async function POST(req: Request) {
       );
     }
 
-    // Si es un envío programado, guardar en Firestore
+    // Si es un envío programado, guardar en Supabase
     if (requestData.scheduledDate) {
       try {
         const scheduledEmailData = {
           type: requestData.lessonId ? 'lesson' : 'course',
-          lessonId: requestData.lessonId,
-          courseId: requestData.courseId,
-          lessonTitle: requestData.lessonTitle,
-          courseTitle: requestData.courseTitle,
-          scheduledDate: requestData.scheduledDate,
+          lesson_id: requestData.lessonId,
+          course_id: requestData.courseId,
+          lesson_title: requestData.lessonTitle,
+          course_title: requestData.courseTitle,
+          scheduled_date: requestData.scheduledDate,
           recipients: requestData.recipientIds,
           status: 'pending',
-          createdAt: new Date().toISOString(),
-          createdBy: requestData.createdBy,
-          emailData: {
+          created_by: requestData.createdBy,
+          email_data: {
             lessonType: requestData.lessonType,
             sessionDate: requestData.sessionDate,
             sessionTime: requestData.sessionTime,
@@ -61,12 +60,18 @@ export async function POST(req: Request) {
           }
         };
 
-        const docRef = await addDoc(collection(db, 'scheduledEmails'), scheduledEmailData);
+        const { data, error } = await supabaseClient
+          .from(TABLES.SCHEDULED_EMAILS)
+          .insert(scheduledEmailData)
+          .select()
+          .single();
+
+        if (error) throw error;
 
         return NextResponse.json({
           success: true,
           message: "Correo programado exitosamente",
-          scheduledEmailId: docRef.id,
+          scheduledEmailId: data.id,
         });
       } catch (error) {
         console.error("Error al programar correo:", error);
@@ -85,15 +90,18 @@ export async function POST(req: Request) {
     // Obtener información de los usuarios
     for (const userId of requestData.recipientIds) {
       try {
-        const userDoc = await getDoc(doc(db, 'users', userId));
+        const { data: userData, error: userError } = await supabaseClient
+          .from(TABLES.USERS)
+          .select('*')
+          .eq('id', userId)
+          .single();
         
-        if (!userDoc.exists()) {
+        if (userError || !userData) {
           failedCount++;
           errors.push(`Usuario ${userId} no encontrado`);
           continue;
         }
 
-        const userData = userDoc.data();
         const studentEmail = userData.email;
         const studentName = userData.name || 'Estudiante';
 

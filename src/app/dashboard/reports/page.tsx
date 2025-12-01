@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, where, addDoc, deleteDoc, doc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { courseRepository } from "@/lib/repositories/courseRepository";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
 import { Loader } from "@/components/common/Loader";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import StudentReportPDF from "@/components/reports/StudentReportPDF";
@@ -59,12 +61,15 @@ export default function ReportsPage() {
 
   const loadCourses = async () => {
     try {
-      const coursesSnapshot = await getDocs(collection(db, "courses"));
-      const coursesData = coursesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
+      const coursesData = await courseRepository.findAll();
+      const mapped = coursesData.map((c) => ({
+        id: c.id,
+        title: c.title,
+        description: c.description,
+        createdAt: c.createdAt,
+        lessonIds: c.lessonIds,
       })) as Course[];
-      setCourses(coursesData.sort((a, b) => b.createdAt - a.createdAt));
+      setCourses(mapped.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()));
     } catch (error) {
       console.error("Error loading courses:", error);
     } finally {
@@ -77,34 +82,32 @@ export default function ReportsPage() {
     setShowReport(false);
 
     try {
-      // Obtener inscripciones del curso
-      const enrollmentsQuery = query(
-        collection(db, "enrollments"),
-        where("courseId", "==", courseId)
-      );
-      const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
+      // Obtener inscripciones del curso desde Supabase
+      const { data: enrollmentsData } = await supabaseClient
+        .from(TABLES.STUDENT_ENROLLMENTS)
+        .select(`
+          id,
+          student_id,
+          enrolled_at,
+          students:student_id (
+            user_id,
+            users:user_id (
+              id, name, email, phone, date_of_birth, gender, state
+            )
+          )
+        `)
+        .eq('course_id', courseId);
 
       // Obtener datos de cada estudiante
-      const studentsPromises = enrollmentsSnapshot.docs.map(async (enrollDoc) => {
-        const enrollment = enrollDoc.data();
-        const studentId = enrollment.studentId;
+      const studentsPromises = (enrollmentsData || []).map(async (enrollment: any) => {
+        const studentData = enrollment.students?.users;
+        if (!studentData) return null;
 
-        // Obtener datos del estudiante
-        const studentQuery = query(
-          collection(db, "users"),
-          where("__name__", "==", studentId)
-        );
-        const studentSnapshot = await getDocs(studentQuery);
-
-        if (studentSnapshot.empty) {
-          return null;
-        }
-
-        const studentData = studentSnapshot.docs[0].data();
+        const studentId = studentData.id;
 
         // Calcular edad desde dateOfBirth
         let calculatedAge: number | undefined = undefined;
-        const dateOfBirth = studentData.dateOfBirth;
+        const dateOfBirth = studentData.date_of_birth;
         if (dateOfBirth) {
           const birthDate = new Date(dateOfBirth);
           const today = new Date();
@@ -117,7 +120,7 @@ export default function ReportsPage() {
         }
 
         // Traducir género a español
-        const genderValue = studentData.gender || studentData.sexo || "";
+        const genderValue = studentData.gender || "";
         let genderInSpanish = "";
         if (genderValue.toLowerCase() === "male" || genderValue.toLowerCase() === "masculino") {
           genderInSpanish = "Masculino";
@@ -128,31 +131,29 @@ export default function ReportsPage() {
         }
 
         // Verificar si descargó certificado
-        const certificateDownloadsQuery = query(
-          collection(db, "certificateDownloads"),
-          where("courseId", "==", courseId),
-          where("studentId", "==", studentId)
-        );
-        const certificateDownloadsSnapshot = await getDocs(certificateDownloadsQuery);
-        const hasCertificate = !certificateDownloadsSnapshot.empty;
+        const { data: certDownload } = await supabaseClient
+          .from(TABLES.CERTIFICATE_DOWNLOADS)
+          .select('id')
+          .eq('course_id', courseId)
+          .eq('student_id', studentId)
+          .single();
+        const hasCertificate = !!certDownload;
 
         // Concatenar nombre completo
-        const fullName = [studentData.name, studentData.lastName]
-          .filter(Boolean)
-          .join(" ") || "N/A";
+        const fullName = studentData.name || "N/A";
 
         return {
           id: studentId,
           name: fullName,
           email: studentData.email || "N/A",
-          phone: studentData.phone || studentData.phoneNumber || "",
-          state: studentData.state || studentData.estado || "",
+          phone: studentData.phone || "",
+          state: studentData.state || "",
           age: calculatedAge,
           birthDate: dateOfBirth || "",
           gender: genderInSpanish,
           hasCertificate,
-          enrolledAt: enrollment.enrolledAt?.toDate
-            ? enrollment.enrolledAt.toDate().toLocaleDateString("es-MX")
+          enrolledAt: enrollment.enrolled_at
+            ? new Date(enrollment.enrolled_at).toLocaleDateString("es-MX")
             : "N/A",
         } as Student;
       });
@@ -177,33 +178,13 @@ export default function ReportsPage() {
     setSelectedLesson("");
 
     try {
-      const courseDoc = await getDocs(
-        query(collection(db, "courses"), where("__name__", "==", courseId))
-      );
-
-      if (!courseDoc.empty) {
-        const courseData = courseDoc.docs[0].data();
-        if (courseData.lessonIds && courseData.lessonIds.length > 0) {
-          const lessonsPromises = courseData.lessonIds.map(async (lessonId: string) => {
-            const lessonDoc = await getDocs(
-              query(collection(db, "lessons"), where("__name__", "==", lessonId))
-            );
-            if (!lessonDoc.empty) {
-              return {
-                id: lessonDoc.docs[0].id,
-                ...lessonDoc.docs[0].data(),
-              } as Lesson;
-            }
-            return null;
-          });
-
-          const lessonsData = (await Promise.all(lessonsPromises))
-            .filter((l): l is Lesson => l !== null)
-            .sort((a, b) => a.order - b.order);
-
-          setLessons(lessonsData);
-        }
-      }
+      const lessonsData = await lessonRepository.findByCourseId(courseId);
+      const mapped = lessonsData.map((l) => ({
+        id: l.id,
+        title: l.title,
+        order: l.order || 0,
+      })).sort((a, b) => a.order - b.order);
+      setLessons(mapped);
     } catch (error) {
       console.error("Error loading lessons:", error);
     } finally {
@@ -252,26 +233,21 @@ export default function ReportsPage() {
     try {
       if (newStatus) {
         // Crear registro de descarga
-        await addDoc(collection(db, "certificateDownloads"), {
-          courseId: selectedCourse,
-          studentId: studentId,
-          studentName: studentName,
-          studentEmail: studentEmail,
-          downloadedAt: new Date().toISOString(),
-          manuallyMarked: true, // Indicar que fue marcado manualmente
+        await supabaseClient.from(TABLES.CERTIFICATE_DOWNLOADS).insert({
+          course_id: selectedCourse,
+          student_id: studentId,
+          student_name: studentName,
+          student_email: studentEmail,
+          downloaded_at: new Date().toISOString(),
+          manually_marked: true,
         });
       } else {
         // Eliminar registro de descarga
-        const downloadsQuery = query(
-          collection(db, "certificateDownloads"),
-          where("courseId", "==", selectedCourse),
-          where("studentId", "==", studentId)
-        );
-        const downloadsSnapshot = await getDocs(downloadsQuery);
-
-        for (const downloadDoc of downloadsSnapshot.docs) {
-          await deleteDoc(doc(db, "certificateDownloads", downloadDoc.id));
-        }
+        await supabaseClient
+          .from(TABLES.CERTIFICATE_DOWNLOADS)
+          .delete()
+          .eq('course_id', selectedCourse)
+          .eq('student_id', studentId);
       }
 
       // Actualizar el estado local

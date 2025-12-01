@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { doc, getDoc, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
 import { Loader } from "@/components/common/Loader";
 import AgoraStream from "@/components/live/AgoraStream";
 import { ChatBox } from "@/components/chat/ChatBox";
@@ -29,7 +30,7 @@ import PollResultsPanel from "@/components/live/PollResultsPanel";
 import ScreenShareView from "@/components/live/ScreenShareView";
 import { LivePoll, PollResponse, PollResults } from "@/types/poll";
 import { AudienceQuestion } from "@/types/question";
-import { collection, addDoc, onSnapshot, query, where, orderBy, Timestamp, updateDoc, setDoc, deleteDoc } from "firebase/firestore";
+// Firebase imports removed - using Supabase
 
 interface Lesson {
   id: string;
@@ -107,30 +108,49 @@ export default function LessonDetailPage() {
   useEffect(() => {
     if (!user || !params.id) return;
 
-    // Listener en tiempo real para la lección
-    const unsubscribe = onSnapshot(doc(db, 'lessons', params.id as string), async (lessonDoc) => {
-      if (lessonDoc.exists()) {
-        const lessonData = {
-          id: lessonDoc.id,
-          ...lessonDoc.data(),
+    // Cargar lección inicial y configurar polling
+    const loadLesson = async () => {
+      const lessonData = await lessonRepository.findById(params.id as string);
+      if (lessonData) {
+        const mappedLesson = {
+          id: lessonData.id,
+          title: lessonData.title,
+          description: lessonData.description,
+          content: lessonData.content,
+          type: lessonData.type as 'video' | 'livestream' | 'hybrid',
+          videoUrl: lessonData.videoUrl,
+          isLive: lessonData.isLive,
+          agoraChannel: lessonData.agoraChannel,
+          agoraAppId: lessonData.agoraAppId,
+          liveStatus: lessonData.liveStatus as 'idle' | 'active' | 'ended' | undefined,
+          scheduledStartTime: lessonData.scheduledStartTime,
+          durationMinutes: lessonData.durationMinutes,
+          createdAt: lessonData.createdAt,
+          streamingType: (lessonData as any).streamingType,
+          liveStreamUrl: (lessonData as any).liveStreamUrl,
+          recordedVideoUrl: (lessonData as any).recordedVideoUrl,
         } as Lesson;
-        setLesson(lessonData);
+        setLesson(mappedLesson);
         
         // Si hay un canal de Agora activo, obtener token
-        if (lessonData.agoraChannel && lessonData.isLive && !token) {
+        if (mappedLesson.agoraChannel && mappedLesson.isLive && !token) {
           const numericUid = getUserIdForAgora(user.id);
           const tokenRes = await fetch(
-            `/api/agora-token?channel=${lessonData.agoraChannel}&uid=${numericUid}&role=host`
+            `/api/agora-token?channel=${mappedLesson.agoraChannel}&uid=${numericUid}&role=host`
           );
           const tokenData = await tokenRes.json();
           setToken(tokenData.token);
         }
       }
       setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [params.id, user]);
+    };
+    
+    loadLesson();
+    
+    // Polling cada 3 segundos para actualizar estado
+    const interval = setInterval(loadLesson, 3000);
+    return () => clearInterval(interval);
+  }, [params.id, user, token]);
 
   // Para streaming externo, no necesitamos activar nada automáticamente
   // El instructor simplemente configura la URL y los estudiantes pueden acceder
@@ -138,49 +158,35 @@ export default function LessonDetailPage() {
   const canLivestream = lesson?.type === 'livestream' || lesson?.type === 'hybrid';
   const isLiveActive = lesson?.isLive && lesson?.liveStatus === 'active';
 
-  // Listener para encuestas en tiempo real
+  // Cargar encuestas con polling
   useEffect(() => {
     if (!params.id) return;
 
-    const pollsQuery = query(
-      collection(db, 'livePolls'),
-      where('lessonId', '==', params.id),
-      orderBy('createdAt', 'desc')
-    );
-
-    const responseUnsubscribers: { [key: string]: () => void } = {};
-
-    const unsubscribe = onSnapshot(pollsQuery, (snapshot) => {
-      // Limpiar listeners anteriores
-      Object.values(responseUnsubscribers).forEach(unsub => unsub());
-
-      const pollsData: PollResults[] = [];
-
-      snapshot.docs.forEach((pollDoc) => {
-        const pollData = pollDoc.data();
-        const poll: LivePoll = {
-          id: pollDoc.id,
-          lessonId: pollData.lessonId,
-          question: pollData.question,
-          options: pollData.options,
-          duration: pollData.duration,
-          createdAt: pollData.createdAt?.toDate() || new Date(),
-          expiresAt: pollData.expiresAt?.toDate() || new Date(),
-          isActive: pollData.isActive,
-          createdBy: pollData.createdBy
-        };
+    const loadPolls = async () => {
+      try {
+        const { data: pollsData } = await supabaseClient
+          .from(TABLES.LIVE_POLLS)
+          .select('*')
+          .eq('lesson_id', params.id)
+          .order('created_at', { ascending: false });
         
-        // Listener en tiempo real para las respuestas de esta encuesta
-        const responsesQuery = query(
-          collection(db, 'pollResponses'),
-          where('pollId', '==', pollDoc.id)
-        );
+        if (!pollsData) return;
         
-        responseUnsubscribers[pollDoc.id] = onSnapshot(responsesQuery, (responsesSnapshot) => {
-          const responses = responsesSnapshot.docs.map((responseDoc) => responseDoc.data() as PollResponse);
+        const pollResults: PollResults[] = [];
+        
+        for (const pollDoc of pollsData) {
+          // Cargar respuestas para esta encuesta
+          const { data: responsesData } = await supabaseClient
+            .from(TABLES.LIVE_POLL_VOTES)
+            .select('*')
+            .eq('poll_id', pollDoc.id);
+          
+          const responses = responsesData || [];
           const totalResponses = responses.length;
-          const responseCounts = poll.options.map((option, index) => {
-            const count = responses.filter((r: PollResponse) => r.selectedOption === index).length;
+          const options = pollDoc.options || [];
+          
+          const responseCounts = options.map((option: string, index: number) => {
+            const count = responses.filter((r: any) => r.selected_option === index).length;
             return {
               option,
               count,
@@ -188,29 +194,26 @@ export default function LessonDetailPage() {
             };
           });
 
-          setPolls((prevPolls) => {
-            const otherPolls = prevPolls.filter(p => p.pollId !== pollDoc.id);
-            const updatedPoll: PollResults = {
-              pollId: pollDoc.id,
-              question: poll.question,
-              options: poll.options,
-              totalResponses,
-              responses: responseCounts,
-              expiresAt: poll.expiresAt,
-              isActive: poll.isActive
-            };
-            return [updatedPoll, ...otherPolls].sort((a, b) => 
-              new Date(b.expiresAt).getTime() - new Date(a.expiresAt).getTime()
-            );
+          pollResults.push({
+            pollId: pollDoc.id,
+            question: pollDoc.question,
+            options: options,
+            totalResponses,
+            responses: responseCounts,
+            expiresAt: new Date(pollDoc.expires_at),
+            isActive: pollDoc.is_active
           });
-        });
-      });
-    });
-
-    return () => {
-      unsubscribe();
-      Object.values(responseUnsubscribers).forEach(unsub => unsub());
+        }
+        
+        setPolls(pollResults);
+      } catch (error) {
+        console.error('Error loading polls:', error);
+      }
     };
+    
+    loadPolls();
+    const interval = setInterval(loadPolls, 2000);
+    return () => clearInterval(interval);
   }, [params.id]);
 
   // Contador de tiempo de transmisión
@@ -269,14 +272,18 @@ export default function LessonDetailPage() {
         liveStatus: 'active',
       } : null);
 
-      // Registrar presencia del host
+      // Registrar presencia del host en Supabase
       if (user) {
         const numericUid = getUserIdForAgora(user.id);
-        await setDoc(doc(db, 'lessons', params.id as string, 'liveHosts', user.id), {
-          uid: numericUid,
-          name: user.name || 'Host',
-          joinedAt: Timestamp.now(),
-        }, { merge: true });
+        await supabaseClient
+          .from('live_hosts')
+          .upsert({
+            lesson_id: params.id as string,
+            user_id: user.id,
+            uid: numericUid,
+            name: user.name || 'Host',
+            joined_at: new Date().toISOString(),
+          }, { onConflict: 'lesson_id,user_id' });
       }
     } catch (error: any) {
       console.error('Error starting livestream:', error);
@@ -401,20 +408,33 @@ export default function LessonDetailPage() {
         createdBy: user.id
       };
 
-      const pollRef = await addDoc(collection(db, 'livePolls'), {
-        ...pollData,
-        createdAt: Timestamp.fromDate(now),
-        expiresAt: Timestamp.fromDate(expiresAt)
-      });
+      const { data: pollRef, error } = await supabaseClient
+        .from(TABLES.LIVE_POLLS)
+        .insert({
+          lesson_id: params.id as string,
+          question,
+          options,
+          duration,
+          created_at: now.toISOString(),
+          expires_at: expiresAt.toISOString(),
+          is_active: true,
+          created_by: user.id
+        })
+        .select('id')
+        .single();
 
-      console.log('✅ Encuesta creada:', pollRef.id);
+      if (error) throw error;
+      console.log('✅ Encuesta creada:', pollRef?.id);
 
       // Desactivar automáticamente después de la duración
-      setTimeout(async () => {
-        await updateDoc(doc(db, 'livePolls', pollRef.id), {
-          isActive: false
-        });
-      }, duration * 1000);
+      if (pollRef?.id) {
+        setTimeout(async () => {
+          await supabaseClient
+            .from(TABLES.LIVE_POLLS)
+            .update({ is_active: false })
+            .eq('id', pollRef.id);
+        }, duration * 1000);
+      }
 
     } catch (error) {
       console.error('Error creando encuesta:', error);
@@ -450,9 +470,15 @@ export default function LessonDetailPage() {
       setToken(null);
       setStreamStartTime(null);
       setStreamDuration(0);
-      // Eliminar mi presencia
+      // Eliminar mi presencia de Supabase
       if (user?.id) {
-        try { await deleteDoc(doc(db, 'lessons', params.id as string, 'liveHosts', user.id)); } catch {}
+        try {
+          await supabaseClient
+            .from('live_hosts')
+            .delete()
+            .eq('lesson_id', params.id as string)
+            .eq('user_id', user.id);
+        } catch {}
       }
       setStatusModalContent({
         type: 'success',
@@ -480,9 +506,15 @@ export default function LessonDetailPage() {
       setToken(null);
       setStreamStartTime(null);
 
-      // Eliminar mi presencia
+      // Eliminar mi presencia de Supabase
       if (user?.id) {
-        try { await deleteDoc(doc(db, 'lessons', params.id as string, 'liveHosts', user.id)); } catch {}
+        try {
+          await supabaseClient
+            .from('live_hosts')
+            .delete()
+            .eq('lesson_id', params.id as string)
+            .eq('user_id', user.id);
+        } catch {}
       }
 
       // Pasar a modo espectador (audience) para seguir viendo
@@ -513,22 +545,35 @@ export default function LessonDetailPage() {
     }
   };
 
-  // Suscripción a hosts activos
+  // Polling para hosts activos
   useEffect(() => {
     if (!params.id) return;
-    const unsub = onSnapshot(collection(db, 'lessons', params.id as string, 'liveHosts'), (snap) => {
-      setHostsCount(snap.size);
-      if (snap.size > 0) {
-        autoEndArmedRef.current = true;
+    
+    const loadHosts = async () => {
+      try {
+        const { data: hostsData } = await supabaseClient
+          .from('live_hosts')
+          .select('*')
+          .eq('lesson_id', params.id);
+        
+        const hosts = hostsData || [];
+        setHostsCount(hosts.length);
+        if (hosts.length > 0) {
+          autoEndArmedRef.current = true;
+        }
+        const map: Record<number, string> = {};
+        hosts.forEach((h: any) => {
+          if (typeof h.uid === 'number') map[h.uid] = h.name || 'Ponente';
+        });
+        setHostNames(map);
+      } catch (error) {
+        console.error('Error loading hosts:', error);
       }
-      const map: Record<number, string> = {};
-      snap.forEach((d) => {
-        const data: any = d.data();
-        if (typeof data?.uid === 'number') map[data.uid] = data?.name || 'Ponente';
-      });
-      setHostNames(map);
-    });
-    return () => unsub();
+    };
+    
+    loadHosts();
+    const interval = setInterval(loadHosts, 2000);
+    return () => clearInterval(interval);
   }, [params.id]);
 
   // Registrar presencia al tener token (host unido)
@@ -537,11 +582,15 @@ export default function LessonDetailPage() {
       if (!user?.id || !isLiveActive || !token) return;
       const numericUid = getUserIdForAgora(user.id);
       try {
-        await setDoc(doc(db, 'lessons', params.id as string, 'liveHosts', user.id), {
-          uid: numericUid,
-          name: user.name || 'Host',
-          joinedAt: Timestamp.now(),
-        }, { merge: true });
+        await supabaseClient
+          .from('live_hosts')
+          .upsert({
+            lesson_id: params.id as string,
+            user_id: user.id,
+            uid: numericUid,
+            name: user.name || 'Host',
+            joined_at: new Date().toISOString(),
+          }, { onConflict: 'lesson_id,user_id' });
       } catch (e) {
         console.error('Error registrando presencia:', e);
       }
@@ -593,7 +642,13 @@ export default function LessonDetailPage() {
   useEffect(() => {
     return () => {
       if (user?.id) {
-        deleteDoc(doc(db, 'lessons', params.id as string, 'liveHosts', user.id)).catch(() => {});
+        supabaseClient
+          .from('live_hosts')
+          .delete()
+          .eq('lesson_id', params.id as string)
+          .eq('user_id', user.id)
+          .then(() => {})
+          .catch(() => {});
       }
     };
   }, [user?.id, params.id]);
@@ -619,11 +674,15 @@ export default function LessonDetailPage() {
       setViewerToken(null);
       setViewOnly(false);
       // Registrar presencia
-      await setDoc(doc(db, 'lessons', params.id as string, 'liveHosts', user.id), {
-        uid: numericUid,
-        name: user.name || 'Host',
-        joinedAt: Timestamp.now(),
-      }, { merge: true });
+      await supabaseClient
+        .from('live_hosts')
+        .upsert({
+          lesson_id: params.id as string,
+          user_id: user.id,
+          uid: numericUid,
+          name: user.name || 'Host',
+          joined_at: new Date().toISOString(),
+        }, { onConflict: 'lesson_id,user_id' });
     } catch (e: any) {
       setStatusModalContent({
         type: 'error',
@@ -636,38 +695,56 @@ export default function LessonDetailPage() {
     }
   };
 
-  // Cargar preguntas de la audiencia
+  // Cargar preguntas de la audiencia con polling
   useEffect(() => {
     if (!params.id) return;
 
-    const questionsQuery = query(
-      collection(db, 'audienceQuestions'),
-      where('lessonId', '==', params.id),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(questionsQuery, (snapshot) => {
-      const questionsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as AudienceQuestion[];
-      
-      setQuestions(questionsData);
-      
-      // Contar preguntas no leídas
-      const unreadCount = questionsData.filter(q => !(q as any).read).length;
-      setUnreadQuestionsCount(unreadCount);
-    });
-
-    return () => unsubscribe();
+    const loadQuestions = async () => {
+      try {
+        const { data: questionsData } = await supabaseClient
+          .from('audience_questions')
+          .select('*')
+          .eq('lesson_id', params.id)
+          .order('created_at', { ascending: false });
+        
+        const questions = (questionsData || []).map((q: any) => ({
+          id: q.id,
+          lessonId: q.lesson_id,
+          userId: q.user_id,
+          userName: q.user_name,
+          question: q.question,
+          isAnswered: q.is_answered,
+          response: q.response,
+          createdAt: { toDate: () => new Date(q.created_at) },
+          answeredAt: q.answered_at ? { toDate: () => new Date(q.answered_at) } : null,
+          read: q.read,
+          answeredVerbally: q.answered_verbally,
+        })) as AudienceQuestion[];
+        
+        setQuestions(questions);
+        
+        // Contar preguntas no leídas
+        const unreadCount = questions.filter(q => !(q as any).read).length;
+        setUnreadQuestionsCount(unreadCount);
+      } catch (error) {
+        console.error('Error loading questions:', error);
+      }
+    };
+    
+    loadQuestions();
+    const interval = setInterval(loadQuestions, 2000);
+    return () => clearInterval(interval);
   }, [params.id]);
 
   const handleMarkQuestionAnswered = async (questionId: string, isAnswered: boolean) => {
     try {
-      await updateDoc(doc(db, 'audienceQuestions', questionId), {
-        isAnswered,
-        answeredAt: isAnswered ? Timestamp.now() : null
-      });
+      await supabaseClient
+        .from('audience_questions')
+        .update({
+          is_answered: isAnswered,
+          answered_at: isAnswered ? new Date().toISOString() : null
+        })
+        .eq('id', questionId);
     } catch (error) {
       console.error('Error al marcar pregunta:', error);
       alert('Error al actualizar la pregunta');
@@ -682,9 +759,10 @@ export default function LessonDetailPage() {
     // Marcar como leída
     if (!(question as any).read) {
       try {
-        await updateDoc(doc(db, 'audienceQuestions', question.id), {
-          read: true
-        });
+        await supabaseClient
+          .from('audience_questions')
+          .update({ read: true })
+          .eq('id', question.id);
       } catch (error) {
         console.error('Error al marcar como leída:', error);
       }
@@ -695,11 +773,14 @@ export default function LessonDetailPage() {
     if (!selectedQuestion || !writtenResponse.trim()) return;
 
     try {
-      await updateDoc(doc(db, 'audienceQuestions', selectedQuestion.id), {
-        response: writtenResponse.trim(),
-        isAnswered: true,
-        answeredAt: Timestamp.now()
-      });
+      await supabaseClient
+        .from('audience_questions')
+        .update({
+          response: writtenResponse.trim(),
+          is_answered: true,
+          answered_at: new Date().toISOString()
+        })
+        .eq('id', selectedQuestion.id);
       
       setShowQuestionModal(false);
       setSelectedQuestion(null);
@@ -714,11 +795,14 @@ export default function LessonDetailPage() {
     if (!selectedQuestion) return;
 
     try {
-      await updateDoc(doc(db, 'audienceQuestions', selectedQuestion.id), {
-        isAnswered: true,
-        answeredAt: Timestamp.now(),
-        answeredVerbally: true
-      });
+      await supabaseClient
+        .from('audience_questions')
+        .update({
+          is_answered: true,
+          answered_at: new Date().toISOString(),
+          answered_verbally: true
+        })
+        .eq('id', selectedQuestion.id);
       
       setShowQuestionModal(false);
       setSelectedQuestion(null);
@@ -837,10 +921,13 @@ export default function LessonDetailPage() {
                           checked={lesson.isLive || false}
                           onChange={async (e) => {
                             try {
-                              await updateDoc(doc(db, 'lessons', params.id as string), {
-                                isLive: e.target.checked,
-                                liveStatus: e.target.checked ? 'active' : 'idle'
-                              });
+                              await supabaseClient
+                                .from(TABLES.LESSONS)
+                                .update({
+                                  is_live: e.target.checked,
+                                  live_status: e.target.checked ? 'active' : 'idle'
+                                })
+                                .eq('id', params.id as string);
                             } catch (error) {
                               console.error('Error al actualizar estado:', error);
                             }

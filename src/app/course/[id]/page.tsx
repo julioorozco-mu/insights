@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { doc, getDoc, collection, query, where, getDocs, addDoc, Timestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
+import { TABLES } from "@/utils/constants";
+import { courseRepository } from "@/lib/repositories/courseRepository";
+import { userRepository } from "@/lib/repositories/userRepository";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
 import { useAuth } from "@/hooks/useAuth";
 import { Course } from "@/types/course";
 import { User } from "@/types/user";
@@ -40,10 +43,9 @@ export default function CoursePublicPage() {
     try {
       const courseId = params.id as string;
 
-      // Cargar curso
-      const courseDoc = await getDoc(doc(db, "courses", courseId));
-      if (courseDoc.exists()) {
-        const courseData = { id: courseDoc.id, ...courseDoc.data() } as Course;
+      // Cargar curso desde Supabase
+      const courseData = await courseRepository.findById(courseId);
+      if (courseData) {
         setCourse(courseData);
 
         // Verificar estado de inscripción
@@ -51,37 +53,35 @@ export default function CoursePublicPage() {
 
         // Cargar ponentes
         if (courseData.speakerIds && courseData.speakerIds.length > 0) {
-          const speakersPromises = courseData.speakerIds.map((id) =>
-            getDoc(doc(db, "users", id))
-          );
-          const speakersDocs = await Promise.all(speakersPromises);
-          const speakersData = speakersDocs
-            .filter((doc) => doc.exists())
-            .map((doc) => ({ id: doc.id, ...doc.data() } as User));
+          const speakersData: User[] = [];
+          for (const id of courseData.speakerIds) {
+            const speaker = await userRepository.findById(id);
+            if (speaker) speakersData.push(speaker as User);
+          }
           setSpeakers(speakersData);
         }
 
         // Cargar lecciones
-        const lessonsQuery = query(
-          collection(db, "lessons"),
-          where("courseId", "==", courseId)
-        );
-        const lessonsSnapshot = await getDocs(lessonsQuery);
-        const lessonsData = lessonsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Lesson[];
-        setLessons(lessonsData.sort((a, b) => a.order - b.order));
+        const lessonsData = await lessonRepository.findByCourseId(courseId);
+        setLessons(lessonsData.sort((a: Lesson, b: Lesson) => (a.order || 0) - (b.order || 0)));
 
         // Verificar si el usuario ya está inscrito
         if (user) {
-          const enrollmentQuery = query(
-            collection(db, "enrollments"),
-            where("courseId", "==", courseId),
-            where("studentId", "==", user.id)
-          );
-          const enrollmentSnapshot = await getDocs(enrollmentQuery);
-          setIsEnrolled(!enrollmentSnapshot.empty);
+          const { data: studentData } = await supabaseClient
+            .from(TABLES.STUDENTS)
+            .select('id')
+            .eq('user_id', user.id)
+            .single();
+          
+          if (studentData) {
+            const { data: enrollment } = await supabaseClient
+              .from(TABLES.STUDENT_ENROLLMENTS)
+              .select('id')
+              .eq('course_id', courseId)
+              .eq('student_id', studentData.id)
+              .single();
+            setIsEnrolled(!!enrollment);
+          }
         }
       }
     } catch (error) {
@@ -128,16 +128,34 @@ export default function CoursePublicPage() {
     try {
       setEnrolling(true);
 
-      await addDoc(collection(db, "enrollments"), {
-        courseId: course.id,
-        studentId: user.id,
-        studentName: user.name,
-        studentEmail: user.email,
-        enrolledAt: Timestamp.now(),
-        progress: 0,
-        completedLessons: [],
-        createdAt: Timestamp.now(),
-      });
+      // Obtener o crear student record
+      let studentId = user.id;
+      const { data: existingStudent } = await supabaseClient
+        .from(TABLES.STUDENTS)
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (!existingStudent) {
+        const { data: newStudent } = await supabaseClient
+          .from(TABLES.STUDENTS)
+          .insert({ user_id: user.id })
+          .select('id')
+          .single();
+        if (newStudent) studentId = newStudent.id;
+      } else {
+        studentId = existingStudent.id;
+      }
+
+      // Crear enrollment
+      await supabaseClient
+        .from(TABLES.STUDENT_ENROLLMENTS)
+        .insert({
+          course_id: course.id,
+          student_id: studentId,
+          progress: 0,
+          completed_lessons: [],
+        });
 
       setIsEnrolled(true);
       

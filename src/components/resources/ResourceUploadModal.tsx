@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { resourceService } from "@/lib/services/resourceService";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { storage } from "@/lib/firebase";
+import { supabaseClient } from "@/lib/supabase";
 import { IconX, IconUpload, IconFile } from "@tabler/icons-react";
 
 interface ResourceUploadModalProps {
@@ -52,45 +51,47 @@ export default function ResourceUploadModal({ onClose, onSuccess }: ResourceUplo
     try {
       setUploading(true);
 
-      // Crear referencia en Storage
+      // Subir a Supabase Storage
       const timestamp = Date.now();
-      const fileName = `resources/${user.id}/${timestamp}_${file.name}`;
-      const storageRef = ref(storage, fileName);
+      const filePath = `resources/${user.id}/${timestamp}_${file.name}`;
+      
+      setUploadProgress(50); // Simular progreso
+      
+      const { data: uploadData, error: uploadError } = await supabaseClient.storage
+        .from('files')
+        .upload(filePath, file);
+      
+      if (uploadError) {
+        console.error("Error uploading file:", uploadError);
+        alert("Error al subir el archivo");
+        setUploading(false);
+        return;
+      }
+      
+      setUploadProgress(80);
+      
+      // Obtener URL pública
+      const { data: urlData } = supabaseClient.storage
+        .from('files')
+        .getPublicUrl(filePath);
+      
+      const downloadURL = urlData.publicUrl;
 
-      // Subir archivo con progreso
-      const uploadTask = uploadBytesResumable(storageRef, file);
+      // Guardar en base de datos
+      await resourceService.create({
+        ownerId: user.id,
+        fileName: file.name,
+        fileType: file.type,
+        url: downloadURL,
+        sizeKB: Math.round(file.size / 1024),
+        category,
+        description: description || undefined,
+        tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined,
+      });
 
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setUploadProgress(Math.round(progress));
-        },
-        (error) => {
-          console.error("Error uploading file:", error);
-          alert("Error al subir el archivo");
-          setUploading(false);
-        },
-        async () => {
-          // Upload completado
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-
-          // Guardar en Firestore
-          await resourceService.create({
-            ownerId: user.id,
-            fileName: file.name,
-            fileType: file.type,
-            url: downloadURL,
-            sizeKB: Math.round(file.size / 1024),
-            category,
-            description: description || undefined,
-            tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined,
-          });
-
-          setUploading(false);
-          onSuccess();
-        }
-      );
+      setUploadProgress(100);
+      setUploading(false);
+      onSuccess();
     } catch (error) {
       console.error("Error uploading resource:", error);
       alert("Error al subir el recurso");

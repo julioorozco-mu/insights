@@ -1,5 +1,6 @@
 import { supabaseClient } from "@/lib/supabase";
 import { TABLES } from "@/utils/constants";
+import { HomepageConfig, HomepageBannerItem } from "@/types/siteConfig";
 
 export class SiteConfigRepository {
   private table = TABLES.SITE_CONFIG;
@@ -31,13 +32,33 @@ export class SiteConfigRepository {
     }, {} as Record<string, unknown>);
   }
 
-  async getHomepageConfig(): Promise<{ bannerCourseIds?: string[] } | null> {
+  async getHomepageConfig(): Promise<HomepageConfig | null> {
     const config = await this.get("homepage");
-    return config as { bannerCourseIds?: string[] } | null;
+    if (!config) return null;
+    
+    // Compatibilidad con formato antiguo (bannerCourseIds)
+    const rawConfig = config as { bannerCourseIds?: string[]; bannerItems?: HomepageBannerItem[] };
+    if (rawConfig.bannerItems) {
+      return rawConfig as HomepageConfig;
+    }
+    
+    // Convertir formato antiguo a nuevo
+    if (rawConfig.bannerCourseIds) {
+      return {
+        bannerItems: rawConfig.bannerCourseIds.map((id) => ({ id, type: "course" as const })),
+      };
+    }
+    
+    return { bannerItems: [] };
   }
 
-  async setHomepageConfig(config: { bannerCourseIds?: string[] }): Promise<void> {
+  async saveHomepageConfig(config: HomepageConfig): Promise<void> {
     await this.set("homepage", config);
+  }
+
+  // Alias para compatibilidad
+  async setHomepageConfig(config: HomepageConfig): Promise<void> {
+    await this.saveHomepageConfig(config);
   }
 }
 

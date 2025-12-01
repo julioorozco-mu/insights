@@ -9,8 +9,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema, LoginInput } from "@/lib/validators/userSchema";
 import { useHomepageBanner } from "@/hooks/useHomepageBanner";
 import { useEffect } from "react";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { teacherRepository } from "@/lib/repositories/teacherRepository";
+import { userRepository } from "@/lib/repositories/userRepository";
 
 interface Speaker {
   id: string;
@@ -99,16 +99,28 @@ export default function HomePage() {
 
         for (const speakerId of speakerIds) {
           try {
-            const speakerDoc = await getDoc(doc(db, 'speakers', speakerId));
-            if (speakerDoc.exists()) {
-              const data = speakerDoc.data() as any;
+            // Buscar en teachers primero, luego en users
+            const teacher = await teacherRepository.findById(speakerId);
+            if (teacher) {
               loadedSpeakers.push({
                 id: speakerId,
-                name: `${data.name || ''} ${data.lastName || ''}`.trim() || data.email,
-                email: data.email,
-                photoURL: data.avatarUrl || data.photoURL, // Usar avatarUrl de Firestore
-                bio: data.bio,
+                name: `${teacher.name || ''} ${teacher.lastName || ''}`.trim() || teacher.email || '',
+                email: teacher.email || '',
+                photoURL: teacher.avatarUrl,
+                bio: teacher.bio,
               });
+            } else {
+              // Fallback a users
+              const user = await userRepository.findById(speakerId);
+              if (user) {
+                loadedSpeakers.push({
+                  id: speakerId,
+                  name: `${user.name || ''} ${user.lastName || ''}`.trim() || user.email,
+                  email: user.email,
+                  photoURL: user.avatarUrl,
+                  bio: user.bio,
+                });
+              }
             }
           } catch (err) {
             console.error(`Error loading speaker ${speakerId}:`, err);
