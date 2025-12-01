@@ -46,7 +46,7 @@ const MENU_ITEMS: MenuItem[] = [
     roles: ["admin", "speaker", "student"],
   },
   { path: "/dashboard/courses", label: "Cursos", icon: BookOpen, roles: ["admin"], indent: true },
-  { path: "/dashboard/speakers", label: "Ponentes", icon: Mic, roles: ["admin"], indent: true },
+  { path: "/dashboard/teachers", label: "Profesores", icon: Mic, roles: ["admin"], indent: true },
   { path: "/dashboard/students", label: "Estudiantes", icon: GraduationCap, roles: ["admin"], indent: true },
   { path: "/dashboard/surveys", label: "Encuestas", icon: BarChart3, roles: ["admin"], indent: true },
   { path: "/dashboard/resources", label: "Recursos", icon: FolderOpen, roles: ["admin"], indent: true },

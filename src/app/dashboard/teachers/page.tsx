@@ -200,7 +200,7 @@ export default function SpeakersPage() {
   };
 
   const handleDeleteSpeaker = async (id: string, userId?: string) => {
-    if (!confirm('¿Estás seguro de que deseas eliminar este ponente?')) return;
+    if (!confirm('¿Estás seguro de que deseas eliminar este profesor?')) return;
     try {
       setDeleteLoading(true);
       // Eliminar de Supabase
@@ -227,7 +227,7 @@ export default function SpeakersPage() {
       loadSpeakers();
     } catch (error) {
       console.error('Error deleting speaker:', error);
-      alert('Error al eliminar ponente');
+      alert('Error al eliminar profesor');
     } finally {
       setDeleteLoading(false);
     }
@@ -277,7 +277,7 @@ export default function SpeakersPage() {
   const handleAddSpeaker = async () => {
     setFormError(null);
     if (!formData.name.trim()) {
-      setFormError('El nombre del ponente es obligatorio');
+      setFormError('El nombre del profesor es obligatorio');
       (document.querySelector('input[placeholder=\"Nombre completo\"]') as HTMLInputElement)?.focus();
       return;
     }
@@ -352,7 +352,7 @@ export default function SpeakersPage() {
       } else if (error?.message?.includes('Cannot find package')) {
         setFormError('Para crear acceso a la plataforma, instala firebase-admin: npm i firebase-admin y configura las variables de entorno FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY');
       } else {
-        setFormError('Error al agregar ponente. Revisa los datos y vuelve a intentar.');
+        setFormError('Error al agregar profesor. Revisa los datos y vuelve a intentar.');
       }
     } finally {
       setSaving(false);
@@ -388,7 +388,7 @@ export default function SpeakersPage() {
   const handleEditSpeaker = async () => {
     setEditFormError(null);
     if (!selectedSpeaker || !formData.name.trim()) {
-      setEditFormError('El nombre del ponente es obligatorio');
+      setEditFormError('El nombre del profesor es obligatorio');
       (document.querySelector('input[placeholder=\"Nombre completo\"]') as HTMLInputElement)?.focus();
       return;
     }
@@ -477,7 +477,7 @@ export default function SpeakersPage() {
       if (error?.message?.includes('Cannot find package')) {
         setEditFormError('Para crear acceso a la plataforma, instala firebase-admin: npm i firebase-admin y configura las variables de entorno FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY');
       } else {
-        setEditFormError('Error al actualizar ponente. Revisa los datos y vuelve a intentar.');
+        setEditFormError('Error al actualizar profesor. Revisa los datos y vuelve a intentar.');
       }
     } finally {
       setSaving(false);
@@ -549,7 +549,7 @@ export default function SpeakersPage() {
         // Por ahora simplemente notificamos que no se puede eliminar
         setFeedback({
           type: "success",
-          message: `${selectedSpeaker.name} fue deshabilitado y no aparecerá como ponente activo.`,
+          message: `${selectedSpeaker.name} fue deshabilitado y no aparecerá como profesor activo.`,
         });
       } else {
         // Eliminar de Supabase
@@ -587,7 +587,7 @@ export default function SpeakersPage() {
       console.error("Error deleting speaker:", error);
       setFeedback({
         type: "error",
-        message: "Error al eliminar el ponente. Inténtalo de nuevo.",
+        message: "Error al eliminar el profesor. Inténtalo de nuevo.",
       });
     } finally {
       setDeleteLoading(false);
@@ -619,15 +619,15 @@ export default function SpeakersPage() {
     <div>
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h3 className="text-4xl font-bold mb-2">Ponentes</h3>
-          <p className="text-base-content/70">Gestiona los ponentes de la plataforma</p>
+          <h3 className="text-4xl font-bold mb-2">Profesores</h3>
+          <p className="text-base-content/70">Gestiona los profesores de la plataforma</p>
         </div>
         <button 
           className="btn btn-primary text-white gap-2"
           onClick={openAddModal}
         >
           <IconPlus size={20} />
-          Agregar Ponente
+          Agregar Profesor
         </button>
       </div>
 
@@ -650,55 +650,16 @@ export default function SpeakersPage() {
             <div className="text-primary mb-4 flex justify-center">
               <IconMicrophone size={64} stroke={2} />
             </div>
-
-            {/* Acceso a la plataforma */}
-            <div className="form-control mt-4">
-              <label className="label cursor-pointer justify-start gap-3">
-                <input
-                  type="checkbox"
-                  className="toggle toggle-primary"
-                  checked={accessEnabled}
-                  onChange={(e) => setAccessEnabled(e.target.checked)}
-                />
-                <span className="label-text font-semibold">¿Acceso a la plataforma?</span>
-              </label>
-              {accessEnabled && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
-                  <div className="form-control md:col-span-2">
-                    <label className="label"><span className="label-text">Correo de acceso (puede ser distinto al de perfil)</span></label>
-                    <input
-                      type="email"
-                      className="input input-bordered"
-                      value={accessEmail}
-                      onChange={(e) => setAccessEmail(e.target.value)}
-                      placeholder="correo@acceso.com"
-                    />
-                    <label className="label"><span className="label-text-alt">Este correo se usará para iniciar sesión del ponente</span></label>
-                  </div>
-                  <div className="form-control">
-                    <label className="label"><span className="label-text">Contraseña</span></label>
-                    <input type="password" className="input input-bordered" value={password} onChange={(e) => setPassword(e.target.value)} />
-                  </div>
-                  <div className="form-control">
-                    <label className="label"><span className="label-text">Confirmar contraseña</span></label>
-                    <input type="password" className="input input-bordered" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)} />
-                  </div>
-                  {passwordError && (
-                    <div className="md:col-span-2 text-sm text-error">{passwordError}</div>
-                  )}
-                </div>
-              )}
-            </div>
-            <h2 className="text-2xl font-bold mb-2">No hay ponentes registrados</h2>
+            <h2 className="text-2xl font-bold mb-2">No hay profesores registrados</h2>
             <p className="text-base-content/70 mb-4">
-              Comienza agregando tu primer ponente
+              Comienza agregando tu primer profesor
             </p>
             <button 
               className="btn btn-primary text-white gap-2 mx-auto"
               onClick={openAddModal}
             >
               <IconPlus size={20} />
-              Agregar Primer Ponente
+              Agregar Primer Profesor
             </button>
           </div>
         </div>
@@ -777,11 +738,11 @@ export default function SpeakersPage() {
         </div>
       )}
 
-      {/* Modal Agregar Ponente */}
+      {/* Modal Agregar Profesor */}
       {showAddModal && (
         <div className="modal modal-open">
           <div className="modal-box max-w-2xl">
-            <h3 className="font-bold text-lg mb-4">Agregar Nuevo Ponente</h3>
+            <h3 className="font-bold text-lg mb-4">Agregar Nuevo Profesor</h3>
             {formError && (
               <div className="alert alert-error text-white mb-4">
                 <span>{formError}</span>
@@ -914,7 +875,7 @@ export default function SpeakersPage() {
                 value={formData.bio}
                 onChange={(e) => setFormData({...formData, bio: e.target.value})}
                 className="textarea textarea-bordered h-24"
-                placeholder="Breve descripción del ponente..."
+                placeholder="Breve descripción del profesor..."
               />
             </div>
 
@@ -989,7 +950,7 @@ export default function SpeakersPage() {
                       placeholder="correo@acceso.com"
                       disabled={useSameEmail}
                     />
-                    <label className="label"><span className="label-text-alt">Este correo se usará para iniciar sesión del ponente</span></label>
+                    <label className="label"><span className="label-text-alt">Este correo se usará para iniciar sesión del profesor</span></label>
                   </div>
                   <div className="form-control">
                     <label className="label"><span className="label-text">Contraseña</span></label>
@@ -1044,7 +1005,7 @@ export default function SpeakersPage() {
                 onClick={handleAddSpeaker}
                 disabled={saving}
               >
-                {saving ? 'Guardando...' : 'Agregar Ponente'}
+                {saving ? 'Guardando...' : 'Agregar Profesor'}
               </button>
             </div>
           </div>
@@ -1054,11 +1015,11 @@ export default function SpeakersPage() {
         </div>
       )}
 
-      {/* Modal Editar Ponente */}
+      {/* Modal Editar Profesor */}
       {showEditModal && selectedSpeaker && (
         <div className="modal modal-open">
           <div className="modal-box max-w-2xl">
-            <h3 className="font-bold text-lg mb-4">Editar Ponente</h3>
+            <h3 className="font-bold text-lg mb-4">Editar Profesor</h3>
             {editFormError && (
               <div className="alert alert-error text-white mb-4">
                 <span>{editFormError}</span>
@@ -1191,7 +1152,7 @@ export default function SpeakersPage() {
                 value={formData.bio}
                 onChange={(e) => setFormData({...formData, bio: e.target.value})}
                 className="textarea textarea-bordered h-24"
-                placeholder="Breve descripción del ponente..."
+                placeholder="Breve descripción del profesor..."
               />
             </div>
 
@@ -1236,7 +1197,7 @@ export default function SpeakersPage() {
             {selectedSpeaker.userId ? (
               <div className="mt-4 p-4 rounded-lg bg-base-200">
                 <div className="font-semibold mb-2">Restablecer contraseña</div>
-                <p className="text-sm text-base-content/70 mb-3">Establece una nueva contraseña para el ponente.</p>
+                <p className="text-sm text-base-content/70 mb-3">Establece una nueva contraseña para el profesor.</p>
                 <div className="form-control">
                   <label className="label"><span className="label-text">Correo de acceso</span></label>
                   <input
@@ -1245,7 +1206,7 @@ export default function SpeakersPage() {
                     value={selectedSpeaker.email || formData.email || ''}
                     disabled
                   />
-                  <label className="label"><span className="label-text-alt">Este es el correo de inicio de sesión del ponente</span></label>
+                  <label className="label"><span className="label-text-alt">Este es el correo de inicio de sesión del profesor</span></label>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                   <div className="form-control">
@@ -1333,7 +1294,7 @@ export default function SpeakersPage() {
                         placeholder="correo@acceso.com"
                         disabled={editUseSameEmail}
                       />
-                      <label className="label"><span className="label-text-alt">Este correo se usará para iniciar sesión del ponente</span></label>
+                      <label className="label"><span className="label-text-alt">Este correo se usará para iniciar sesión del profesor</span></label>
                     </div>
                     <div className="form-control">
                       <label className="label"><span className="label-text">Contraseña</span></label>
@@ -1516,7 +1477,7 @@ export default function SpeakersPage() {
         <div className="modal modal-open">
           <div className="modal-box max-w-md">
             <h3 className="font-bold text-lg mb-3">
-              {selectedSpeaker.userId ? '⚠️ Eliminar ponente con acceso a la plataforma' : 'Confirmar acción'}
+              {selectedSpeaker.userId ? '⚠️ Eliminar profesor con acceso a la plataforma' : 'Confirmar acción'}
             </h3>
             {assignedCoursesCount === null ? (
               <div className="flex justify-center py-8">
@@ -1530,14 +1491,14 @@ export default function SpeakersPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                     </svg>
                     <div>
-                      <p className="font-bold">Este ponente tiene acceso a la plataforma</p>
+                      <p className="font-bold">Este profesor tiene acceso a la plataforma</p>
                       <p className="text-sm">Al eliminarlo también se eliminará su cuenta de acceso y no podrá iniciar sesión nuevamente.</p>
                     </div>
                   </div>
                 )}
                 {(assignedCoursesCount ?? 0) > 0 ? (
                   <p className="text-base-content/80">
-                    {selectedSpeaker.name} tiene asignado {assignedCoursesCount} {assignedCoursesCount === 1 ? 'curso activo' : 'cursos activos'}. Esta acción lo deshabilitará para que deje de mostrarse como ponente disponible, pero conservará su historial.
+                    {selectedSpeaker.name} tiene asignado {assignedCoursesCount} {assignedCoursesCount === 1 ? 'curso activo' : 'cursos activos'}. Esta acción lo deshabilitará para que deje de mostrarse como profesor disponible, pero conservará su historial.
                   </p>
                 ) : (
                   <p className="text-base-content/80">
