@@ -43,9 +43,14 @@ export default function CoursesPage() {
   const [bannerSuccess, setBannerSuccess] = useState(false);
   const [showBannerModal, setShowBannerModal] = useState(false);
   const [selectedBannerItems, setSelectedBannerItems] = useState<BannerSelectionItem[]>([]);
-  const { user } = useAuth();
-
+  const { user, loading: authLoading } = useAuth();
+  
   useEffect(() => {
+    // No cargar hasta que useAuth termine de resolver
+    if (authLoading) return;
+    
+    let isMounted = true;
+    
     const loadCourses = async () => {
       try {
         let data: Course[];
@@ -56,65 +61,85 @@ export default function CoursesPage() {
           // Teacher ve solo sus cursos
           data = await courseRepository.findByTeacher(user.id);
         } else {
-          // Student ve solo cursos activos
+          // Student o no autenticado ve solo cursos activos
           data = await courseRepository.findPublished();
         }
         
-        // Cargar información de los ponentes para cada curso
-        const coursesWithSpeakers = await Promise.all(
-          data.map(async (course) => {
-            const speakers: Speaker[] = [];
-            const lessons: LessonSummary[] = [];
-            
-            // Cargar ponentes
-            if (course.speakerIds && course.speakerIds.length > 0) {
-              for (const speakerId of course.speakerIds) {
-                try {
-                  const userData = await userRepository.findById(speakerId);
-                  if (userData) {
-                    speakers.push({
-                      id: speakerId,
-                      name: userData.name || userData.email,
-                      email: userData.email,
-                      photoURL: userData.avatarUrl,
-                    });
-                  }
-                } catch (error) {
-                  console.error(`Error loading speaker ${speakerId}:`, error);
-                }
-              }
+        if (!isMounted) return;
+        
+        // Recolectar todos los IDs únicos de speakers y lessons
+        const allSpeakerIds = new Set<string>();
+        const allLessonIds = new Set<string>();
+        
+        data.forEach(course => {
+          course.speakerIds?.forEach(id => allSpeakerIds.add(id));
+          course.lessonIds?.forEach(id => allLessonIds.add(id));
+        });
+        
+        // Cargar todos los speakers y lessons en paralelo (2 queries en total)
+        const [allSpeakers, allLessons] = await Promise.all([
+          allSpeakerIds.size > 0 ? userRepository.findByIds(Array.from(allSpeakerIds)) : [],
+          allLessonIds.size > 0 ? lessonRepository.findByIds(Array.from(allLessonIds)) : [],
+        ]);
+        
+        if (!isMounted) return;
+        
+        // Crear mapas para acceso O(1)
+        const speakersMap = new Map(allSpeakers.map(s => [s.id, s]));
+        const lessonsMap = new Map(allLessons.map(l => [l.id, l]));
+        
+        // Mapear cursos con sus speakers y lessons
+        const coursesWithSpeakers = data.map(course => {
+          const speakers: Speaker[] = [];
+          const lessons: LessonSummary[] = [];
+          
+          // Mapear ponentes desde el cache
+          course.speakerIds?.forEach(speakerId => {
+            const userData = speakersMap.get(speakerId);
+            if (userData) {
+              speakers.push({
+                id: speakerId,
+                name: userData.name || userData.email,
+                email: userData.email,
+                photoURL: userData.avatarUrl,
+              });
             }
-            
-            // Cargar lecciones
-            if (course.lessonIds && course.lessonIds.length > 0) {
-              const courseLessons = await lessonRepository.findByIds(course.lessonIds);
-              for (const lesson of courseLessons) {
-                lessons.push({
-                  id: lesson.id,
-                  title: lesson.title || `Lección ${lessons.length + 1}`,
-                  startDate: lesson.startDate || lesson.scheduledStartTime,
-                });
-              }
+          });
+          
+          // Mapear lecciones desde el cache
+          course.lessonIds?.forEach(lessonId => {
+            const lesson = lessonsMap.get(lessonId);
+            if (lesson) {
+              lessons.push({
+                id: lesson.id,
+                title: lesson.title || `Lección ${lessons.length + 1}`,
+                startDate: lesson.startDate || lesson.scheduledStartTime,
+              });
             }
-            
-            return { ...course, speakers, lessons };
-          })
-        );
+          });
+          
+          return { ...course, speakers, lessons };
+        });
         
         setCourses(coursesWithSpeakers);
       } catch (error) {
         console.error("Error loading courses:", error);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
-    // Cargar cursos incluso si user es null (mostrará estado vacío)
     loadCourses();
     if (user?.role === "admin") {
       loadBannerConfig();
     }
-  }, [user]);
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [authLoading, user?.role, user?.id]);
 
   const loadBannerConfig = async () => {
     try {
@@ -189,7 +214,7 @@ export default function CoursesPage() {
     }
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return <Loader />;
   }
 

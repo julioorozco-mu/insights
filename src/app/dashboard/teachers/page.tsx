@@ -41,7 +41,7 @@ interface Speaker {
 export default function SpeakersPage() {
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { uploadFile, uploading } = useUploadFile();
   
   // Estados para modales
@@ -99,8 +99,10 @@ export default function SpeakersPage() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   useEffect(() => {
+    // No cargar hasta que useAuth termine de resolver
+    if (authLoading) return;
     loadSpeakers();
-  }, []);
+  }, [authLoading]);
 
   useEffect(() => {
     if (accessEnabled && !accessEmail) {
@@ -163,35 +165,17 @@ export default function SpeakersPage() {
 
   const loadSpeakers = async () => {
     try {
-      // Cargar teachers desde Supabase con información de usuario
-      const { data: teachersData, error } = await supabaseClient
-        .from(TABLES.TEACHERS)
-        .select(`
-          *,
-          users:user_id (
-            id, name, last_name, email, phone, avatar_url, bio
-          )
-        `)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Error loading speakers:", error);
+      // Usar API del servidor para evitar problemas de RLS
+      const res = await fetch('/api/admin/getSpeakers');
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error("Error loading speakers:", errorData);
         return;
       }
-
-      const speakersData: Speaker[] = (teachersData || []).map((row: any) => ({
-        id: row.id,
-        userId: row.user_id,
-        name: row.users?.name || '',
-        email: row.users?.email,
-        phone: row.users?.phone,
-        avatarUrl: row.users?.avatar_url,
-        bio: row.about_me || row.users?.bio,
-        expertise: row.expertise || [],
-        isActive: true,
-      }));
       
-      setSpeakers(speakersData);
+      const data = await res.json();
+      setSpeakers(data.speakers || []);
     } catch (error) {
       console.error("Error loading speakers:", error);
     } finally {
@@ -304,45 +288,74 @@ export default function SpeakersPage() {
     try {
       let avatarUrl = formData.avatarUrl;
       
-      // Subir imagen si hay una seleccionada
+      // Subir imagen usando API del servidor (más confiable)
       if (avatarFile) {
-        const uploadedUrl = await uploadFile(
-          avatarFile,
-          'avatars',
-          `speakers/${Date.now()}_${avatarFile.name}`
-        );
-        if (uploadedUrl) {
-          avatarUrl = uploadedUrl;
+        try {
+          const timestamp = Date.now();
+          const filePath = `teachers/${timestamp}_${avatarFile.name}`;
+          
+          console.log('[handleAddSpeaker] Subiendo imagen via API...');
+          
+          const uploadFormData = new FormData();
+          uploadFormData.append('file', avatarFile);
+          uploadFormData.append('bucket', 'covers');
+          uploadFormData.append('path', filePath);
+          
+          const uploadRes = await fetch('/api/admin/uploadFile', {
+            method: 'POST',
+            body: uploadFormData,
+          });
+          
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json();
+            avatarUrl = uploadData.url;
+            console.log('[handleAddSpeaker] Imagen subida:', avatarUrl);
+          } else {
+            const errorData = await uploadRes.json();
+            console.error('[handleAddSpeaker] Error subiendo imagen:', errorData);
+            // Continuar sin imagen si falla
+          }
+        } catch (uploadError: any) {
+          console.error('Error subiendo imagen:', uploadError);
+          // Continuar sin imagen
         }
       }
       
-      let createdUserId: string | null = null;
       if (accessEnabled) {
-        // Crear usuario en Auth vía API (admin) para no iniciar sesión automáticamente
+        // Crear usuario en Auth vía API (admin) - la API también crea el registro en teachers
         const emailForAccess = (accessEmail || formData.email || "").trim();
         const res = await fetch('/api/admin/createSpeakerUser', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: emailForAccess, password, name: formData.name })
+          body: JSON.stringify({ 
+            email: emailForAccess, 
+            password, 
+            name: formData.name,
+            phone: formData.phone || null,
+            bio: formData.bio || null,
+            avatarUrl: avatarUrl || null,
+            expertise: formData.expertise || [],
+          })
         });
         const data = await res.json();
         if (!res.ok) {
           throw new Error(data?.error || 'No se pudo crear el usuario');
         }
-        createdUserId = data.uid as string;
+        // La API ya crea el registro en teachers, no necesitamos crearlo aquí
+      } else {
+        // Sin acceso a plataforma: solo crear registro en teachers (sin user_id)
+        const { error: insertError } = await supabaseClient
+          .from(TABLES.TEACHERS)
+          .insert({
+            user_id: null,
+            expertise: formData.expertise || [],
+            about_me: formData.bio,
+          });
+        
+        if (insertError) throw insertError;
       }
-
-      // Crear teacher en Supabase
-      const { error: insertError } = await supabaseClient
-        .from(TABLES.TEACHERS)
-        .insert({
-          user_id: createdUserId || null,
-          expertise: formData.expertise || [],
-          about_me: formData.bio,
-        });
       
-      if (insertError) throw insertError;
-      
+      setFeedback({ type: 'success', message: 'Profesor agregado correctamente' });
       setShowAddModal(false);
       resetForm();
       loadSpeakers();
@@ -350,8 +363,10 @@ export default function SpeakersPage() {
       console.error('Error adding speaker:', error);
       if (error?.message?.includes('email-already-in-use') || error?.message?.includes('already registered')) {
         setFormError('Este correo ya está registrado. Usa otro correo para el acceso a la plataforma.');
+      } else if (error?.message?.includes('Bucket not found') || error?.message?.includes('bucket')) {
+        setFormError('Error de almacenamiento: El bucket no existe o no está configurado correctamente.');
       } else {
-        setFormError('Error al agregar profesor. Revisa los datos y vuelve a intentar.');
+        setFormError(`Error al agregar profesor: ${error?.message || 'Revisa los datos y vuelve a intentar.'}`);
       }
     } finally {
       setSaving(false);
@@ -397,14 +412,22 @@ export default function SpeakersPage() {
       let avatarUrl = formData.avatarUrl;
       
       // Subir nueva imagen si hay una seleccionada
+      // Usamos el bucket 'covers' con ruta 'teachers/' que tiene políticas más permisivas
       if (avatarFile) {
-        const uploadedUrl = await uploadFile(
-          avatarFile,
-          'avatars',
-          `speakers/${Date.now()}_${avatarFile.name}`
-        );
-        if (uploadedUrl) {
-          avatarUrl = uploadedUrl;
+        try {
+          const uploadedUrl = await uploadFile(
+            avatarFile,
+            'covers',
+            `teachers/${Date.now()}_${avatarFile.name}`
+          );
+          if (uploadedUrl) {
+            avatarUrl = uploadedUrl;
+          } else {
+            console.warn('No se pudo subir la imagen en edición, continuando sin cambiar avatar');
+          }
+        } catch (uploadError: any) {
+          console.error('Error subiendo imagen en edición:', uploadError);
+          // Continuar sin cambiar la imagen
         }
       }
       
@@ -435,16 +458,26 @@ export default function SpeakersPage() {
           return;
         }
         // Crear usuario en Auth vía API (admin) para no iniciar sesión automáticamente
+        // skipTeacherRecord: true porque ya existe el registro de teacher
         const res = await fetch('/api/admin/createSpeakerUser', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: emailForAccess, password: newPassword, name: formData.name })
+          body: JSON.stringify({ 
+            email: emailForAccess, 
+            password: newPassword, 
+            name: formData.name,
+            phone: formData.phone || null,
+            bio: formData.bio || null,
+            avatarUrl: avatarUrl || null,
+            expertise: formData.expertise || [],
+            skipTeacherRecord: true, // El registro de teacher ya existe
+          })
         });
         const data = await res.json();
         if (!res.ok) {
           throw new Error(data?.error || 'No se pudo crear el usuario');
         }
-        updateData.userId = data.uid;
+        updateData.user_id = data.uid;
       }
 
       // Actualizar teacher en Supabase
@@ -607,7 +640,7 @@ export default function SpeakersPage() {
     });
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return <Loader />;
   }
 

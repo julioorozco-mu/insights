@@ -32,7 +32,14 @@ export function useUploadFile() {
       const path = customPath || `${timestamp}_${file.name}`;
 
       setProgress(30);
-      const url = await fileService.uploadFile(file, path, bucket);
+      
+      // Timeout de 30 segundos para la subida
+      const uploadPromise = fileService.uploadFile(file, path, bucket);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout: La subida tardó más de 30 segundos. Verifica tu conexión o contacta al administrador.')), 30000);
+      });
+      
+      const url = await Promise.race([uploadPromise, timeoutPromise]);
       
       setProgress(100);
       return url;
@@ -40,7 +47,7 @@ export function useUploadFile() {
       const message = getErrorMessage(err);
       console.error("Error en useUploadFile:", err);
       setError(message);
-      return null;
+      throw err; // Re-lanzar para que el componente pueda manejarlo
     } finally {
       setUploading(false);
     }

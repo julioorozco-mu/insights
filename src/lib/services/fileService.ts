@@ -5,6 +5,9 @@ import { StorageBucket } from "@/utils/getFileUrl";
 // Buckets públicos (usan getPublicUrl)
 const PUBLIC_BUCKETS: StorageBucket[] = ['avatars', 'covers', 'certificates', 'files'];
 
+// URL base de Supabase Storage
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
 export class FileService {
   /**
    * Sube un archivo a Supabase Storage
@@ -16,28 +19,26 @@ export class FileService {
   async uploadFile(file: File, path: string, bucket: StorageBucket = "attachments") {
     console.log(`[FileService] Subiendo archivo a bucket '${bucket}', path: '${path}'`);
     console.log(`[FileService] Archivo: ${file.name}, tamaño: ${(file.size / 1024).toFixed(2)} KB, tipo: ${file.type}`);
+    console.log(`[FileService] Iniciando subida directa...`);
     
-    // Timeout de 30 segundos para detectar si la llamada se cuelga
-    const uploadPromise = supabaseClient.storage
+    // Subir directamente sin verificar sesión (la política RLS lo manejará)
+    const { data, error } = await supabaseClient.storage
       .from(bucket)
-      .upload(path, file);
-    
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Timeout: La subida tardó más de 30 segundos')), 30000);
-    });
-    
-    let data, error;
-    try {
-      const result = await Promise.race([uploadPromise, timeoutPromise]);
-      data = result.data;
-      error = result.error;
-    } catch (timeoutError) {
-      console.error(`[FileService] Timeout o error:`, timeoutError);
-      throw timeoutError;
-    }
+      .upload(path, file, {
+        cacheControl: '3600',
+        upsert: true
+      });
+
+    console.log(`[FileService] Respuesta recibida:`, { data, error });
 
     if (error) {
       console.error(`[FileService] Error al subir:`, error);
+      if (error.message?.includes('row-level security') || error.message?.includes('policy')) {
+        throw new Error(`Error de permisos: No tienes permiso para subir a '${bucket}'.`);
+      }
+      if (error.message?.includes('Bucket not found')) {
+        throw new Error(`El bucket '${bucket}' no existe.`);
+      }
       throw error;
     }
     

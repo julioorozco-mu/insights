@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import "@/styles/globals.css";
 import "@/styles/theme.css";
 import { APP_NAME_FULL } from "@/utils/constants";
+import { Providers } from "@/components/providers/Providers";
 
 const font = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-plus-jakarta" });
 
@@ -22,7 +23,9 @@ export default function RootLayout({
   return (
     <html lang="es" data-theme="skillzone" suppressHydrationWarning>
       <body className={`${font.variable} font-sans bg-brand-background text-slate-900`} suppressHydrationWarning>
-        {children}
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );
