@@ -166,11 +166,11 @@ export default function EditLessonPage() {
             type: s.type,
           })));
           
-          // Cargar TODOS los recursos disponibles en la plataforma (excluyendo deshabilitados)
+          // Cargar TODOS los recursos disponibles en la plataforma (excluyendo eliminados)
           const { data: resourcesData } = await supabaseClient
             .from(TABLES.FILE_ATTACHMENTS)
             .select('*')
-            .neq('status', 'disabled');
+            .eq('is_deleted', false);
           
           const mappedResources = (resourcesData || []).map((r: any) => ({
             id: r.id,
@@ -325,16 +325,16 @@ export default function EditLessonPage() {
       
       // Subir imagen a Supabase Storage
       const timestamp = Date.now();
-      const filePath = `lessons/covers/${timestamp}_${file.name}`;
+      const filePath = `lessons/${timestamp}_${file.name}`;
       
       const { error: uploadError } = await supabaseClient.storage
-        .from('files')
+        .from('covers')
         .upload(filePath, file);
       
       if (uploadError) throw uploadError;
       
       const { data: urlData } = supabaseClient.storage
-        .from('files')
+        .from('covers')
         .getPublicUrl(filePath);
       
       setCoverImage(urlData.publicUrl);
@@ -358,19 +358,22 @@ export default function EditLessonPage() {
       // Subir archivo a Supabase Storage
       const timestamp = Date.now();
       const fileName = `${timestamp}_${file.name}`;
-      const filePath = `resources/${user.id}/${fileName}`;
+      const filePath = `${user.id}/${fileName}`;
       
       const { error: uploadError } = await supabaseClient.storage
-        .from('files')
+        .from('resources')
         .upload(filePath, file);
       
       if (uploadError) throw uploadError;
       
-      const { data: urlData } = supabaseClient.storage
-        .from('files')
-        .getPublicUrl(filePath);
+      // Bucket privado: usar URL firmada
+      const { data: urlData, error: urlError } = await supabaseClient.storage
+        .from('resources')
+        .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 año
       
-      const fileUrl = urlData.publicUrl;
+      if (urlError) throw urlError;
+      
+      const fileUrl = urlData.signedUrl;
       
       // Crear recurso en Supabase
       const { data: resourceDoc, error: insertError } = await supabaseClient

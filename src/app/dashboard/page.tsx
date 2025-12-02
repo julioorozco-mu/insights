@@ -61,7 +61,7 @@ const myCourses = [
       "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=200&q=80",
       "https://images.unsplash.com/photo-1504593811423-6dd665756598?auto=format&fit=crop&w=200&q=80",
       "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80",
-      "https://images.unsplash.com/photo-1544723795-432537dc3d60?auto=format&fit=crop&w=200&q=80",
+      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
       "https://images.unsplash.com/photo-1544005313-35dd01b8c83c?auto=format&fit=crop&w=200&q=80",
     ],
   },

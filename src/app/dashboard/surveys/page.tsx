@@ -18,7 +18,6 @@ interface Survey {
   type: "entry" | "exit" | "general";
   questions: any[];
   isActive: boolean;
-  isDeleted?: boolean;
   createdAt: string;
 }
 
@@ -42,7 +41,7 @@ export default function SurveysPage() {
       const { data, error } = await supabaseClient
         .from(TABLES.SURVEYS)
         .select('*')
-        .or('is_deleted.is.null,is_deleted.eq.false');
+        .order('created_at', { ascending: false });
       
       if (error) throw error;
       
@@ -52,8 +51,7 @@ export default function SurveysPage() {
         description: s.description,
         type: s.type,
         questions: s.questions || [],
-        isActive: s.is_active,
-        isDeleted: s.is_deleted,
+        isActive: true, // La tabla no tiene is_active, asumimos activo
         createdAt: s.created_at,
       })) as Survey[];
       setSurveys(surveysData);
@@ -93,23 +91,11 @@ export default function SurveysPage() {
 
     setDeleting(true);
     try {
-      if (isUsedInCourses) {
-        // Baja lógica: marcar como eliminada
-        await supabaseClient
-          .from(TABLES.SURVEYS)
-          .update({
-            is_deleted: true,
-            is_active: false,
-            deleted_at: new Date().toISOString()
-          })
-          .eq('id', surveyToDelete.id);
-      } else {
-        // Eliminación física
-        await supabaseClient
-          .from(TABLES.SURVEYS)
-          .delete()
-          .eq('id', surveyToDelete.id);
-      }
+      // Eliminación física (la tabla no tiene soft-delete)
+      await supabaseClient
+        .from(TABLES.SURVEYS)
+        .delete()
+        .eq('id', surveyToDelete.id);
       
       setShowDeleteModal(false);
       setSurveyToDelete(null);
@@ -133,9 +119,6 @@ export default function SurveysPage() {
         description: survey.description || '',
         type: survey.type,
         questions: survey.questions || [],
-        is_active: false, // Crear como inactiva para que el admin la revise
-        is_deleted: false,
-        created_by: user.id,
       };
 
       await supabaseClient.from(TABLES.SURVEYS).insert(clonedSurvey);
@@ -279,37 +262,37 @@ export default function SurveysPage() {
             </div>
             
             <h3 className="font-bold text-xl text-center mb-2">
-              {isUsedInCourses ? '¿Desactivar Encuesta?' : '¿Eliminar Encuesta?'}
+              ¿Eliminar Encuesta?
             </h3>
             
             <div className="text-center mb-6">
               <p className="text-base-content/70 mb-4">
-                Estás a punto de {isUsedInCourses ? 'desactivar' : 'eliminar'} la encuesta:
+                Estás a punto de eliminar la encuesta:
               </p>
               <p className="font-semibold text-lg">"{surveyToDelete.title}"</p>
             </div>
 
-            {isUsedInCourses ? (
+            {isUsedInCourses && (
               <div className="alert alert-warning text-white mb-4">
                 <IconAlertTriangle size={20} />
                 <div>
-                  <h4 className="font-semibold">Esta encuesta está siendo usada en cursos</h4>
+                  <h4 className="font-semibold">⚠️ Esta encuesta está siendo usada en cursos</h4>
                   <p className="text-sm">
-                    No se puede eliminar completamente. Se realizará una baja lógica y la encuesta se marcará como inactiva.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="alert alert-error text-white mb-4">
-                <IconAlertTriangle size={20} />
-                <div>
-                  <h4 className="font-semibold">Esta acción no se puede deshacer</h4>
-                  <p className="text-sm">
-                    La encuesta será eliminada permanentemente de la base de datos.
+                    Se eliminarán también las referencias en los cursos asociados.
                   </p>
                 </div>
               </div>
             )}
+            
+            <div className="alert alert-error text-white mb-4">
+              <IconAlertTriangle size={20} />
+              <div>
+                <h4 className="font-semibold">Esta acción no se puede deshacer</h4>
+                <p className="text-sm">
+                  La encuesta será eliminada permanentemente de la base de datos.
+                </p>
+              </div>
+            </div>
             
             <div className="modal-action">
               <button 
@@ -327,7 +310,7 @@ export default function SurveysPage() {
                 onClick={handleConfirmDelete}
                 disabled={deleting}
               >
-                {deleting ? 'Procesando...' : (isUsedInCourses ? 'Desactivar' : 'Eliminar')}
+                {deleting ? 'Procesando...' : 'Eliminar'}
               </button>
             </div>
           </div>

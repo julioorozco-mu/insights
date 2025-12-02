@@ -227,16 +227,16 @@ export default function CertificatePreviewPage() {
     try {
       setUploadingSignature(true);
       const timestamp = Date.now();
-      const filePath = `certificates/signatures/${timestamp}_${file.name}`;
+      const filePath = `signatures/${timestamp}_${file.name}`;
       
       const { error: uploadError } = await supabaseClient.storage
-        .from('files')
+        .from('certificates')
         .upload(filePath, file);
       
       if (uploadError) throw uploadError;
       
       const { data: urlData } = supabaseClient.storage
-        .from('files')
+        .from('certificates')
         .getPublicUrl(filePath);
       
       setSignatures(signatures.map(sig => 

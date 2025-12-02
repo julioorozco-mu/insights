@@ -39,8 +39,16 @@ export const updateUserSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  email: z.string().email("Correo electrónico inválido"),
-  password: z.string().min(1, "La contraseña es requerida"),
+  email: z
+    .string()
+    .min(1, "El correo es requerido")
+    .email("Correo electrónico inválido")
+    .transform((email) => email.toLowerCase().trim()),
+  password: z
+    .string()
+    .min(1, "La contraseña es requerida")
+    .min(6, "La contraseña debe tener al menos 6 caracteres")
+    .max(72, "La contraseña no puede exceder 72 caracteres"), // Límite de bcrypt
 });
 
 export const resetPasswordSchema = z.object({

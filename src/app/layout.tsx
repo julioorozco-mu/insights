@@ -9,6 +9,9 @@ const font = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-plus-jaka
 export const metadata: Metadata = {
   title: APP_NAME_FULL,
   description: "Plataforma de capacitación política con cursos en línea y transmisión en vivo",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

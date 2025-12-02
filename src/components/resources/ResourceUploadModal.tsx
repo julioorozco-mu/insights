@@ -53,12 +53,12 @@ export default function ResourceUploadModal({ onClose, onSuccess }: ResourceUplo
 
       // Subir a Supabase Storage
       const timestamp = Date.now();
-      const filePath = `resources/${user.id}/${timestamp}_${file.name}`;
+      const filePath = `${user.id}/${timestamp}_${file.name}`;
       
       setUploadProgress(50); // Simular progreso
       
       const { data: uploadData, error: uploadError } = await supabaseClient.storage
-        .from('files')
+        .from('resources')
         .upload(filePath, file);
       
       if (uploadError) {
@@ -70,12 +70,19 @@ export default function ResourceUploadModal({ onClose, onSuccess }: ResourceUplo
       
       setUploadProgress(80);
       
-      // Obtener URL pública
-      const { data: urlData } = supabaseClient.storage
-        .from('files')
-        .getPublicUrl(filePath);
+      // Obtener URL firmada (bucket privado)
+      const { data: urlData, error: urlError } = await supabaseClient.storage
+        .from('resources')
+        .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 año
       
-      const downloadURL = urlData.publicUrl;
+      if (urlError) {
+        console.error("Error getting signed URL:", urlError);
+        alert("Error al obtener la URL del archivo");
+        setUploading(false);
+        return;
+      }
+      
+      const downloadURL = urlData.signedUrl;
 
       // Guardar en base de datos
       await resourceService.create({

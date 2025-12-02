@@ -56,7 +56,7 @@ export class StudentRepository {
       .from(this.table)
       .select("*")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
     if (error || !data) return null;
     return this.mapToStudent(data);

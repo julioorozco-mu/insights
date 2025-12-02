@@ -10,7 +10,7 @@ export class SiteConfigRepository {
       .from(this.table)
       .select("value")
       .eq("key", key)
-      .single();
+      .maybeSingle();
     return data?.value;
   }
 

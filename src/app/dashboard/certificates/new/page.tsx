@@ -41,16 +41,16 @@ export default function NewCertificateTemplatePage() {
     try {
       setUploadingImage(true);
       const timestamp = Date.now();
-      const filePath = `certificates/backgrounds/${timestamp}_${selectedFile.name}`;
+      const filePath = `backgrounds/${timestamp}_${selectedFile.name}`;
       
       const { error: uploadError } = await supabaseClient.storage
-        .from('files')
+        .from('certificates')
         .upload(filePath, selectedFile);
       
       if (uploadError) throw uploadError;
       
       const { data: urlData } = supabaseClient.storage
-        .from('files')
+        .from('certificates')
         .getPublicUrl(filePath);
       
       return urlData.publicUrl;

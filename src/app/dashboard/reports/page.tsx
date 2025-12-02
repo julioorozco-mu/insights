@@ -136,7 +136,7 @@ export default function ReportsPage() {
           .select('id')
           .eq('course_id', courseId)
           .eq('student_id', studentId)
-          .single();
+          .maybeSingle();
         const hasCertificate = !!certDownload;
 
         // Concatenar nombre completo

@@ -56,7 +56,7 @@ export class UserRepository {
       .from(this.table)
       .select("*")
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error || !data) return null;
     return this.mapToUser(data);
@@ -67,7 +67,7 @@ export class UserRepository {
       .from(this.table)
       .select("*")
       .eq("email", email)
-      .single();
+      .maybeSingle();
 
     if (error || !data) return null;
     return this.mapToUser(data);
@@ -112,6 +112,14 @@ export class UserRepository {
     if (data.expertise !== undefined) updateData.expertise = data.expertise;
     if (data.resumeUrl !== undefined) updateData.resume_url = data.resumeUrl;
     if (data.signatureUrl !== undefined) updateData.signature_url = data.signatureUrl;
+    // Campos adicionales para perfil público
+    if (data.coverImageUrl !== undefined) updateData.cover_image_url = data.coverImageUrl;
+    if (data.aboutMe !== undefined) updateData.about_me = data.aboutMe;
+    if (data.favoriteBooks !== undefined) updateData.favorite_books = data.favoriteBooks;
+    if (data.publishedBooks !== undefined) updateData.published_books = data.publishedBooks;
+    if (data.externalCourses !== undefined) updateData.external_courses = data.externalCourses;
+    if (data.achievements !== undefined) updateData.achievements = data.achievements;
+    if (data.services !== undefined) updateData.services = data.services;
 
     const { error } = await supabaseClient
       .from(this.table)
@@ -137,7 +145,7 @@ export class UserRepository {
   }
 
   // Mapear datos de Supabase (snake_case) a formato de la app (camelCase)
-  private mapToUser(data: Record<string, unknown>): User {
+  private mapToUser(data: Record<string, unknown>): User & Record<string, unknown> {
     return {
       id: data.id as string,
       name: data.name as string,
@@ -155,6 +163,14 @@ export class UserRepository {
       isVerified: data.is_verified as boolean | undefined,
       createdAt: data.created_at as string,
       updatedAt: data.updated_at as string,
+      // Campos adicionales para perfil público
+      coverImageUrl: data.cover_image_url as string | undefined,
+      aboutMe: data.about_me as string | undefined,
+      favoriteBooks: data.favorite_books as string[] | undefined,
+      publishedBooks: data.published_books as { title: string; url?: string; year?: string }[] | undefined,
+      externalCourses: data.external_courses as { title: string; url: string; platform?: string }[] | undefined,
+      achievements: data.achievements as string[] | undefined,
+      services: data.services as string[] | undefined,
     };
   }
 }

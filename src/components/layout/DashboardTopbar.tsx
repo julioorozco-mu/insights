@@ -1,17 +1,19 @@
 "use client";
 
 import Image from "next/image";
-import { useAuth } from "@/hooks/useAuth";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Menu, Bell } from "lucide-react";
+import { User } from "@/types/user";
 
 interface DashboardTopbarProps {
   onToggleSidebar: () => void;
   sidebarCollapsed: boolean;
+  user: User | null;
+  onSignOut: (options?: { global?: boolean; redirect?: string }) => Promise<void>;
 }
 
-export function DashboardTopbar({ onToggleSidebar }: DashboardTopbarProps) {
-  const { user, signOut } = useAuth();
+export function DashboardTopbar({ onToggleSidebar, user, onSignOut }: DashboardTopbarProps) {
   const router = useRouter();
 
   // Traducir roles al español
@@ -29,8 +31,13 @@ export function DashboardTopbar({ onToggleSidebar }: DashboardTopbarProps) {
   };
 
   const handleSignOut = async () => {
-    await signOut();
-    router.push("/auth/login");
+    try {
+      await onSignOut({ redirect: "/auth/login" });
+    } catch (error) {
+      // El estado ya está limpio, forzar redirección manual como fallback
+      console.error("Error en signOut:", error);
+      window.location.href = "/auth/login";
+    }
   };
 
   // Get current date info
@@ -149,22 +156,20 @@ export function DashboardTopbar({ onToggleSidebar }: DashboardTopbarProps) {
                 </div>
               </li>
               <li className="mt-2">
-                <a 
-                  href={`/profile/${user?.id}`} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary transition-colors"
+                <Link 
+                  href="/dashboard/profile"
+                  className="px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary transition-colors block"
                 >
                   Ver Perfil
-                </a>
+                </Link>
               </li>
               <li>
-                <a 
+                <Link 
                   href="/dashboard/settings"
-                  className="px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary transition-colors"
+                  className="px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-brand-primary/5 hover:text-brand-primary transition-colors block"
                 >
                   Configuración
-                </a>
+                </Link>
               </li>
               <li className="mt-2 pt-2 border-t border-slate-100">
                 <button 

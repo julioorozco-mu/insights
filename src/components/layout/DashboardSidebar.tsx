@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAuth } from "@/hooks/useAuth";
+import { User } from "@/types/user";
 import {
   LayoutDashboard,
   BookOpen,
@@ -107,6 +106,7 @@ interface DashboardSidebarProps {
   isCollapsed: boolean;
   onClose: () => void;
   onToggleCollapse: () => void;
+  user: User | null;
 }
 
 export function DashboardSidebar({
@@ -114,9 +114,9 @@ export function DashboardSidebar({
   isCollapsed,
   onClose,
   onToggleCollapse,
+  user,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
-  const { user } = useAuth();
 
   const isActive = (path: string) => {
     if (path === "/dashboard") {

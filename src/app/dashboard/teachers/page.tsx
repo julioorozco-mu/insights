@@ -306,12 +306,13 @@ export default function SpeakersPage() {
       
       // Subir imagen si hay una seleccionada
       if (avatarFile) {
-        const uploadResult = await uploadFile(
+        const uploadedUrl = await uploadFile(
           avatarFile,
+          'avatars',
           `speakers/${Date.now()}_${avatarFile.name}`
         );
-        if (uploadResult) {
-          avatarUrl = uploadResult.url;
+        if (uploadedUrl) {
+          avatarUrl = uploadedUrl;
         }
       }
       
@@ -397,12 +398,13 @@ export default function SpeakersPage() {
       
       // Subir nueva imagen si hay una seleccionada
       if (avatarFile) {
-        const uploadResult = await uploadFile(
+        const uploadedUrl = await uploadFile(
           avatarFile,
+          'avatars',
           `speakers/${Date.now()}_${avatarFile.name}`
         );
-        if (uploadResult) {
-          avatarUrl = uploadResult.url;
+        if (uploadedUrl) {
+          avatarUrl = uploadedUrl;
         }
       }
       

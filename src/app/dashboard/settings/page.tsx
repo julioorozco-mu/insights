@@ -104,16 +104,16 @@ export default function SettingsPage() {
     try {
       setUploadingAvatar(true);
       const timestamp = Date.now();
-      const filePath = `avatars/${user.id}/${timestamp}_${file.name}`;
+      const filePath = `${user.id}/${timestamp}_${file.name}`;
       
       const { error: uploadError } = await supabaseClient.storage
-        .from('files')
+        .from('avatars')
         .upload(filePath, file);
       
       if (uploadError) throw uploadError;
       
       const { data: urlData } = supabaseClient.storage
-        .from('files')
+        .from('avatars')
         .getPublicUrl(filePath);
       
       setAvatarUrl(urlData.publicUrl);
@@ -133,16 +133,16 @@ export default function SettingsPage() {
     try {
       setUploadingCover(true);
       const timestamp = Date.now();
-      const filePath = `covers/${user.id}/${timestamp}_${file.name}`;
+      const filePath = `teachers/${user.id}/${timestamp}_${file.name}`;
       
       const { error: uploadError } = await supabaseClient.storage
-        .from('files')
+        .from('covers')
         .upload(filePath, file);
       
       if (uploadError) throw uploadError;
       
       const { data: urlData } = supabaseClient.storage
-        .from('files')
+        .from('covers')
         .getPublicUrl(filePath);
       
       setCoverImageUrl(urlData.publicUrl);

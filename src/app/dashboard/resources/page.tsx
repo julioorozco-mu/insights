@@ -65,7 +65,7 @@ export default function ResourcesPage() {
       const { data, error } = await supabaseClient
         .from(TABLES.FILE_ATTACHMENTS)
         .select('*')
-        .neq('status', 'disabled');
+        .eq('is_deleted', false);
       
       if (error) throw error;
       
@@ -120,26 +120,29 @@ export default function ResourcesPage() {
     if (!user) return;
 
     const fileId = `${Date.now()}_${file.name}`;
-    const filePath = `resources/${user.id}/${fileId}`;
+    const filePath = `${user.id}/${fileId}`;
     
     try {
       setUploadProgress(prev => ({ ...prev, [fileId]: 50 }));
       
       const { error: uploadError } = await supabaseClient.storage
-        .from('files')
+        .from('resources')
         .upload(filePath, file);
       
       if (uploadError) throw uploadError;
       
       setUploadProgress(prev => ({ ...prev, [fileId]: 80 }));
       
-      const { data: urlData } = supabaseClient.storage
-        .from('files')
-        .getPublicUrl(filePath);
+      // Bucket privado: usar URL firmada
+      const { data: urlData, error: urlError } = await supabaseClient.storage
+        .from('resources')
+        .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 año
+      
+      if (urlError) throw urlError;
       
       await supabaseClient.from(TABLES.FILE_ATTACHMENTS).insert({
         name: file.name,
-        url: urlData.publicUrl,
+        url: urlData.signedUrl,
         type: file.type,
         size: file.size,
         uploaded_by: user.id,
@@ -188,13 +191,11 @@ export default function ResourcesPage() {
         }
 
         if (isLinked) {
-          // Baja lógica: marcar como deshabilitado
+          // Baja lógica: marcar como eliminado
           await supabaseClient
             .from(TABLES.FILE_ATTACHMENTS)
             .update({
-              status: 'disabled',
-              disabled_at: new Date().toISOString(),
-              disabled_by: user?.id
+              is_deleted: true
             })
             .eq('id', resourceId);
         } else {

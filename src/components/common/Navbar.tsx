@@ -87,7 +87,9 @@ export function Navbar() {
                 <Link href="/dashboard/settings">Configuración</Link>
               </li>
               <li>
-                <button onClick={() => signOut()}>Cerrar Sesión</button>
+                <button onClick={() => signOut({ redirect: "/auth/login" })}>
+                  Cerrar Sesión
+                </button>
               </li>
             </ul>
           </div>

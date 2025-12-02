@@ -97,16 +97,16 @@ export default function NewLessonPage() {
     try {
       setUploadingCover(true);
       const timestamp = Date.now();
-      const filePath = `lessons/covers/${timestamp}_${coverFile.name}`;
+      const filePath = `lessons/${timestamp}_${coverFile.name}`;
       
       const { error: uploadError } = await supabaseClient.storage
-        .from('files')
+        .from('covers')
         .upload(filePath, coverFile);
       
       if (uploadError) throw uploadError;
       
       const { data: urlData } = supabaseClient.storage
-        .from('files')
+        .from('covers')
         .getPublicUrl(filePath);
       
       return urlData.publicUrl;
@@ -149,19 +149,22 @@ export default function NewLessonPage() {
     try {
       setUploadingVideo(true);
       const timestamp = Date.now();
-      const filePath = `lessons/videos/${timestamp}_${videoFile.name}`;
+      const filePath = `lessons/${timestamp}_${videoFile.name}`;
       
       const { error: uploadError } = await supabaseClient.storage
-        .from('files')
+        .from('videos')
         .upload(filePath, videoFile);
       
       if (uploadError) throw uploadError;
       
-      const { data: urlData } = supabaseClient.storage
-        .from('files')
-        .getPublicUrl(filePath);
+      // Bucket privado: usar URL firmada
+      const { data: urlData, error: urlError } = await supabaseClient.storage
+        .from('videos')
+        .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 año
       
-      return urlData.publicUrl;
+      if (urlError) throw urlError;
+      
+      return urlData.signedUrl;
     } catch (error) {
       console.error("Error uploading video:", error);
       throw error;

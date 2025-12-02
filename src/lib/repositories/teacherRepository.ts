@@ -127,7 +127,7 @@ export class TeacherRepository {
         )
       `)
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error || !data) return null;
     return this.mapToTeacher(data, data.users);
@@ -143,7 +143,7 @@ export class TeacherRepository {
         )
       `)
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
     if (error || !data) return null;
     return this.mapToTeacher(data, data.users);

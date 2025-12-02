@@ -134,11 +134,18 @@ export default function NewCoursePage() {
     try {
       setLoading(true);
       setError(null);
+      console.log("[NewCourse] Iniciando creación de curso...", data);
       
       // Subir imagen si existe
       let coverImageUrl: string | undefined = undefined;
       if (coverImageFile) {
-        coverImageUrl = await uploadFile(coverImageFile, 'courses');
+        console.log("[NewCourse] Subiendo imagen de portada...");
+        const uploadedUrl = await uploadFile(coverImageFile, 'covers');
+        if (!uploadedUrl) {
+          throw new Error("Error al subir la imagen de portada");
+        }
+        coverImageUrl = uploadedUrl;
+        console.log("[NewCourse] Imagen subida:", coverImageUrl);
       }
       
       // Construir fecha y hora si están definidas
@@ -217,10 +224,30 @@ export default function NewCoursePage() {
         endDate: endDateTime,
       };
       
+      console.log("[NewCourse] Enviando datos a Supabase:", courseData);
       const course = await courseRepository.create(courseData);
+      console.log("[NewCourse] Curso creado exitosamente:", course.id);
       router.push(`/dashboard/courses/${course.id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al crear el curso");
+    } catch (err: unknown) {
+      console.error("[NewCourse] Error al crear curso:", err);
+      
+      // Extraer mensaje de error detallado
+      let errorMessage = "Error al crear el curso";
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === 'object' && err !== null) {
+        // Errores de Supabase tienen estructura {message, details, hint, code}
+        const supabaseError = err as { message?: string; details?: string; hint?: string; code?: string };
+        errorMessage = supabaseError.message || supabaseError.details || JSON.stringify(err);
+        if (supabaseError.hint) {
+          errorMessage += ` (${supabaseError.hint})`;
+        }
+        if (supabaseError.code) {
+          errorMessage += ` [${supabaseError.code}]`;
+        }
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

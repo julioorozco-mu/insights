@@ -182,16 +182,16 @@ export default function EditCoursePage() {
     try {
       setUploadingImage(true);
       const timestamp = Date.now();
-      const filePath = `courses/${timestamp}_${selectedFile.name}`;
+      const filePath = `courses/${params.id}/${timestamp}_${selectedFile.name}`;
       
       const { error: uploadError } = await supabaseClient.storage
-        .from('files')
+        .from('covers')
         .upload(filePath, selectedFile);
       
       if (uploadError) throw uploadError;
       
       const { data: urlData } = supabaseClient.storage
-        .from('files')
+        .from('covers')
         .getPublicUrl(filePath);
       
       return urlData.publicUrl;
