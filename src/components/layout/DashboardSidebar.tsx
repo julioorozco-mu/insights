@@ -42,7 +42,7 @@ const MENU_ITEMS: MenuItem[] = [
     path: "/dashboard",
     label: "Dashboard",
     icon: LayoutDashboard,
-    roles: ["admin", "speaker", "student"],
+    roles: ["admin", "teacher", "student"],
   },
   { path: "/dashboard/courses", label: "Cursos", icon: BookOpen, roles: ["admin"], indent: true },
   { path: "/dashboard/teachers", label: "Profesores", icon: Mic, roles: ["admin"], indent: true },
@@ -52,10 +52,12 @@ const MENU_ITEMS: MenuItem[] = [
   { path: "/dashboard/certificates", label: "Certificados", icon: Award, roles: ["admin"], indent: true },
   { path: "/dashboard/reports", label: "Reportes", icon: FileBarChart, roles: ["admin"], indent: true },
 
-  // Speaker menu
-  { path: "/dashboard/my-courses", label: "Mis Cursos", icon: BookOpen, roles: ["speaker"] },
-  { path: "/dashboard/my-students", label: "Alumnos", icon: Users, roles: ["speaker"] },
-  { path: "/dashboard/my-resources", label: "Mis Recursos", icon: FolderOpen, roles: ["speaker"] },
+  // Teacher menu (antes speaker)
+  { path: "/dashboard/my-courses", label: "Mis Cursos", icon: BookOpen, roles: ["teacher"] },
+  { path: "/dashboard/my-students", label: "Alumnos", icon: Users, roles: ["teacher"] },
+  { path: "/dashboard/my-resources", label: "Mis Recursos", icon: FolderOpen, roles: ["teacher"] },
+  { path: "/dashboard/surveys", label: "Encuestas", icon: BarChart3, roles: ["teacher"] },
+  { path: "/dashboard/reports", label: "Reportes", icon: FileBarChart, roles: ["teacher"] },
 
   // Student menu
   {
@@ -72,7 +74,7 @@ const SECONDARY_MENU: MenuItem[] = [
     path: "/dashboard/messages",
     label: "Mensajes",
     icon: MessageCircle,
-    roles: ["admin", "speaker", "student"],
+    roles: ["admin", "teacher", "student"],
     badge: 8,
     indent: true,
   },
@@ -80,7 +82,7 @@ const SECONDARY_MENU: MenuItem[] = [
     path: "/dashboard/analytics",
     label: "Analytics",
     icon: BarChart3,
-    roles: ["admin", "speaker"],
+    roles: ["admin", "teacher"],
     indent: true,
   },
   { path: "/dashboard/payments", label: "Pagos", icon: CreditCard, roles: ["admin"], indent: true },
@@ -91,13 +93,13 @@ const FOOTER_MENU: MenuItem[] = [
     path: "/dashboard/support",
     label: "Soporte",
     icon: HelpCircle,
-    roles: ["admin", "speaker", "student"],
+    roles: ["admin", "teacher", "student"],
   },
   {
     path: "/dashboard/settings",
     label: "Configuración",
     icon: Settings,
-    roles: ["admin", "speaker", "student"],
+    roles: ["admin", "teacher", "student"],
   },
 ];
 
