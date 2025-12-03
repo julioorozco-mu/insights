@@ -4,7 +4,7 @@ import { TABLES } from '@/utils/constants';
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password, name } = await req.json();
+    const { email, password, name, phone, bio, avatarUrl, expertise, skipTeacherRecord } = await req.json();
     if (!email || !password || !name) {
       return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });
     }
@@ -37,6 +37,9 @@ export async function POST(req: NextRequest) {
         name,
         email,
         role: 'teacher',
+        phone: phone || null,
+        bio: bio || null,
+        avatar_url: avatarUrl || null,
       });
 
     if (userError) {
@@ -46,17 +49,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: userError.message }, { status: 500 });
     }
 
-    // Crear registro en la tabla teachers
-    const { error: teacherError } = await supabaseAdmin
-      .from(TABLES.TEACHERS)
-      .insert({
-        user_id: userId,
-        expertise: [],
-      });
+    // Crear registro en la tabla teachers (solo si no se indica skipTeacherRecord)
+    if (!skipTeacherRecord) {
+      const { error: teacherError } = await supabaseAdmin
+        .from(TABLES.TEACHERS)
+        .insert({
+          user_id: userId,
+          expertise: expertise || [],
+          about_me: bio || null,
+        });
 
-    if (teacherError) {
-      console.error('Error creating teacher record:', teacherError);
-      // No es crítico, el usuario ya existe
+      if (teacherError) {
+        console.error('Error creating teacher record:', teacherError);
+        // No es crítico, el usuario ya existe
+      }
     }
 
     return NextResponse.json({ uid: userId }, { status: 200 });

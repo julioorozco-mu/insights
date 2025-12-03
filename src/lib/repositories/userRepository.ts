@@ -102,6 +102,26 @@ export class UserRepository {
     return (data || []).map(this.mapToUser);
   }
 
+  /**
+   * Busca múltiples usuarios por sus IDs en una sola consulta
+   * Optimización para evitar N+1 queries
+   */
+  async findByIds(ids: string[]): Promise<User[]> {
+    if (!ids || ids.length === 0) return [];
+
+    const { data, error } = await supabaseClient
+      .from(this.table)
+      .select("*")
+      .in("id", ids);
+
+    if (error) {
+      console.error("Error fetching users by ids:", error);
+      return [];
+    }
+
+    return (data || []).map(this.mapToUser);
+  }
+
   async update(id: string, data: UpdateUserData): Promise<void> {
     const updateData: Record<string, unknown> = {};
     
