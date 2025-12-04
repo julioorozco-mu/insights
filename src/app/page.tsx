@@ -22,7 +22,7 @@ interface Speaker {
 
 export default function HomePage() {
   const router = useRouter();
-  const { signIn, user, loading: authLoading } = useAuth();
+  const { signIn, user, session, loading: authLoading } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -30,17 +30,28 @@ export default function HomePage() {
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const { courses: bannerCourses, loading: bannerLoading } = useHomepageBanner();
+  // Timeout de seguridad para evitar spinner infinito
+  const [authTimeout, setAuthTimeout] = useState(false);
   
-  // Redirigir usuarios logueados al dashboard
+  // Redirigir usuarios logueados al dashboard (respaldo del middleware)
+  // Usar session además de user para detectar más rápido
   useEffect(() => {
-    if (!authLoading && user) {
-      // Pequeño delay para evitar problemas de navegación
-      const timer = setTimeout(() => {
-        router.push("/dashboard/c");
-      }, 100);
-      return () => clearTimeout(timer);
+    if (!authLoading && (user || session)) {
+      router.replace("/dashboard");
     }
-  }, [authLoading, user, router]);
+  }, [authLoading, user, session, router]);
+
+  // Timeout de seguridad: si después de 3 segundos sigue cargando, mostrar la página
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (authLoading) {
+        console.warn('[HomePage] Auth loading timeout - mostrando página pública');
+        setAuthTimeout(true);
+      }
+    }, 3000);
+    
+    return () => clearTimeout(timeout);
+  }, [authLoading]);
 
   // Log cuando cambia el tooltip
   useEffect(() => {
@@ -214,6 +225,20 @@ export default function HomePage() {
 
     return `${datePart} • ${timePart}`;
   }, [currentCourse]);
+
+  // Mostrar loader mientras se verifica la autenticación o si el usuario está logueado
+  // Esto evita el "flash" de la página pública antes de redirigir
+  // PERO: si pasa el timeout y no hay session/user, mostrar la página (evita spinner infinito)
+  const isAuthenticated = !!(user || session);
+  const shouldShowLoader = isAuthenticated || (authLoading && !authTimeout);
+  
+  if (shouldShowLoader) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="loading loading-spinner loading-lg text-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white">

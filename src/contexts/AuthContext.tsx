@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode, useRef } from "react";
 import { User as SupabaseUser, Session } from "@supabase/supabase-js";
 import { supabaseClient } from "@/lib/supabase";
 import { userRepository } from "@/lib/repositories/userRepository";
@@ -50,6 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     remainingAttempts: 5,
     waitTimeFormatted: '',
   });
+  
+  // Ref para evitar cargas duplicadas de usuario
+  const loadingUserRef = useRef<string | null>(null);
+  // Ref para rastrear si el componente está montado
+  const isMountedRef = useRef(true);
 
   // Actualizar estado del rate limiter
   const refreshRateLimitStatus = useCallback(() => {
@@ -66,30 +71,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshRateLimitStatus();
   }, [refreshRateLimitStatus]);
 
-  useEffect(() => {
-    let isMounted = true;
+  // Función para cargar datos del usuario en segundo plano
+  const loadUserData = useCallback(async (userId: string) => {
+    // Evitar cargas duplicadas
+    if (loadingUserRef.current === userId) return;
+    loadingUserRef.current = userId;
     
-    // Obtener sesión inicial
+    try {
+      const userData = await userRepository.findById(userId);
+      if (isMountedRef.current && loadingUserRef.current === userId) {
+        setUser(userData);
+      }
+    } catch (err) {
+      console.error("[AuthContext] Error cargando datos de usuario:", err);
+      // No bloquear el flujo si falla la carga de datos
+    } finally {
+      if (loadingUserRef.current === userId) {
+        loadingUserRef.current = null;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    
+    // Obtener sesión inicial - CRÍTICO: poner loading = false INMEDIATAMENTE después de verificar sesión
     const getInitialSession = async () => {
       try {
-        const { data: { session } } = await supabaseClient.auth.getSession();
+        console.log("[AuthContext] Verificando sesión inicial...");
+        const { data: { session: initialSession }, error: sessionError } = await supabaseClient.auth.getSession();
         
-        if (!isMounted) return;
+        if (sessionError) {
+          console.warn("[AuthContext] Error obteniendo sesión:", sessionError.message);
+        }
         
-        setSession(session);
-        setSupabaseUser(session?.user ?? null);
+        if (!isMountedRef.current) return;
         
-        if (session?.user) {
-          const userData = await userRepository.findById(session.user.id);
-          if (isMounted) {
-            setUser(userData);
-          }
+        // INMEDIATAMENTE actualizar session y loading
+        // Esto permite que las páginas sepan si hay sesión SIN esperar datos del usuario
+        setSession(initialSession);
+        setSupabaseUser(initialSession?.user ?? null);
+        setLoading(false); // <-- CRÍTICO: poner loading = false ANTES de cargar userData
+        
+        console.log("[AuthContext] Sesión inicial:", initialSession ? "AUTENTICADO" : "NO AUTENTICADO");
+        
+        // Cargar datos del usuario en SEGUNDO PLANO (no bloquea)
+        if (initialSession?.user) {
+          loadUserData(initialSession.user.id);
         }
       } catch (err) {
-        console.error("Error getting initial session:", err);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
+        console.error("[AuthContext] Error crítico en getInitialSession:", err);
+        if (isMountedRef.current) {
+          setLoading(false); // Asegurar que loading se ponga en false incluso si hay error
         }
       }
     };
@@ -98,29 +131,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Escuchar cambios de autenticación
     const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!isMounted) return;
+      async (event, newSession) => {
+        console.log("[AuthContext] Auth state change:", event, newSession ? "con sesión" : "sin sesión");
         
-        setSession(session);
-        setSupabaseUser(session?.user ?? null);
+        if (!isMountedRef.current) return;
         
-        if (session?.user) {
-          const userData = await userRepository.findById(session.user.id);
-          if (isMounted) {
-            setUser(userData);
-          }
-        } else {
-          setUser(null);
-        }
+        // INMEDIATAMENTE actualizar session
+        setSession(newSession);
+        setSupabaseUser(newSession?.user ?? null);
         setLoading(false);
+        
+        if (newSession?.user) {
+          // Cargar datos del usuario en segundo plano
+          loadUserData(newSession.user.id);
+        } else {
+          // Limpiar usuario si no hay sesión
+          setUser(null);
+          loadingUserRef.current = null;
+        }
       }
     );
 
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [loadUserData]);
 
   const signIn = async (email: string, password: string): Promise<User> => {
     setError(null);
@@ -276,68 +312,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /**
    * Cierra la sesión del usuario.
-   * 
-   * ESPEJO DE signIn - Limpia todos los recursos en orden inverso:
-   * 1. loading = true (indica proceso en curso)
-   * 2. Cerrar sesión en Supabase (equivalente inverso de signInWithPassword)
-   * 3. Limpiar TODOS los tokens de localStorage (incluyendo sb-*)
-   * 4. Limpiar cookies de autenticación
-   * 5. Limpiar sessionStorage
-   * 6. Limpiar rate limiter
-   * 7. Resetear estado de React a valores iniciales
-   * 8. loading = false
    */
   const signOut = async (options?: { global?: boolean; redirect?: string }) => {
     const { global: globalScope = false, redirect } = options || {};
     
-    // 1. Indicar que el proceso está en curso (SIMÉTRICO con signIn)
     setLoading(true);
     setError(null);
     
     try {
-      // 2. Cerrar sesión en Supabase PRIMERO (antes de limpiar localStorage)
-      // Esto es importante porque signOut de Supabase limpia sus propios tokens
+      // Cerrar sesión en Supabase
       try {
         const { error: signOutError } = await supabaseClient.auth.signOut({
           scope: globalScope ? 'global' : 'local'
         });
         
         if (signOutError) {
-          // Loguear pero continuar con la limpieza local
           console.warn('[SignOut] Error en Supabase (continuando limpieza local):', signOutError.message);
         }
       } catch (networkError) {
-        // Error de red - continuar con limpieza local de todos modos
         console.warn('[SignOut] Error de red en Supabase (continuando limpieza local):', networkError);
       }
       
-      // 3. Limpiar localStorage COMPLETAMENTE (incluyendo tokens sb-*)
-      // FIX: Antes se excluían las keys sb-*, ahora se incluyen para limpieza total
+      // Limpiar localStorage
       if (typeof window !== 'undefined') {
         try {
-          // Recolectar TODAS las keys relacionadas con auth
           const keysToRemove: string[] = [];
           const totalKeys = localStorage.length;
           
           for (let i = 0; i < totalKeys; i++) {
             const key = localStorage.key(i);
             if (key) {
-              // Incluir TODOS los tokens de Supabase (sb-*) y otras keys de auth
               if (
-                key.startsWith('sb-') ||                    // Tokens de Supabase
-                key.includes('supabase') ||                 // Otras keys de Supabase
-                key.includes('auth') ||                     // Keys de autenticación
-                key.includes('user') ||                     // Datos de usuario
-                key.includes('session') ||                  // Datos de sesión
-                key.includes('token') ||                    // Tokens genéricos
-                key === 'auth_rate_limit'                   // Rate limiter
+                key.startsWith('sb-') ||
+                key.includes('supabase') ||
+                key.includes('auth') ||
+                key.includes('user') ||
+                key.includes('session') ||
+                key.includes('token') ||
+                key === 'auth_rate_limit'
               ) {
                 keysToRemove.push(key);
               }
             }
           }
           
-          // Eliminar en batch después de la iteración
           keysToRemove.forEach(key => {
             try {
               localStorage.removeItem(key);
@@ -349,7 +367,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn('[SignOut] Error limpiando localStorage:', e);
         }
         
-        // 4. Limpiar cookies de autenticación
+        // Limpiar cookies
         try {
           const cookies = document.cookie.split(';');
           cookies.forEach(cookie => {
@@ -361,7 +379,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               trimmedName.includes('session') ||
               trimmedName.includes('token')
             )) {
-              // Eliminar cookie para todos los paths y dominios posibles
               const domain = window.location.hostname;
               const paths = ['/', '/auth', '/dashboard'];
               
@@ -375,7 +392,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn('[SignOut] Error limpiando cookies:', e);
         }
         
-        // 5. Limpiar sessionStorage completamente
+        // Limpiar sessionStorage
         try {
           sessionStorage.clear();
         } catch (e) {
@@ -383,14 +400,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
       
-      // 6. Limpiar rate limiter (llamar explícitamente aunque ya se borró de localStorage)
+      // Limpiar rate limiter
       clearRateLimit();
       
-      // 7. Resetear TODOS los estados de React a valores iniciales
-      // (SIMÉTRICO con los setters en signIn)
+      // Resetear estados
       setUser(null);
       setSession(null);
       setSupabaseUser(null);
+      loadingUserRef.current = null;
       setRateLimitStatus({
         allowed: true,
         remainingAttempts: 5,
@@ -398,13 +415,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       
     } finally {
-      // 8. Indicar que el proceso terminó (SIMÉTRICO con signIn)
       setLoading(false);
     }
     
-    // 9. Redirigir si se especificó (después de limpiar todo)
+    // Redirigir si se especificó
     if (redirect && typeof window !== 'undefined') {
-      // Usar replace para evitar que el usuario vuelva atrás con el botón back
       window.location.replace(redirect);
     }
   };
@@ -450,4 +465,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     </AuthContext.Provider>
   );
 }
-

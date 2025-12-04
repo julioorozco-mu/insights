@@ -12,9 +12,28 @@ import { APP_NAME } from "@/utils/constants";
 
 export default function SignUpPage() {
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { signUp, user, session, loading: authLoading } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [authTimeout, setAuthTimeout] = useState(false);
+  
+  // Redirigir usuarios ya logueados al dashboard (respaldo del middleware)
+  useEffect(() => {
+    if (!authLoading && (user || session)) {
+      router.replace("/dashboard");
+    }
+  }, [authLoading, user, session, router]);
+
+  // Timeout de seguridad: si después de 3 segundos sigue cargando, mostrar la página
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (authLoading) {
+        setAuthTimeout(true);
+      }
+    }, 3000);
+    return () => clearTimeout(timeout);
+  }, [authLoading]);
+
   const [age, setAge] = useState<number | null>(null);
   const [selectedState, setSelectedState] = useState("");
   const [selectedMunicipality, setSelectedMunicipality] = useState("");
@@ -98,6 +117,19 @@ export default function SignUpPage() {
 
     setPasswordStrength({ score, label, color });
   }, [password]);
+
+  // Mostrar loader mientras se verifica la autenticación o si el usuario está logueado
+  // PERO: si pasa el timeout y no hay session/user, mostrar la página
+  const isAuthenticated = !!(user || session);
+  const shouldShowLoader = isAuthenticated || (authLoading && !authTimeout);
+  
+  if (shouldShowLoader) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="loading loading-spinner loading-lg text-primary"></div>
+      </div>
+    );
+  }
 
   const onSubmit = async (data: CreateUserInput) => {
     try {

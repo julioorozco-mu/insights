@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { useForm } from "react-hook-form";
@@ -9,10 +10,29 @@ import { resetPasswordSchema, ResetPasswordInput } from "@/lib/validators/userSc
 import { APP_NAME } from "@/utils/constants";
 
 export default function RecoverPasswordPage() {
-  const { resetPassword } = useAuth();
+  const router = useRouter();
+  const { resetPassword, user, session, loading: authLoading } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [authTimeout, setAuthTimeout] = useState(false);
+  
+  // Redirigir usuarios ya logueados al dashboard (respaldo del middleware)
+  useEffect(() => {
+    if (!authLoading && (user || session)) {
+      router.replace("/dashboard");
+    }
+  }, [authLoading, user, session, router]);
+
+  // Timeout de seguridad: si después de 3 segundos sigue cargando, mostrar la página
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (authLoading) {
+        setAuthTimeout(true);
+      }
+    }, 3000);
+    return () => clearTimeout(timeout);
+  }, [authLoading]);
 
   const {
     register,
@@ -34,6 +54,19 @@ export default function RecoverPasswordPage() {
       setLoading(false);
     }
   };
+
+  // Mostrar loader mientras se verifica la autenticación o si el usuario está logueado
+  // PERO: si pasa el timeout y no hay session/user, mostrar la página
+  const isAuthenticated = !!(user || session);
+  const shouldShowLoader = isAuthenticated || (authLoading && !authTimeout);
+  
+  if (shouldShowLoader) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-base-200">
+        <div className="loading loading-spinner loading-lg text-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-base-200">

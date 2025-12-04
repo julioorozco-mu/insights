@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
@@ -31,17 +31,32 @@ function getRedirectByRole(role: string | undefined): string {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn, rateLimitStatus, refreshRateLimitStatus } = useAuth();
+  const { signIn, rateLimitStatus, refreshRateLimitStatus, user, session, loading: authLoading } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [authTimeout, setAuthTimeout] = useState(false);
+  
+  // Redirigir usuarios ya logueados al dashboard (respaldo del middleware)
+  useEffect(() => {
+    if (!authLoading && (user || session)) {
+      router.replace("/dashboard");
+    }
+  }, [authLoading, user, session, router]);
+  
+  // Timeout de seguridad: si después de 3 segundos sigue cargando, mostrar la página
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (authLoading) {
+        setAuthTimeout(true);
+      }
+    }, 3000);
+    return () => clearTimeout(timeout);
+  }, [authLoading]);
   
   // Verificar rate limit cuando el componente monta
-  React.useEffect(() => {
+  useEffect(() => {
     refreshRateLimitStatus();
   }, [refreshRateLimitStatus]);
-  
-  // Determinar si el formulario debe estar deshabilitado
-  const isBlocked = !rateLimitStatus.allowed;
 
   const {
     register,
@@ -74,6 +89,22 @@ export default function LoginPage() {
       setLoading(false);
     }
   }, [loading, signIn, router]);
+  
+  // Mostrar loader mientras se verifica la autenticación o si el usuario está logueado
+  // PERO: si pasa el timeout y no hay session/user, mostrar la página
+  const isAuthenticated = !!(user || session);
+  const shouldShowLoader = isAuthenticated || (authLoading && !authTimeout);
+  
+  if (shouldShowLoader) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-base-200">
+        <div className="loading loading-spinner loading-lg text-primary"></div>
+      </div>
+    );
+  }
+  
+  // Determinar si el formulario debe estar deshabilitado
+  const isBlocked = !rateLimitStatus.allowed;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-base-200">
