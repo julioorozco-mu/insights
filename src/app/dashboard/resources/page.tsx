@@ -42,7 +42,7 @@ interface Resource {
 }
 
 export default function ResourcesPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [resources, setResources] = useState<Resource[]>([]);
@@ -59,81 +59,69 @@ export default function ResourcesPage() {
   const [editDescription, setEditDescription] = useState('');
 
   useEffect(() => {
-    loadResources();
-  }, []);
+    let isMounted = true;
+    
+    // No cargar hasta que useAuth termine de resolver
+    if (authLoading) {
+      setLoading(true);
+      return () => {
+        isMounted = false;
+      };
+    }
+    
+    // Si no hay usuario después de que termine la carga, no hacer nada
+    if (!user) {
+      setLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+    
+    setLoading(true);
+    
+    const loadData = async () => {
+      try {
+        await loadResources();
+      } catch (error: any) {
+        console.error("Error loading resources:", error);
+        if (isMounted) {
+          setResources([]);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+    
+    loadData();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [authLoading, user?.id]);
 
   const loadResources = async () => {
     try {
-      let data: any[] = [];
+      // Usar API del servidor para evitar problemas de RLS y timeouts
+      const res = await fetch('/api/admin/getResources');
       
-      // Intentar cargar de teacher_resources primero
-      let query = supabaseClient
-        .from(TABLES.TEACHER_RESOURCES)
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      // Filtrar eliminados si la columna existe
-      const { data: teacherResData, error: teacherResError } = await query;
-      
-      if (!teacherResError && teacherResData) {
-        // Filtrar recursos eliminados (la columna puede no existir, así que verificamos)
-        data = teacherResData.filter((r: any) => {
-          // Si la columna existe, filtrar eliminados, si no existe, mostrar todos
-          return r.is_deleted === undefined || r.is_deleted === null || !r.is_deleted;
-        });
-      } else {
-        console.log('teacher_resources error, trying file_attachments:', teacherResError);
-        // Fallback a file_attachments
-        let fileQuery = supabaseClient
-          .from(TABLES.FILE_ATTACHMENTS)
-          .select('*')
-          .order('created_at', { ascending: false });
-        
-        const { data: fileResData, error: fileResError } = await fileQuery;
-        
-        if (fileResError) {
-          console.error("Error loading resources:", fileResError);
-        } else {
-          data = (fileResData || []).filter((r: any) => {
-            return r.is_deleted === undefined || r.is_deleted === null || !r.is_deleted;
-          });
-        }
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error("Error loading resources:", errorData);
+        setResources([]);
+        return;
       }
       
-      const resourcesData = (data || []).map((r: any) => {
-        // Obtener nombre del archivo correctamente
-        const fileName = r.file_name || r.name || r.title || 'Sin nombre';
-        // Extraer nombre sin extensión para mostrar mejor
-        const displayName = fileName.replace(/\.[^/.]+$/, "") || fileName;
-        const description = r.description || '';
-        
-        return {
-          id: r.id,
-          name: fileName, // Nombre completo con extensión
-          url: r.url || r.file_url,
-          type: r.file_type || r.type || 'application/octet-stream',
-          size: r.size_kb ? r.size_kb * 1024 : r.size || r.file_size || 0,
-          uploadedBy: r.owner_id || r.uploaded_by || r.created_by,
-          uploadedByName: r.uploaded_by_name,
-          createdAt: r.created_at,
-          metadata: r.metadata ? r.metadata : { title: displayName, description },
-        };
-      }) as Resource[];
-      
-      // Filtrar duplicados por ID y ordenar por fecha
-      const uniqueResources = Array.from(
-        new Map(resourcesData.map(r => [r.id, r])).values()
-      ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      
-      setResources(uniqueResources);
+      const data = await res.json();
+      setResources(data.resources || []);
     } catch (error) {
       console.error("Error loading resources:", error);
-    } finally {
-      setLoading(false);
+      setResources([]);
     }
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return <Loader />;
   }
 
@@ -520,10 +508,6 @@ export default function ResourcesPage() {
       alert(`Error al actualizar el recurso: ${error.message || 'Error desconocido'}`);
     }
   };
-
-  if (loading) {
-    return <Loader />;
-  }
 
   return (
     <div>

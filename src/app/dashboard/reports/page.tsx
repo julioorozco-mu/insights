@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabaseClient } from "@/lib/supabase";
-import { TABLES } from "@/utils/constants";
 import { courseRepository } from "@/lib/repositories/courseRepository";
 import { lessonRepository } from "@/lib/repositories/lessonRepository";
 import { Loader } from "@/components/common/Loader";
@@ -82,91 +80,24 @@ export default function ReportsPage() {
     setShowReport(false);
 
     try {
-      // Obtener inscripciones del curso desde Supabase
-      const { data: enrollmentsData } = await supabaseClient
-        .from(TABLES.STUDENT_ENROLLMENTS)
-        .select(`
-          id,
-          student_id,
-          enrolled_at,
-          students:student_id (
-            user_id,
-            users:user_id (
-              id, name, email, phone, date_of_birth, gender, state
-            )
-          )
-        `)
-        .eq('course_id', courseId);
-
-      // Obtener datos de cada estudiante
-      const studentsPromises = (enrollmentsData || []).map(async (enrollment: any) => {
-        const studentData = enrollment.students?.users;
-        if (!studentData) return null;
-
-        const studentId = studentData.id;
-
-        // Calcular edad desde dateOfBirth
-        let calculatedAge: number | undefined = undefined;
-        const dateOfBirth = studentData.date_of_birth;
-        if (dateOfBirth) {
-          const birthDate = new Date(dateOfBirth);
-          const today = new Date();
-          let age = today.getFullYear() - birthDate.getFullYear();
-          const monthDiff = today.getMonth() - birthDate.getMonth();
-          if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-            age--;
-          }
-          calculatedAge = age;
-        }
-
-        // Traducir género a español
-        const genderValue = studentData.gender || "";
-        let genderInSpanish = "";
-        if (genderValue.toLowerCase() === "male" || genderValue.toLowerCase() === "masculino") {
-          genderInSpanish = "Masculino";
-        } else if (genderValue.toLowerCase() === "female" || genderValue.toLowerCase() === "femenino") {
-          genderInSpanish = "Femenino";
-        } else if (genderValue) {
-          genderInSpanish = genderValue;
-        }
-
-        // Verificar si descargó certificado
-        const { data: certDownload } = await supabaseClient
-          .from(TABLES.CERTIFICATE_DOWNLOADS)
-          .select('id')
-          .eq('course_id', courseId)
-          .eq('student_id', studentId)
-          .maybeSingle();
-        const hasCertificate = !!certDownload;
-
-        // Concatenar nombre completo
-        const fullName = studentData.name || "N/A";
-
-        return {
-          id: studentId,
-          name: fullName,
-          email: studentData.email || "N/A",
-          phone: studentData.phone || "",
-          state: studentData.state || "",
-          age: calculatedAge,
-          birthDate: dateOfBirth || "",
-          gender: genderInSpanish,
-          hasCertificate,
-          enrolledAt: enrollment.enrolled_at
-            ? new Date(enrollment.enrolled_at).toLocaleDateString("es-MX")
-            : "N/A",
-        } as Student;
-      });
-
-      const studentsData = (await Promise.all(studentsPromises)).filter(
-        (s): s is Student => s !== null
-      );
-
+      // Usar API del servidor para evitar problemas de RLS y timeouts
+      const res = await fetch(`/api/admin/getStudentsByCourse?courseId=${courseId}`);
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error("Error loading students by course:", errorData);
+        setStudents([]);
+        return;
+      }
+      
+      const data = await res.json();
+      const studentsData = (data.students || []) as Student[];
+      
       setStudents(studentsData);
       setShowReport(true);
     } catch (error) {
       console.error("Error loading students:", error);
-      alert("Error al cargar estudiantes");
+      setStudents([]);
     } finally {
       setLoadingStudents(false);
     }
@@ -231,23 +162,24 @@ export default function ReportsPage() {
 
     setUpdatingCertificate(studentId);
     try {
-      if (newStatus) {
-        // Crear registro de descarga
-        await supabaseClient.from(TABLES.CERTIFICATE_DOWNLOADS).insert({
-          course_id: selectedCourse,
-          student_id: studentId,
-          student_name: studentName,
-          student_email: studentEmail,
-          downloaded_at: new Date().toISOString(),
-          manually_marked: true,
-        });
-      } else {
-        // Eliminar registro de descarga
-        await supabaseClient
-          .from(TABLES.CERTIFICATE_DOWNLOADS)
-          .delete()
-          .eq('course_id', selectedCourse)
-          .eq('student_id', studentId);
+      // Usar API del servidor para actualizar el estado del certificado
+      const res = await fetch('/api/admin/updateCertificateStatus', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          courseId: selectedCourse,
+          studentId,
+          studentName,
+          studentEmail,
+          newStatus,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Error al actualizar el certificado');
       }
 
       // Actualizar el estado local
@@ -258,9 +190,9 @@ export default function ReportsPage() {
             : student
         )
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating certificate status:", error);
-      alert("Error al actualizar el estado del certificado");
+      alert(error.message || "Error al actualizar el estado del certificado");
     } finally {
       setUpdatingCertificate(null);
     }

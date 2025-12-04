@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { supabaseClient } from "@/lib/supabase";
 import { lessonRepository } from "@/lib/repositories/lessonRepository";
-import { courseRepository } from "@/lib/repositories/courseRepository";
 import {
   DndContext,
   DragOverlay,
@@ -69,7 +68,6 @@ import {
   IconFileTypePdf,
   IconFileTypeDoc,
 } from "@tabler/icons-react";
-import { TABLES } from "@/utils/constants";
 
 // Design System Colors - Color primario #1A2170
 const COLORS = {
@@ -870,7 +868,19 @@ export default function EditLessonPage() {
           return;
         }
         
-        const lesson = await lessonRepository.findById(lessonId);
+        // Usar API del servidor para evitar problemas de RLS y timeouts
+        const lessonRes = await fetch(`/api/admin/getLesson?lessonId=${lessonId}`);
+        
+        if (!lessonRes.ok) {
+          const errorData = await lessonRes.json();
+          console.error("Error loading lesson:", errorData);
+          router.push("/dashboard/courses");
+          return;
+        }
+        
+        const lessonData = await lessonRes.json();
+        const lesson = lessonData.lesson;
+        
         if (!lesson) {
           console.error("Lesson not found");
           router.push("/dashboard/courses");
@@ -882,10 +892,15 @@ export default function EditLessonPage() {
         setLessonSubtitle(lesson.description || "");
         setCourseId(lesson.courseId);
         
-        // Cargar curso para obtener el nombre
-        const course = await courseRepository.findById(lesson.courseId);
-        if (course) {
-          setCourseName(course.title);
+        // Cargar curso para obtener el nombre usando API
+        if (lesson.courseId) {
+          const courseRes = await fetch(`/api/admin/getCourse?courseId=${lesson.courseId}`);
+          if (courseRes.ok) {
+            const courseData = await courseRes.json();
+            if (courseData.course) {
+              setCourseName(courseData.course.title);
+            }
+          }
         }
         
         // Parsear contenido si existe
@@ -925,13 +940,21 @@ export default function EditLessonPage() {
   const loadQuizzes = async () => {
     try {
       setLoadingQuizzes(true);
-      const { data, error } = await supabaseClient
-        .from(TABLES.SURVEYS)
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (!error && data) setQuizzes(data);
+      // Usar API del servidor para evitar problemas de RLS y timeouts
+      const res = await fetch('/api/admin/getSurveys');
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error("Error loading quizzes:", errorData);
+        setQuizzes([]);
+        return;
+      }
+      
+      const data = await res.json();
+      setQuizzes(data.surveys || []);
     } catch (error) {
       console.error("Error loading quizzes:", error);
+      setQuizzes([]);
     } finally {
       setLoadingQuizzes(false);
     }
@@ -951,40 +974,33 @@ export default function EditLessonPage() {
     try {
       setLoadingResources(true);
       
-      // Intentar cargar de teacher_resources
-      let query = supabaseClient
-        .from(TABLES.TEACHER_RESOURCES)
-        .select("*")
-        .order("created_at", { ascending: false });
+      // Usar API del servidor para evitar problemas de RLS y timeouts
+      const res = await fetch('/api/admin/getResources');
       
-      const { data, error } = await query;
-      
-      if (!error && data) {
-        // Filtrar recursos eliminados y mapear correctamente
-        const mappedResources = data
-          .filter((r: any) => !r.is_deleted)
-          .map((r: any) => ({
-            id: r.id,
-            name: r.file_name || r.name || r.title || 'Sin nombre',
-            title: r.file_name || r.name || r.title || 'Sin nombre',
-            url: r.url || r.file_url,
-            file_url: r.url || r.file_url,
-            file_type: r.file_type || r.type || 'application/octet-stream',
-            type: r.file_type || r.type || 'application/octet-stream',
-            size: r.size_kb ? r.size_kb * 1024 : r.size || r.file_size || 0,
-            description: r.description || '',
-          }));
-        
-        // Eliminar duplicados por ID
-        const uniqueResources = Array.from(
-          new Map(mappedResources.map((r: any) => [r.id, r])).values()
-        );
-        
-        setResources(uniqueResources);
-      } else {
-        console.error("Error loading resources:", error);
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error("Error loading resources:", errorData);
         setResources([]);
+        return;
       }
+      
+      const data = await res.json();
+      const apiResources = data.resources || [];
+      
+      // Mapear recursos al formato esperado por el modal
+      const mappedResources = apiResources.map((r: any) => ({
+        id: r.id,
+        name: r.name || 'Sin nombre',
+        title: r.name || 'Sin nombre',
+        url: r.url,
+        file_url: r.url,
+        file_type: r.type || 'application/octet-stream',
+        type: r.type || 'application/octet-stream',
+        size: r.size || 0,
+        description: r.metadata?.description || '',
+      }));
+      
+      setResources(mappedResources);
     } catch (error) {
       console.error("Error loading resources:", error);
       setResources([]);
@@ -1353,19 +1369,37 @@ export default function EditLessonPage() {
         })),
       };
       
-      // Actualizar la lección existente
-      await lessonRepository.update(lessonId, {
-        title: lessonTitle,
-        description: lessonSubtitle,
-        content: JSON.stringify(contentData),
+      // Usar API del servidor para evitar problemas de RLS y timeouts
+      const res = await fetch('/api/admin/updateLesson', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          lessonId,
+          title: lessonTitle,
+          description: lessonSubtitle,
+          content: JSON.stringify(contentData),
+        }),
       });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Error al actualizar la lección');
+      }
+
+      const data = await res.json();
+      
+      if (!data.success) {
+        throw new Error('Error al actualizar la lección');
+      }
 
       setLastSaved(new Date());
       alert("¡Lección actualizada exitosamente!");
       router.push(`/dashboard/courses/${courseId}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving lesson:", error);
-      alert("Error al guardar la lección. Revisa la consola para más detalles.");
+      alert(error.message || "Error al guardar la lección. Revisa la consola para más detalles.");
     } finally {
       setSaving(false);
     }

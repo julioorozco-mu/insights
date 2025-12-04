@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader } from "@/components/common/Loader";
 import { IconChartBar, IconPlus, IconEdit, IconTrash, IconAlertTriangle, IconCopy } from "@tabler/icons-react";
-import { supabaseClient } from "@/lib/supabase";
-import { TABLES } from "@/utils/constants";
 import { courseRepository } from "@/lib/repositories/courseRepository";
 import { formatDate } from "@/utils/formatDate";
 import { useAuth } from "@/hooks/useAuth";
@@ -38,25 +36,21 @@ export default function SurveysPage() {
 
   const loadSurveys = async () => {
     try {
-      const { data, error } = await supabaseClient
-        .from(TABLES.SURVEYS)
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Usar API del servidor para evitar problemas de RLS y timeouts
+      const res = await fetch('/api/admin/getSurveys');
       
-      if (error) throw error;
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error("Error loading surveys:", errorData);
+        setSurveys([]);
+        return;
+      }
       
-      const surveysData = (data || []).map((s: any) => ({
-        id: s.id,
-        title: s.title,
-        description: s.description,
-        type: s.type,
-        questions: s.questions || [],
-        isActive: true, // La tabla no tiene is_active, asumimos activo
-        createdAt: s.created_at,
-      })) as Survey[];
-      setSurveys(surveysData);
+      const data = await res.json();
+      setSurveys(data.surveys || []);
     } catch (error) {
       console.error("Error loading surveys:", error);
+      setSurveys([]);
     } finally {
       setLoading(false);
     }

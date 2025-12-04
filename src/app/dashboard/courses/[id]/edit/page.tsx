@@ -6,8 +6,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createCourseSchema, CreateCourseInput } from "@/lib/validators/courseSchema";
-import { courseRepository } from "@/lib/repositories/courseRepository";
-import { lessonRepository } from "@/lib/repositories/lessonRepository";
 import { IconX, IconUpload, IconPlus, IconChevronDown, IconEye, IconGripVertical, IconCheck } from "@tabler/icons-react";
 import { useUploadFile } from "@/hooks/useUploadFile";
 
@@ -301,7 +299,19 @@ export default function EditCoursePage() {
           return;
         }
         
-        const course = await courseRepository.findById(courseId);
+        // Usar API del servidor para evitar problemas de RLS y timeouts
+        const res = await fetch(`/api/admin/getCourse?courseId=${courseId}`);
+        
+        if (!res.ok) {
+          const errorData = await res.json();
+          console.error("Error loading course:", errorData);
+          router.push("/dashboard/courses");
+          return;
+        }
+        
+        const data = await res.json();
+        const course = data.course;
+        
         if (!course) {
           router.push("/dashboard/courses");
           return;
@@ -343,14 +353,21 @@ export default function EditCoursePage() {
     if (currentCourseId) {
       const loadLessons = async () => {
         try {
-          const courseLessons = await lessonRepository.findByCourseId(currentCourseId);
-          setLessons(courseLessons.map(l => ({
-            id: l.id,
-            title: l.title,
-            order: l.order
-          })));
+          // Usar API del servidor para evitar problemas de RLS y timeouts
+          const res = await fetch(`/api/admin/getLessonsByCourse?courseId=${currentCourseId}`);
+          
+          if (!res.ok) {
+            const errorData = await res.json();
+            console.error("Error loading lessons:", errorData);
+            setLessons([]);
+            return;
+          }
+          
+          const data = await res.json();
+          setLessons(data.lessons || []);
         } catch (err) {
           console.error("Error loading lessons:", err);
+          setLessons([]);
         }
       };
       loadLessons();
@@ -529,13 +546,12 @@ export default function EditCoursePage() {
         createdBy: user.id,
       });
 
-      // Recargar lecciones
-      const courseLessons = await lessonRepository.findByCourseId(savedCourseId);
-      setLessons(courseLessons.map(l => ({
-        id: l.id,
-        title: l.title,
-        order: l.order
-      })));
+      // Recargar lecciones usando API
+      const res = await fetch(`/api/admin/getLessonsByCourse?courseId=${savedCourseId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLessons(data.lessons || []);
+      }
 
       // Redirigir a la página de edición de la lección
       router.push(`/dashboard/lessons/${lesson.id}/edit`);
