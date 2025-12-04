@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,7 +18,8 @@ function getRedirectByRole(role: string | undefined): string {
     case "admin":
     case "superadmin":
       return "/dashboard"; // Admin dashboard con acceso completo
-    case "speaker":
+    case "teacher":
+    case "speaker": // Alias para compatibilidad
       return "/dashboard/my-courses"; // Profesores a sus cursos
     case "support":
       return "/dashboard/support"; // Soporte a tickets
@@ -30,9 +31,17 @@ function getRedirectByRole(role: string | undefined): string {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { signIn, rateLimitStatus, refreshRateLimitStatus } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  
+  // Verificar rate limit cuando el componente monta
+  React.useEffect(() => {
+    refreshRateLimitStatus();
+  }, [refreshRateLimitStatus]);
+  
+  // Determinar si el formulario debe estar deshabilitado
+  const isBlocked = !rateLimitStatus.allowed;
 
   const {
     register,
@@ -77,14 +86,38 @@ export default function LoginPage() {
             </div>
             <p className="text-base-content/70">Inicia sesión en tu cuenta</p>
           </div>
-          {error && (
+          {/* Alerta de rate limiting */}
+          {isBlocked && (
+            <div className="alert alert-warning mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span>Cuenta bloqueada temporalmente. Intenta de nuevo en {rateLimitStatus.waitTimeFormatted}.</span>
+            </div>
+          )}
+          
+          {/* Alerta de error general */}
+          {error && !isBlocked && (
             <div className="alert alert-error mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
               <span>{error}</span>
             </div>
           )}
           
+          {/* Indicador de intentos restantes (solo si quedan pocos) */}
+          {!isBlocked && rateLimitStatus.remainingAttempts <= 2 && rateLimitStatus.remainingAttempts > 0 && (
+            <div className="alert alert-info mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="stroke-current shrink-0 w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <span>Te quedan {rateLimitStatus.remainingAttempts} intento{rateLimitStatus.remainingAttempts === 1 ? '' : 's'}.</span>
+            </div>
+          )}
+          
           <form onSubmit={handleSubmit(onSubmit)}>
-            <fieldset disabled={loading || isSubmitting} className="space-y-4">
+            <fieldset disabled={loading || isSubmitting || isBlocked} className="space-y-4">
               <div className="form-control">
                 <label className="label">
                   <span className="label-text">Correo electrónico</span>
@@ -131,7 +164,7 @@ export default function LoginPage() {
             <button 
               type="submit" 
               className="btn btn-primary w-full text-white mt-6" 
-              disabled={loading || isSubmitting}
+              disabled={loading || isSubmitting || isBlocked}
             >
               {loading || isSubmitting ? (
                 <>

@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { DashboardSidebar } from "@/components/layout/DashboardSidebar";
 import { DashboardTopbar } from "@/components/layout/DashboardTopbar";
 
@@ -63,39 +63,55 @@ function ContentSkeleton() {
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, signOut, session } = useAuth();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Usar ref para evitar múltiples redirecciones
+  const hasRedirected = useRef(false);
+  // Estado para saber si ya verificamos la autenticación
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push("/auth/login");
+    // Solo actuar cuando ya no esté cargando
+    if (loading) return;
+    
+    // Marcar que ya verificamos la autenticación
+    setAuthChecked(true);
+    
+    // Si no hay usuario ni sesión, redirigir
+    if (!user && !session && !hasRedirected.current) {
+      hasRedirected.current = true;
+      const currentPath = window.location.pathname;
+      router.replace(`/auth/login?redirectTo=${encodeURIComponent(currentPath)}`);
     }
-  }, [user, loading, router]);
+  }, [user, session, loading, router]);
 
-  // Auto-colapsar sidebar después de 15 segundos
+  // Auto-colapsar sidebar después de 15 segundos (solo si hay usuario)
   useEffect(() => {
+    if (!user) return;
     const timer = setTimeout(() => {
       setSidebarCollapsed(true);
     }, 15000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [user]);
 
-  // Si está cargando, mostramos el layout con skeletons (no un loader de pantalla completa)
-  if (loading) {
+  // IMPORTANTE: No mostrar NADA hasta verificar autenticación
+  // Esto previene el "flash" del skeleton para usuarios no autenticados
+  if (!authChecked || loading) {
+    // Pantalla completamente vacía mientras se verifica
+    // El middleware ya debería haber redirigido si no hay sesión
     return (
-      <div className="flex min-h-screen bg-brand-background">
-        <SidebarSkeleton />
-        <div className="flex-1 flex flex-col min-h-screen bg-brand-background">
-          <TopbarSkeleton />
-          <ContentSkeleton />
+      <div className="flex min-h-screen items-center justify-center bg-brand-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="loading loading-spinner loading-lg text-primary"></div>
+          <p className="text-sm text-base-content/60">Verificando acceso...</p>
         </div>
       </div>
     );
   }
 
-  // Si no hay usuario (y ya no está cargando), no renderizar nada (se redirige en el useEffect)
+  // Si ya verificamos y no hay usuario, mostrar nada (redirección en progreso)
   if (!user) {
     return null;
   }
