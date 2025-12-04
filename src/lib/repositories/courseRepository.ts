@@ -6,25 +6,53 @@ export class CourseRepository {
   private table = TABLES.COURSES;
 
   async create(data: CreateCourseData): Promise<Course> {
-    const courseData = {
+    // Campos básicos que siempre existen
+    const courseData: Record<string, unknown> = {
       title: data.title,
-      description: data.description,
-      cover_image_url: data.coverImageUrl,
-      thumbnail_url: data.thumbnailUrl,
+      description: data.description || null,
+      cover_image_url: data.coverImageUrl || null,
+      thumbnail_url: data.thumbnailUrl || null,
       teacher_ids: data.speakerIds || [],
       co_host_ids: data.coHostIds || [],
       lesson_ids: [],
       tags: data.tags || [],
-      difficulty: data.difficulty,
-      start_date: data.startDate,
-      end_date: data.endDate,
-      entry_survey_id: data.entrySurveyId,
-      exit_survey_id: data.exitSurveyId,
-      enrollment_rules: data.enrollmentRules,
-      enrollment_start_date: data.enrollmentStartDate,
-      enrollment_end_date: data.enrollmentEndDate,
+      difficulty: data.difficulty || null,
+      start_date: data.startDate || null,
+      end_date: data.endDate || null,
+      entry_survey_id: data.entrySurveyId || null,
+      exit_survey_id: data.exitSurveyId || null,
+      enrollment_rules: data.enrollmentRules || null,
+      enrollment_start_date: data.enrollmentStartDate || null,
+      enrollment_end_date: data.enrollmentEndDate || null,
       is_active: true,
     };
+    
+    // Campos nuevos de pricing y organizaciones (después de migración)
+    if (data.price !== undefined) {
+      courseData.price = data.price ?? 0;
+    }
+    if (data.salePercentage !== undefined) {
+      courseData.sale_percentage = data.salePercentage ?? 0;
+    }
+    if (data.isPublished !== undefined) {
+      courseData.is_published = data.isPublished ?? false;
+    }
+    if (data.isHidden !== undefined) {
+      courseData.is_hidden = data.isHidden ?? false;
+    }
+    if (data.university !== undefined) {
+      courseData.university = data.university || null;
+    }
+    if (data.specialization !== undefined) {
+      courseData.specialization = data.specialization || null;
+    }
+    
+    // Remover campos undefined para evitar problemas con Supabase
+    Object.keys(courseData).forEach(key => {
+      if (courseData[key] === undefined) {
+        delete courseData[key];
+      }
+    });
 
     const { data: insertedCourse, error } = await supabaseClient
       .from(this.table)
@@ -34,7 +62,14 @@ export class CourseRepository {
 
     if (error) {
       console.error("Error creating course:", error);
-      throw error;
+      console.error("Course data attempted:", JSON.stringify(courseData, null, 2));
+      
+      // Crear un error más descriptivo
+      const errorMessage = error.message || error.details || error.hint || "Error desconocido al crear el curso";
+      const detailedError = new Error(errorMessage);
+      (detailedError as any).originalError = error;
+      (detailedError as any).code = error.code;
+      throw detailedError;
     }
 
     return this.mapToCourse(insertedCourse);
@@ -132,6 +167,13 @@ export class CourseRepository {
     if (data.exitSurveyId !== undefined) updateData.exit_survey_id = data.exitSurveyId;
     if (data.certificateTemplateId !== undefined) updateData.certificate_template_id = data.certificateTemplateId;
     if (data.certificateRules !== undefined) updateData.certificate_rules = data.certificateRules;
+    // Campos nuevos de pricing y organizaciones
+    if (data.price !== undefined) updateData.price = data.price;
+    if (data.salePercentage !== undefined) updateData.sale_percentage = data.salePercentage;
+    if (data.isPublished !== undefined) updateData.is_published = data.isPublished;
+    if (data.isHidden !== undefined) updateData.is_hidden = data.isHidden;
+    if (data.university !== undefined) updateData.university = data.university;
+    if (data.specialization !== undefined) updateData.specialization = data.specialization;
 
     const { error } = await supabaseClient
       .from(this.table)
@@ -183,6 +225,12 @@ export class CourseRepository {
       endDate: data.end_date as string | undefined,
       certificateRules: data.certificate_rules as Course["certificateRules"],
       isActive: data.is_active as boolean | undefined,
+      price: data.price as number | undefined,
+      salePercentage: data.sale_percentage as number | undefined,
+      isPublished: data.is_published as boolean | undefined,
+      isHidden: data.is_hidden as boolean | undefined,
+      university: data.university as string | undefined,
+      specialization: data.specialization as string | undefined,
       createdAt: data.created_at as string,
       updatedAt: data.updated_at as string,
     };

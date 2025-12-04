@@ -28,6 +28,8 @@ interface Resource {
   id: string;
   name: string;
   url: string;
+  filePath?: string; // Path del archivo para regenerar URLs
+  bucket?: string; // Bucket donde está almacenado
   type: string;
   size?: number;
   uploadedBy: string;
@@ -40,7 +42,7 @@ interface Resource {
 }
 
 export default function ResourcesPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [resources, setResources] = useState<Resource[]>([]);
@@ -57,38 +59,69 @@ export default function ResourcesPage() {
   const [editDescription, setEditDescription] = useState('');
 
   useEffect(() => {
-    loadResources();
-  }, []);
+    let isMounted = true;
+    
+    // No cargar hasta que useAuth termine de resolver
+    if (authLoading) {
+      setLoading(true);
+      return () => {
+        isMounted = false;
+      };
+    }
+    
+    // Si no hay usuario después de que termine la carga, no hacer nada
+    if (!user) {
+      setLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+    
+    setLoading(true);
+    
+    const loadData = async () => {
+      try {
+        await loadResources();
+      } catch (error: any) {
+        console.error("Error loading resources:", error);
+        if (isMounted) {
+          setResources([]);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+    
+    loadData();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [authLoading, user?.id]);
 
   const loadResources = async () => {
     try {
-      const { data, error } = await supabaseClient
-        .from(TABLES.FILE_ATTACHMENTS)
-        .select('*')
-        .eq('is_deleted', false);
+      // Usar API del servidor para evitar problemas de RLS y timeouts
+      const res = await fetch('/api/admin/getResources');
       
-      if (error) throw error;
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error("Error loading resources:", errorData);
+        setResources([]);
+        return;
+      }
       
-      const resourcesData = (data || []).map((r: any) => ({
-        id: r.id,
-        name: r.name,
-        url: r.url,
-        type: r.type,
-        size: r.size,
-        uploadedBy: r.uploaded_by,
-        uploadedByName: r.uploaded_by_name,
-        createdAt: r.created_at,
-        metadata: r.metadata,
-      })) as Resource[];
-      setResources(resourcesData);
+      const data = await res.json();
+      setResources(data.resources || []);
     } catch (error) {
       console.error("Error loading resources:", error);
-    } finally {
-      setLoading(false);
+      setResources([]);
     }
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return <Loader />;
   }
 
@@ -117,41 +150,138 @@ export default function ResourcesPage() {
   };
 
   const uploadFile = async (file: File) => {
-    if (!user) return;
+    if (!user) {
+      alert('Debes estar autenticado para subir archivos');
+      return;
+    }
 
     const fileId = `${Date.now()}_${file.name}`;
+    // Ruta sin el prefijo 'resources/' ya que el bucket ya es 'resources'
     const filePath = `${user.id}/${fileId}`;
     
     try {
-      setUploadProgress(prev => ({ ...prev, [fileId]: 50 }));
+      setUploadProgress(prev => ({ ...prev, [fileId]: 20 }));
       
-      const { error: uploadError } = await supabaseClient.storage
-        .from('resources')
-        .upload(filePath, file);
+      // Determinar bucket según tipo de archivo
+      // covers solo acepta imágenes, así que usamos attachments o resources para otros archivos
+      const isImage = file.type?.startsWith('image/');
       
-      if (uploadError) throw uploadError;
+      let bucketUsed = 'attachments'; // Por defecto usar attachments (acepta cualquier tipo)
+      let uploadResult: any = { error: null };
+      
+      // Si es imagen, intentar primero con covers (público)
+      if (isImage) {
+        uploadResult = await supabaseClient.storage
+          .from('covers')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+        
+        if (!uploadResult.error) {
+          bucketUsed = 'covers';
+        }
+      }
+      
+      // Si no es imagen o covers falló, intentar con attachments
+      if (!isImage || uploadResult.error) {
+        console.log('Usando bucket attachments para:', file.type || 'archivo desconocido');
+        bucketUsed = 'attachments';
+        uploadResult = await supabaseClient.storage
+          .from('attachments')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+      }
+      
+      // Si attachments falla, intentar con resources
+      if (uploadResult?.error) {
+        console.log('Intentando con bucket resources...');
+        bucketUsed = 'resources';
+        uploadResult = await supabaseClient.storage
+          .from('resources')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+      }
+      
+      if (uploadResult?.error) {
+        console.error('Storage upload error:', uploadResult.error);
+        throw new Error(`Error al subir archivo: ${uploadResult.error.message || 'Error desconocido'}. Verifica que el bucket exista y tengas permisos.`);
+      }
+      
+      setUploadProgress(prev => ({ ...prev, [fileId]: 60 }));
+      
+      // Obtener URL según el tipo de bucket
+      let fileUrl: string;
+      
+      if (bucketUsed === 'covers') {
+        // Bucket público: usar URL pública
+        const { data: urlData } = supabaseClient.storage
+          .from('covers')
+          .getPublicUrl(filePath);
+        fileUrl = urlData.publicUrl;
+      } else {
+        // Buckets privados (resources, attachments): usar URL firmada (válida por 1 año)
+        const { data: signedUrlData, error: signedError } = await supabaseClient.storage
+          .from(bucketUsed)
+          .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 año
+        
+        if (signedError) {
+          console.error('Error generando URL firmada:', signedError);
+          // Fallback: intentar con covers como público
+          const { data: publicUrlData } = supabaseClient.storage
+            .from('covers')
+            .getPublicUrl(filePath);
+          fileUrl = publicUrlData.publicUrl;
+        } else {
+          fileUrl = signedUrlData.signedUrl;
+        }
+      }
       
       setUploadProgress(prev => ({ ...prev, [fileId]: 80 }));
       
-      // Bucket privado: usar URL firmada
-      const { data: urlData, error: urlError } = await supabaseClient.storage
-        .from('resources')
-        .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 año
+      // Guardar en teacher_resources con estructura correcta (SIN metadata)
+      const insertData: any = {
+        owner_id: user.id,
+        file_name: file.name,
+        file_type: file.type || 'application/octet-stream',
+        url: fileUrl,
+        size_kb: Math.round(file.size / 1024),
+        category: 'document',
+        description: '',
+        tags: [],
+      };
       
-      if (urlError) throw urlError;
+      // NO intentar guardar metadata - esa columna no existe
       
-      await supabaseClient.from(TABLES.FILE_ATTACHMENTS).insert({
-        name: file.name,
-        url: urlData.signedUrl,
-        type: file.type,
-        size: file.size,
-        uploaded_by: user.id,
-        uploaded_by_name: user.name || user.email,
-        metadata: {
-          title: file.name,
-          description: ''
+      const { error: dbError } = await supabaseClient
+        .from(TABLES.TEACHER_RESOURCES)
+        .insert(insertData);
+
+      if (dbError) {
+        console.error('Database error (teacher_resources):', dbError);
+        // Fallback a file_attachments con estructura correcta
+        const fallbackData: any = {
+          owner_id: user.id,
+          file_name: file.name,
+          file_type: file.type || 'application/octet-stream',
+          url: fileUrl,
+          size_kb: Math.round(file.size / 1024),
+          category: 'general',
+        };
+        
+        const { error: dbError2 } = await supabaseClient
+          .from(TABLES.FILE_ATTACHMENTS)
+          .insert(fallbackData);
+        
+        if (dbError2) {
+          console.error('Database error (file_attachments):', dbError2);
+          throw new Error(`Error al guardar en base de datos: ${dbError2.message}`);
         }
-      });
+      }
 
       setUploadProgress(prev => {
         const newProgress = { ...prev };
@@ -160,9 +290,9 @@ export default function ResourcesPage() {
       });
 
       loadResources();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Upload error:', error);
-      alert('Error al subir el archivo');
+      alert(`Error al subir el archivo: ${error.message || 'Error desconocido'}`);
       setUploadProgress(prev => {
         const newProgress = { ...prev };
         delete newProgress[fileId];
@@ -176,39 +306,68 @@ export default function ResourcesPage() {
     if (!confirm(`¿Eliminar ${selectedResources.size} archivo(s)?`)) return;
 
     try {
-      for (const resourceId of selectedResources) {
-        // Verificar si el recurso está vinculado a alguna lección
-        const { data: lessonsData } = await supabaseClient
-          .from(TABLES.LESSONS)
-          .select('id, resource_ids');
-        
-        let isLinked = false;
-        for (const lesson of (lessonsData || [])) {
-          if (lesson.resource_ids && lesson.resource_ids.includes(resourceId)) {
-            isLinked = true;
-            break;
-          }
-        }
+      let deletedCount = 0;
+      let errorCount = 0;
 
-        if (isLinked) {
-          // Baja lógica: marcar como eliminado
-          await supabaseClient
-            .from(TABLES.FILE_ATTACHMENTS)
-            .update({
-              is_deleted: true
-            })
-            .eq('id', resourceId);
-        } else {
-          // Eliminación física
-          await supabaseClient
-            .from(TABLES.FILE_ATTACHMENTS)
+      for (const resourceId of selectedResources) {
+        try {
+          // Primero intentar eliminación física directa en teacher_resources
+          const { error: deleteError } = await supabaseClient
+            .from(TABLES.TEACHER_RESOURCES)
             .delete()
             .eq('id', resourceId);
+
+          if (deleteError) {
+            console.log(`Eliminación física falló, intentando marcar como eliminado:`, deleteError);
+            
+            // Si falla, intentar marcar como eliminado
+            const { error: updateError } = await supabaseClient
+              .from(TABLES.TEACHER_RESOURCES)
+              .update({ is_deleted: true })
+              .eq('id', resourceId);
+
+            if (updateError) {
+              // Fallback a file_attachments - eliminación física
+              const { error: fileAttDeleteError } = await supabaseClient
+                .from(TABLES.FILE_ATTACHMENTS)
+                .delete()
+                .eq('id', resourceId);
+
+              if (fileAttDeleteError) {
+                // Último intento: marcar como eliminado en file_attachments
+                const { error: fileAttUpdateError } = await supabaseClient
+                  .from(TABLES.FILE_ATTACHMENTS)
+                  .update({ is_deleted: true })
+                  .eq('id', resourceId);
+
+                if (fileAttUpdateError) {
+                  console.error(`Error eliminando recurso ${resourceId}:`, fileAttUpdateError);
+                  errorCount++;
+                  continue;
+                }
+              }
+            }
+          }
+          
+          deletedCount++;
+        } catch (err) {
+          console.error(`Error procesando recurso ${resourceId}:`, err);
+          errorCount++;
         }
       }
+
       setSelectedResources(new Set());
-      loadResources();
-      alert('Recursos procesados correctamente');
+      
+      // Recargar recursos después de eliminar (esperar un momento para que la BD se actualice)
+      setTimeout(async () => {
+        await loadResources();
+      }, 500);
+      
+      if (errorCount > 0) {
+        alert(`${deletedCount} recurso(s) eliminado(s), ${errorCount} error(es)`);
+      } else if (deletedCount > 0) {
+        // No mostrar alerta si todo salió bien, solo recargar
+      }
     } catch (error) {
       console.error('Error deleting resources:', error);
       alert('Error al eliminar archivos');
@@ -233,14 +392,82 @@ export default function ResourcesPage() {
     }
   };
 
-  const handlePreview = (resource: Resource) => {
+  // Función para obtener URL válida de un recurso (regenera URL firmada si es necesario)
+  const getResourceUrl = async (resource: Resource): Promise<string> => {
+    // Si la URL parece ser válida y no está expirada, usarla directamente
+    if (resource.url && !resource.url.includes('404') && !resource.url.includes('Bucket not found')) {
+      // Si es una URL firmada que aún no ha expirado, usarla
+      if (resource.url.includes('token=')) {
+        return resource.url;
+      }
+      // Si es una URL pública válida, usarla
+      if (resource.url.includes('.supabase.co/storage/')) {
+        return resource.url;
+      }
+    }
+    
+    // Extraer path de la URL guardada si es posible
+    let extractedPath: string | null = null;
+    let extractedBucket: string | null = null;
+    
+    if (resource.url) {
+      // Intentar extraer path de URL de Supabase
+      const urlMatch = resource.url.match(/\/storage\/v1\/object\/(?:public|sign\/[^/]+)\/([^/]+)\/(.+)$/);
+      if (urlMatch) {
+        extractedBucket = urlMatch[1];
+        extractedPath = decodeURIComponent(urlMatch[2]);
+      }
+    }
+    
+    // Usar path extraído o el path guardado
+    const pathToUse = extractedPath || resource.filePath;
+    const bucketsToTry = extractedBucket ? [extractedBucket] : ['covers', 'resources', 'attachments'];
+    
+    if (pathToUse) {
+      // Intentar diferentes buckets
+      for (const bucket of bucketsToTry) {
+        try {
+          if (bucket === 'covers') {
+            // Bucket público
+            const { data } = supabaseClient.storage.from(bucket).getPublicUrl(pathToUse);
+            if (data?.publicUrl) return data.publicUrl;
+          } else {
+            // Buckets privados: generar URL firmada
+            const { data, error } = await supabaseClient.storage
+              .from(bucket)
+              .createSignedUrl(pathToUse, 60 * 60 * 24 * 365);
+            if (!error && data?.signedUrl) {
+              return data.signedUrl;
+            }
+          }
+        } catch (err) {
+          console.log(`Error al generar URL desde bucket ${bucket}:`, err);
+          continue;
+        }
+      }
+    }
+    
+    // Fallback: usar la URL guardada
+    return resource.url || '#';
+  };
+
+  const handlePreview = async (resource: Resource) => {
     setPreviewResource(resource);
     setShowPreviewModal(true);
+    // Intentar obtener URL válida en segundo plano
+    const validUrl = await getResourceUrl(resource);
+    if (validUrl !== resource.url) {
+      setPreviewResource({ ...resource, url: validUrl });
+    }
   };
 
   const handleEdit = (resource: Resource) => {
     setEditingResource(resource);
-    setEditTitle(resource.metadata?.title || resource.name);
+    // Usar el nombre del archivo directamente
+    const fileName = resource.name || 'Sin título';
+    // Remover extensión para el título editable
+    const titleWithoutExt = fileName.replace(/\.[^/.]+$/, "");
+    setEditTitle(titleWithoutExt || fileName);
     setEditDescription(resource.metadata?.description || '');
     setShowEditModal(true);
   };
@@ -249,26 +476,38 @@ export default function ResourcesPage() {
     if (!editingResource) return;
 
     try {
-      await supabaseClient
+      // Actualizar en teacher_resources con estructura correcta
+      const updateData: any = {
+        file_name: editTitle,
+        description: editDescription,
+      };
+      
+      const { error: updateError } = await supabaseClient
+        .from(TABLES.TEACHER_RESOURCES)
+        .update(updateData)
+        .eq('id', editingResource.id);
+      
+      if (updateError) {
+        // Intentar en file_attachments como fallback
+        const { error: fileAttError } = await supabaseClient
         .from(TABLES.FILE_ATTACHMENTS)
         .update({
-          metadata: {
-            title: editTitle,
-            description: editDescription
-          }
+            file_name: editTitle,
         })
         .eq('id', editingResource.id);
+        
+        if (fileAttError) {
+          throw fileAttError;
+        }
+      }
+      
       setShowEditModal(false);
       loadResources();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating resource:', error);
-      alert('Error al actualizar el recurso');
+      alert(`Error al actualizar el recurso: ${error.message || 'Error desconocido'}`);
     }
   };
-
-  if (loading) {
-    return <Loader />;
-  }
 
   return (
     <div>
@@ -410,7 +649,7 @@ export default function ResourcesPage() {
                       <div className="flex items-center gap-3">
                         {getFileIcon(resource.type)}
                         <div>
-                          <div className="font-medium">{resource.metadata?.title || resource.name}</div>
+                          <div className="font-medium">{resource.name || 'Sin nombre'}</div>
                           {resource.metadata?.description && (
                             <div className="text-sm text-base-content/60">{resource.metadata.description}</div>
                           )}
@@ -478,8 +717,8 @@ export default function ResourcesPage() {
                 <div className="flex justify-center mb-4">
                   {getFileIcon(resource.type)}
                 </div>
-                <h2 className="card-title text-base line-clamp-2" title={resource.metadata?.title || resource.name}>
-                  {resource.metadata?.title || resource.name}
+                <h2 className="card-title text-base line-clamp-2" title={resource.name || 'Sin nombre'}>
+                  {resource.name || 'Sin nombre'}
                 </h2>
                 <div className="text-sm text-base-content/60 space-y-1">
                   <p>Tamaño: {formatFileSize(resource.size)}</p>
@@ -521,9 +760,32 @@ export default function ResourcesPage() {
             <h3 className="font-bold text-lg mb-4">{previewResource.metadata?.title || previewResource.name}</h3>
             
             {previewResource.type.includes('image') ? (
-              <img src={previewResource.url} alt={previewResource.name} className="w-full rounded-lg" />
+              <img 
+                src={previewResource.url} 
+                alt={previewResource.name} 
+                className="w-full rounded-lg"
+                onError={async (e) => {
+                  // Si la imagen falla, intentar regenerar URL
+                  const validUrl = await getResourceUrl(previewResource);
+                  if (validUrl && validUrl !== previewResource.url) {
+                    (e.target as HTMLImageElement).src = validUrl;
+                  } else {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }
+                }}
+              />
             ) : previewResource.type.includes('pdf') ? (
-              <iframe src={previewResource.url} className="w-full h-96 rounded-lg" />
+              <iframe 
+                src={previewResource.url} 
+                className="w-full h-96 rounded-lg"
+                onError={async (e) => {
+                  // Si el iframe falla, intentar regenerar URL
+                  const validUrl = await getResourceUrl(previewResource);
+                  if (validUrl && validUrl !== previewResource.url) {
+                    (e.target as HTMLIFrameElement).src = validUrl;
+                  }
+                }}
+              />
             ) : (
               <div className="text-center py-12">
                 <div className="flex justify-center mb-4">

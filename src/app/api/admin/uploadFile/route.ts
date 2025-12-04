@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
+// Buckets públicos (usan getPublicUrl)
+const PUBLIC_BUCKETS: string[] = ['avatars', 'covers', 'certificates', 'files'];
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -33,15 +36,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Obtener URL pública
-    const { data: urlData } = supabaseAdmin.storage
-      .from(bucket)
-      .getPublicUrl(path);
-
-    console.log(`[uploadFile API] Subido exitosamente: ${urlData.publicUrl}`);
+    // Determinar tipo de URL según el bucket
+    let fileUrl: string;
+    
+    if (PUBLIC_BUCKETS.includes(bucket)) {
+      // Buckets públicos: usar URL pública
+      const { data: urlData } = supabaseAdmin.storage
+        .from(bucket)
+        .getPublicUrl(path);
+      fileUrl = urlData.publicUrl;
+      console.log(`[uploadFile API] Subido exitosamente (público): ${fileUrl}`);
+    } else {
+      // Buckets privados: usar URL firmada (1 año)
+      const { data: signedUrlData, error: signedError } = await supabaseAdmin.storage
+        .from(bucket)
+        .createSignedUrl(path, 60 * 60 * 24 * 365);
+      
+      if (signedError) {
+        console.error('[uploadFile API] Error al crear URL firmada:', signedError);
+        throw signedError;
+      }
+      
+      fileUrl = signedUrlData.signedUrl;
+      console.log(`[uploadFile API] Subido exitosamente (privado): ${fileUrl}`);
+    }
 
     return NextResponse.json({ 
-      url: urlData.publicUrl,
+      url: fileUrl,
       path: data.path 
     }, { status: 200 });
 

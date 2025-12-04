@@ -2,14 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { courseRepository } from "@/lib/repositories/courseRepository";
 import { siteConfigRepository } from "@/lib/repositories/siteConfigRepository";
 import { Course } from "@/types/course";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader } from "@/components/common/Loader";
 import { IconBook, IconPlus, IconCalendar, IconStar, IconX } from "@tabler/icons-react";
-import { userRepository } from "@/lib/repositories/userRepository";
-import { lessonRepository } from "@/lib/repositories/lessonRepository";
 
 interface Speaker {
   id: string;
@@ -46,84 +43,57 @@ export default function CoursesPage() {
   const { user, loading: authLoading } = useAuth();
   
   useEffect(() => {
-    // No cargar hasta que useAuth termine de resolver
-    if (authLoading) return;
-    
+    // Resetear estado al montar
     let isMounted = true;
+    
+    // No cargar hasta que useAuth termine de resolver y haya un usuario
+    if (authLoading) {
+      setLoading(true);
+      return () => {
+        isMounted = false;
+      };
+    }
+    
+    // Si no hay usuario después de que termine la carga, no hacer nada
+    if (!user) {
+      setLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+    
+    setLoading(true);
     
     const loadCourses = async () => {
       try {
-        let data: Course[];
-        if (user?.role === "admin") {
-          // Admin ve todos los cursos
-          data = await courseRepository.findAll();
-        } else if (user?.role === "teacher") {
-          // Teacher ve solo sus cursos
-          data = await courseRepository.findByTeacher(user.id);
-        } else {
-          // Student o no autenticado ve solo cursos activos
-          data = await courseRepository.findPublished();
+        // Usar API del servidor para evitar problemas de RLS y timeouts
+        const params = new URLSearchParams({
+          role: user.role || 'student',
+          userId: user.id || '',
+        });
+        
+        const res = await fetch(`/api/admin/getCourses?${params.toString()}`);
+        
+        if (!res.ok) {
+          const errorData = await res.json();
+          console.error("Error loading courses:", errorData);
+          if (isMounted) {
+            setCourses([]);
+          }
+          return;
         }
         
-        if (!isMounted) return;
-        
-        // Recolectar todos los IDs únicos de speakers y lessons
-        const allSpeakerIds = new Set<string>();
-        const allLessonIds = new Set<string>();
-        
-        data.forEach(course => {
-          course.speakerIds?.forEach(id => allSpeakerIds.add(id));
-          course.lessonIds?.forEach(id => allLessonIds.add(id));
-        });
-        
-        // Cargar todos los speakers y lessons en paralelo (2 queries en total)
-        const [allSpeakers, allLessons] = await Promise.all([
-          allSpeakerIds.size > 0 ? userRepository.findByIds(Array.from(allSpeakerIds)) : [],
-          allLessonIds.size > 0 ? lessonRepository.findByIds(Array.from(allLessonIds)) : [],
-        ]);
+        const data = await res.json();
         
         if (!isMounted) return;
         
-        // Crear mapas para acceso O(1)
-        const speakersMap = new Map(allSpeakers.map(s => [s.id, s]));
-        const lessonsMap = new Map(allLessons.map(l => [l.id, l]));
-        
-        // Mapear cursos con sus speakers y lessons
-        const coursesWithSpeakers = data.map(course => {
-          const speakers: Speaker[] = [];
-          const lessons: LessonSummary[] = [];
-          
-          // Mapear ponentes desde el cache
-          course.speakerIds?.forEach(speakerId => {
-            const userData = speakersMap.get(speakerId);
-            if (userData) {
-              speakers.push({
-                id: speakerId,
-                name: userData.name || userData.email,
-                email: userData.email,
-                photoURL: userData.avatarUrl,
-              });
-            }
-          });
-          
-          // Mapear lecciones desde el cache
-          course.lessonIds?.forEach(lessonId => {
-            const lesson = lessonsMap.get(lessonId);
-            if (lesson) {
-              lessons.push({
-                id: lesson.id,
-                title: lesson.title || `Lección ${lessons.length + 1}`,
-                startDate: lesson.startDate || lesson.scheduledStartTime,
-              });
-            }
-          });
-          
-          return { ...course, speakers, lessons };
-        });
-        
-        setCourses(coursesWithSpeakers);
-      } catch (error) {
+        // Los cursos ya vienen con speakers y lessons desde la API
+        setCourses(data.courses || []);
+      } catch (error: any) {
         console.error("Error loading courses:", error);
+        if (isMounted) {
+          setCourses([]);
+        }
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -131,27 +101,33 @@ export default function CoursesPage() {
       }
     };
 
+    const loadBannerConfig = async () => {
+      if (user.role !== "admin") return;
+      try {
+        setBannerLoading(true);
+        const config = await siteConfigRepository.getHomepageConfig();
+        if (isMounted) {
+          setSelectedBannerItems(config?.bannerItems || []);
+        }
+      } catch (error) {
+        console.error("Error loading homepage config:", error);
+      } finally {
+        if (isMounted) {
+          setBannerLoading(false);
+        }
+      }
+    };
+
     loadCourses();
-    if (user?.role === "admin") {
+    if (user.role === "admin") {
       loadBannerConfig();
     }
     
     return () => {
       isMounted = false;
     };
-  }, [authLoading, user?.role, user?.id]);
+  }, [authLoading, user?.id]);
 
-  const loadBannerConfig = async () => {
-    try {
-      setBannerLoading(true);
-      const config = await siteConfigRepository.getHomepageConfig();
-      setSelectedBannerItems(config?.bannerItems || []);
-    } catch (error) {
-      console.error("Error loading homepage config:", error);
-    } finally {
-      setBannerLoading(false);
-    }
-  };
 
   const courseById = (courseId: string) => courses.find((course) => course.id === courseId);
 
@@ -358,7 +334,7 @@ export default function CoursesPage() {
                         {course.speakers[0].photoURL ? (
                           <img src={course.speakers[0].photoURL} alt={course.speakers[0].name} />
                         ) : (
-                          <div className="bg-primary text-primary-content flex items-center justify-center w-full h-full text-xs font-bold text-white">
+                          <div className="bg-primary text-white flex items-center justify-center w-full h-full text-xs font-bold">
                             {course.speakers[0].name.charAt(0).toUpperCase()}
                           </div>
                         )}

@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader } from "@/components/common/Loader";
 import { IconCertificate, IconPlus, IconEye, IconEdit, IconTrash, IconFileTypePdf } from "@tabler/icons-react";
-import { supabaseClient } from "@/lib/supabase";
-import { TABLES } from "@/utils/constants";
 import { formatDate } from "@/utils/formatDate";
 
 interface CertificateTemplate {
@@ -26,24 +24,21 @@ export default function CertificatesPage() {
   useEffect(() => {
     const loadTemplates = async () => {
       try {
-        const { data, error } = await supabaseClient
-          .from(TABLES.CERTIFICATE_TEMPLATES)
-          .select('*');
+        // Usar API del servidor para evitar problemas de RLS y timeouts
+        const res = await fetch('/api/admin/getCertificates');
         
-        if (error) throw error;
+        if (!res.ok) {
+          const errorData = await res.json();
+          console.error("Error loading certificate templates:", errorData);
+          setTemplates([]);
+          return;
+        }
         
-        const templatesData = (data || []).map((t: any) => ({
-          id: t.id,
-          title: t.title,
-          backgroundUrl: t.background_url,
-          pdfTemplateUrl: t.pdf_template_url,
-          description: t.description,
-          isActive: t.is_active,
-          createdAt: t.created_at,
-        })) as CertificateTemplate[];
-        setTemplates(templatesData);
+        const data = await res.json();
+        setTemplates(data.templates || []);
       } catch (error) {
         console.error("Error loading certificate templates:", error);
+        setTemplates([]);
       } finally {
         setLoading(false);
       }

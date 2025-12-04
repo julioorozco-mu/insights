@@ -12,8 +12,6 @@ import {
   IconTrophy,
   IconX
 } from "@tabler/icons-react";
-import { userRepository } from "@/lib/repositories/userRepository";
-import { studentRepository } from "@/lib/repositories/studentRepository";
 import { formatDate } from "@/utils/formatDate";
 
 interface Student {
@@ -43,42 +41,21 @@ export default function StudentsPage() {
   useEffect(() => {
     const loadStudents = async () => {
       try {
-        // Cargar usuarios con rol "student" desde Supabase
-        const users = await userRepository.findByRole("student");
-        const studentsData: Student[] = users.map((user) => ({
-          id: user.id,
-          name: user.name,
-          lastName: user.lastName,
-          email: user.email,
-          phone: user.phone,
-          dateOfBirth: user.dateOfBirth,
-          gender: user.gender,
-          state: user.state,
-          avatarUrl: user.avatarUrl,
-          username: user.username,
-          createdAt: user.createdAt,
-        }));
+        // Usar API del servidor para evitar problemas de RLS y timeouts
+        const res = await fetch('/api/admin/getStudents');
         
-        // Cargar información adicional de estudiantes (cursos completados, certificados)
-        const studentsWithDetails = await Promise.all(
-          studentsData.map(async (student) => {
-            try {
-              const studentDetail = await studentRepository.findById(student.id);
-              return {
-                ...student,
-                enrollmentDate: studentDetail?.enrollmentDate,
-                completedCourses: studentDetail?.completedCourses || [],
-                certificates: studentDetail?.certificates || [],
-              };
-            } catch {
-              return student;
-            }
-          })
-        );
+        if (!res.ok) {
+          const errorData = await res.json();
+          console.error("Error loading students:", errorData);
+          setStudents([]);
+          return;
+        }
         
-        setStudents(studentsWithDetails);
+        const data = await res.json();
+        setStudents(data.students || []);
       } catch (error) {
         console.error("Error loading students:", error);
+        setStudents([]);
       } finally {
         setLoading(false);
       }

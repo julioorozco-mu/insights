@@ -5,8 +5,8 @@ export interface Course {
   description: string;
   coverImageUrl?: string;
   thumbnailUrl?: string; // Miniatura para listados
-  speakerIds: string[]; // relación con speakers
-  coHostIds?: string[]; // Co-hosts para presentación/despedida
+  speakerIds: string[]; // relación con speakers (mantener para compatibilidad)
+  coHostIds?: string[]; // Co-hosts para presentación/despedida (mantener para compatibilidad)
   lessonIds: string[];
   tags?: string[];
   durationMinutes?: number;
@@ -28,6 +28,13 @@ export interface Course {
   // Fechas del curso
   startDate?: string; // Inicio del curso
   endDate?: string; // Fin del curso
+  // Campos para cursos públicos
+  price?: number; // Precio base del curso en USD
+  salePercentage?: number; // Porcentaje de descuento (0-100)
+  isPublished?: boolean; // Si el curso está publicado y visible
+  isHidden?: boolean; // Si el curso está oculto temporalmente
+  university?: string; // Universidad asociada
+  specialization?: string; // Especialización o programa
   // Reglas para certificados
   certificateRules?: {
     requireSurveys?: boolean; // Completar encuestas de entrada y salida
@@ -54,7 +61,7 @@ export interface Course {
 export interface CreateCourseData {
   title: string;
   description: string;
-  speakerIds: string[];
+  speakerIds?: string[]; // Opcional para cursos públicos
   coHostIds?: string[];
   coverImageUrl?: string;
   thumbnailUrl?: string;
@@ -69,6 +76,13 @@ export interface CreateCourseData {
   };
   enrollmentStartDate?: string;
   enrollmentEndDate?: string;
+  // Campos para cursos públicos
+  price?: number;
+  salePercentage?: number;
+  isPublished?: boolean;
+  isHidden?: boolean;
+  university?: string;
+  specialization?: string;
 }
 
 export interface UpdateCourseData {
@@ -103,4 +117,11 @@ export interface UpdateCourseData {
     hoursAfterStart?: number;
   };
   isActive?: boolean;
+  // Campos para cursos públicos
+  price?: number;
+  salePercentage?: number;
+  isPublished?: boolean;
+  isHidden?: boolean;
+  university?: string;
+  specialization?: string;
 }
