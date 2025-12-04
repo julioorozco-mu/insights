@@ -22,7 +22,7 @@ interface Speaker {
 
 export default function HomePage() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { signIn, user, loading: authLoading } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -30,6 +30,17 @@ export default function HomePage() {
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const { courses: bannerCourses, loading: bannerLoading } = useHomepageBanner();
+  
+  // Redirigir usuarios logueados al dashboard
+  useEffect(() => {
+    if (!authLoading && user) {
+      // Pequeño delay para evitar problemas de navegación
+      const timer = setTimeout(() => {
+        router.push("/dashboard/c");
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [authLoading, user, router]);
 
   // Log cuando cambia el tooltip
   useEffect(() => {

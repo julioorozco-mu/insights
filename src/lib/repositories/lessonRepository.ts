@@ -90,28 +90,35 @@ export class LessonRepository {
   private table = TABLES.LESSONS;
 
   async create(data: CreateLessonData): Promise<LessonData> {
-    const lessonData = {
+    const lessonData: Record<string, unknown> = {
       course_id: data.courseId,
       title: data.title,
-      description: data.description,
-      content: data.content,
+      description: data.description || null,
+      content: data.content || null,
       order: data.order ?? 0,
       type: data.type || "video",
-      video_url: data.videoUrl,
+      video_url: data.videoUrl || null,
       is_live: false,
       live_status: "idle",
-      scheduled_start_time: data.scheduledStartTime,
+      scheduled_start_time: data.scheduledStartTime || null,
       streaming_type: data.streamingType || "agora",
-      live_stream_url: data.liveStreamUrl,
-      start_date: data.startDate,
-      end_date: data.endDate,
-      duration_minutes: data.durationMinutes,
+      live_stream_url: data.liveStreamUrl || null,
+      start_date: data.startDate || null,
+      end_date: data.endDate || null,
+      duration_minutes: data.durationMinutes || null,
       created_by: data.createdBy,
       is_active: true,
       is_published: false,
       attachment_ids: [],
       resource_ids: [],
     };
+
+    // Remover campos undefined para evitar problemas con Supabase
+    Object.keys(lessonData).forEach(key => {
+      if (lessonData[key] === undefined) {
+        delete lessonData[key];
+      }
+    });
 
     const { data: insertedLesson, error } = await supabaseClient
       .from(this.table)
@@ -121,7 +128,34 @@ export class LessonRepository {
 
     if (error) {
       console.error("Error creating lesson:", error);
-      throw error;
+      console.error("Error code:", error.code);
+      console.error("Error message:", error.message);
+      console.error("Error details:", error.details);
+      console.error("Error hint:", error.hint);
+      console.error("Lesson data attempted:", JSON.stringify(lessonData, null, 2));
+      
+      // Crear un error más descriptivo con toda la información disponible
+      let errorMessage = "Error desconocido al crear la lección";
+      
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.details) {
+        errorMessage = error.details;
+      } else if (error.hint) {
+        errorMessage = error.hint;
+      }
+      
+      // Agregar código de error si existe
+      if (error.code) {
+        errorMessage += ` (Código: ${error.code})`;
+      }
+      
+      const detailedError = new Error(errorMessage);
+      (detailedError as any).originalError = error;
+      (detailedError as any).code = error.code;
+      (detailedError as any).details = error.details;
+      (detailedError as any).hint = error.hint;
+      throw detailedError;
     }
 
     return this.mapToLesson(insertedLesson);

@@ -7,7 +7,7 @@ const enrollmentRulesSchema = z.object({
 export const createCourseSchema = z.object({
   title: z.string().min(3, "El título debe tener al menos 3 caracteres"),
   description: z.string().min(10, "La descripción debe tener al menos 10 caracteres"),
-  speakerIds: z.array(z.string()).min(1, "Debe haber al menos un ponente"),
+  speakerIds: z.array(z.string()).optional(), // Opcional para cursos públicos
   coHostIds: z.array(z.string()).optional(),
   coverImageUrl: z.string().url("URL inválida").optional(),
   thumbnailUrl: z.string().url("URL inválida").optional(),
@@ -20,6 +20,13 @@ export const createCourseSchema = z.object({
   enrollmentRules: enrollmentRulesSchema,
   enrollmentStartDate: z.string().optional(),
   enrollmentEndDate: z.string().optional(),
+  // Campos para cursos públicos
+  price: z.number().min(0, "El precio debe ser mayor o igual a 0").optional(),
+  salePercentage: z.number().min(0).max(100, "El descuento debe estar entre 0 y 100").optional(),
+  isPublished: z.boolean().optional(),
+  isHidden: z.boolean().optional(),
+  university: z.string().optional(),
+  specialization: z.string().optional(),
 });
 
 export const updateCourseSchema = z.object({
@@ -45,6 +52,13 @@ export const updateCourseSchema = z.object({
   unlimitedEnrollment: z.boolean().optional(),
   enrollmentRules: enrollmentRulesSchema,
   isActive: z.boolean().optional(),
+  // Campos para cursos públicos
+  price: z.number().min(0, "El precio debe ser mayor o igual a 0").optional(),
+  salePercentage: z.number().min(0).max(100, "El descuento debe estar entre 0 y 100").optional(),
+  isPublished: z.boolean().optional(),
+  isHidden: z.boolean().optional(),
+  university: z.string().optional(),
+  specialization: z.string().optional(),
 });
 
 export type CreateCourseInput = z.infer<typeof createCourseSchema>;

@@ -11,7 +11,7 @@ export function useUploadFile() {
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Sube un archivo a Supabase Storage
+   * Sube un archivo a Supabase Storage usando el endpoint API
    * @param file - Archivo a subir
    * @param bucket - Nombre del bucket (avatars, covers, certificates, resources, etc.)
    * @param customPath - Ruta personalizada dentro del bucket (opcional)
@@ -31,14 +31,34 @@ export function useUploadFile() {
       const timestamp = Date.now();
       const path = customPath || `${timestamp}_${file.name}`;
 
-      setProgress(30);
+      setProgress(20);
       
-      // Timeout de 30 segundos para la subida
-      const uploadPromise = fileService.uploadFile(file, path, bucket);
+      // Usar el endpoint API en lugar de subida directa
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('bucket', bucket);
+      formData.append('path', path);
+
+      setProgress(40);
+      
+      // Timeout de 60 segundos para la subida (aumentado para archivos más grandes)
+      const uploadPromise = fetch('/api/admin/uploadFile', {
+        method: 'POST',
+        body: formData,
+      }).then(async (response) => {
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Error desconocido' }));
+          throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`);
+        }
+        const result = await response.json();
+        return result.url;
+      });
+
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout: La subida tardó más de 30 segundos. Verifica tu conexión o contacta al administrador.')), 30000);
+        setTimeout(() => reject(new Error('Timeout: La subida tardó más de 60 segundos. Verifica tu conexión o contacta al administrador.')), 60000);
       });
       
+      setProgress(60);
       const url = await Promise.race([uploadPromise, timeoutPromise]);
       
       setProgress(100);

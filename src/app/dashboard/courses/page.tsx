@@ -46,18 +46,28 @@ export default function CoursesPage() {
   const { user, loading: authLoading } = useAuth();
   
   useEffect(() => {
-    // No cargar hasta que useAuth termine de resolver
-    if (authLoading) return;
+    // No cargar hasta que useAuth termine de resolver y haya un usuario
+    if (authLoading) {
+      setLoading(true);
+      return;
+    }
+    
+    // Si no hay usuario después de que termine la carga, no hacer nada
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     
     let isMounted = true;
+    setLoading(true);
     
     const loadCourses = async () => {
       try {
         let data: Course[];
-        if (user?.role === "admin") {
+        if (user.role === "admin") {
           // Admin ve todos los cursos
           data = await courseRepository.findAll();
-        } else if (user?.role === "teacher") {
+        } else if (user.role === "teacher") {
           // Teacher ve solo sus cursos
           data = await courseRepository.findByTeacher(user.id);
         } else {
@@ -121,9 +131,13 @@ export default function CoursesPage() {
           return { ...course, speakers, lessons };
         });
         
+        if (!isMounted) return;
         setCourses(coursesWithSpeakers);
       } catch (error) {
         console.error("Error loading courses:", error);
+        if (isMounted) {
+          setCourses([]);
+        }
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -131,27 +145,33 @@ export default function CoursesPage() {
       }
     };
 
+    const loadBannerConfig = async () => {
+      if (user.role !== "admin") return;
+      try {
+        setBannerLoading(true);
+        const config = await siteConfigRepository.getHomepageConfig();
+        if (isMounted) {
+          setSelectedBannerItems(config?.bannerItems || []);
+        }
+      } catch (error) {
+        console.error("Error loading homepage config:", error);
+      } finally {
+        if (isMounted) {
+          setBannerLoading(false);
+        }
+      }
+    };
+
     loadCourses();
-    if (user?.role === "admin") {
+    if (user.role === "admin") {
       loadBannerConfig();
     }
     
     return () => {
       isMounted = false;
     };
-  }, [authLoading, user?.role, user?.id]);
+  }, [authLoading, user]);
 
-  const loadBannerConfig = async () => {
-    try {
-      setBannerLoading(true);
-      const config = await siteConfigRepository.getHomepageConfig();
-      setSelectedBannerItems(config?.bannerItems || []);
-    } catch (error) {
-      console.error("Error loading homepage config:", error);
-    } finally {
-      setBannerLoading(false);
-    }
-  };
 
   const courseById = (courseId: string) => courses.find((course) => course.id === courseId);
 
@@ -358,7 +378,7 @@ export default function CoursesPage() {
                         {course.speakers[0].photoURL ? (
                           <img src={course.speakers[0].photoURL} alt={course.speakers[0].name} />
                         ) : (
-                          <div className="bg-primary text-primary-content flex items-center justify-center w-full h-full text-xs font-bold text-white">
+                          <div className="bg-primary text-white flex items-center justify-center w-full h-full text-xs font-bold">
                             {course.speakers[0].name.charAt(0).toUpperCase()}
                           </div>
                         )}

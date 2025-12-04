@@ -198,6 +198,12 @@ export interface Database {
           end_date: string | null;
           certificate_rules: Json | null;
           is_active: boolean;
+          price: number | null;
+          sale_percentage: number | null;
+          is_published: boolean;
+          is_hidden: boolean;
+          university: string | null;
+          specialization: string | null;
           created_at: string;
           updated_at: string;
         };

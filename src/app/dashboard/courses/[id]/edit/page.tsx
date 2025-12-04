@@ -1,59 +1,276 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import React, { useState, useEffect } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { createCourseSchema, CreateCourseInput } from "@/lib/validators/courseSchema";
 import { courseRepository } from "@/lib/repositories/courseRepository";
-import { Course } from "@/types/course";
-import { Loader } from "@/components/common/Loader";
-import { updateCourseSchema, UpdateCourseInput } from "@/lib/validators/courseSchema";
-import { MEXICO_STATES } from "@/types/catalog";
-import { IconUpload, IconX } from "@tabler/icons-react";
-import { EnrollmentCalendar } from "@/components/EnrollmentCalendar";
-import { supabaseClient } from "@/lib/supabase";
-import { TABLES } from "@/utils/constants";
-import { userRepository } from "@/lib/repositories/userRepository";
-import CourseResourceSelector from "@/components/resources/CourseResourceSelector";
-import { useAuth } from "@/hooks/useAuth";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
+import { IconX, IconUpload, IconPlus, IconChevronDown, IconEye, IconGripVertical, IconCheck } from "@tabler/icons-react";
+import { useUploadFile } from "@/hooks/useUploadFile";
 
-interface Speaker {
-  id: string;
-  name: string;
-  lastName?: string;
-  email: string;
-}
-
-interface Survey {
+interface Lesson {
   id: string;
   title: string;
-  type?: string;
+  order: number;
+}
+
+const AVAILABLE_TAGS = [
+  "Negocios",
+  "Economía", 
+  "Éxito",
+  "Objetivos",
+  "Gestión",
+  "Empresa",
+  "Liderazgo",
+  "Estrategia",
+  "Finanzas",
+  "Marketing"
+];
+
+const UNIVERSITIES = [
+  "Cualquier universidad",
+  "UNACH",
+  "UNAM",
+  "ITESM",
+  "UAM",
+  "IPN"
+];
+
+const SPECIALIZATIONS = [
+  "Negocios",
+  "Ingeniería",
+  "Ciencias de la Computación",
+  "Administración",
+  "Economía",
+  "Marketing"
+];
+
+const COURSE_LEVELS = [
+  "Principiante",
+  "Intermedio",
+  "Avanzado"
+];
+
+const PUBLISH_STATUSES = [
+  "Publicado",
+  "Borrador",
+  "Archivado"
+];
+
+// Componente Snackbar
+function Snackbar({ message, isVisible, onClose }: { message: string; isVisible: boolean; onClose: () => void }) {
+  useEffect(() => {
+    if (isVisible) {
+      const timer = setTimeout(() => {
+        onClose();
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isVisible, onClose]);
+
+  if (!isVisible) return null;
+
+  return (
+    <div style={{
+      position: "fixed",
+      bottom: "24px",
+      right: "24px",
+      backgroundColor: "#1A2170",
+      color: "#F9FAFB",
+      padding: "12px 20px",
+      borderRadius: "10px",
+      boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)",
+      display: "flex",
+      alignItems: "center",
+      gap: "12px",
+      zIndex: 1000,
+      animation: "slideIn 0.3s ease-out"
+    }}>
+      <IconCheck size={20} />
+      <span style={{ fontSize: "14px", fontWeight: 500 }}>{message}</span>
+      <style jsx>{`
+        @keyframes slideIn {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// Modal para crear nueva sección
+function NewSectionModal({ 
+  isOpen, 
+  onClose, 
+  onCreate 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  onCreate: (title: string) => void;
+}) {
+  const [sectionTitle, setSectionTitle] = useState("");
+
+  if (!isOpen) return null;
+
+  const handleCreate = () => {
+    if (sectionTitle.trim()) {
+      onCreate(sectionTitle.trim());
+      setSectionTitle("");
+      onClose();
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: "#FFFFFF",
+        borderRadius: "16px",
+        padding: "24px",
+        width: "90%",
+        maxWidth: "500px",
+        boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
+      }}>
+        <h3 style={{
+          fontSize: "18px",
+          fontWeight: 600,
+          color: "#111827",
+          marginBottom: "16px"
+        }}>
+          Crear nueva sección
+        </h3>
+        
+        <div style={{ marginBottom: "20px" }}>
+          <label style={{
+            display: "block",
+            fontSize: "12px",
+            fontWeight: 500,
+            color: "#4B5563",
+            marginBottom: "8px"
+          }}>
+            Nombre de la sección
+          </label>
+          <input
+            type="text"
+            value={sectionTitle}
+            onChange={(e) => setSectionTitle(e.target.value)}
+            placeholder="Ej: Semana 1 - Introducción"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleCreate();
+              }
+            }}
+            style={{
+              width: "100%",
+              height: "40px",
+              padding: "0 12px",
+              fontSize: "14px",
+              border: "1px solid rgba(15, 23, 42, 0.10)",
+              borderRadius: "10px",
+              outline: "none",
+              fontFamily: "inherit"
+            }}
+            autoFocus
+          />
+        </div>
+
+        <div style={{
+          display: "flex",
+          gap: "12px",
+          justifyContent: "flex-end"
+        }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              backgroundColor: "#F3F4F6",
+              border: "none",
+              color: "#1A2170",
+              padding: "10px 22px",
+              borderRadius: "999px",
+              fontSize: "14px",
+              fontWeight: 600,
+              cursor: "pointer",
+              height: "40px"
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={!sectionTitle.trim()}
+            style={{
+              backgroundColor: "#1A2170",
+              border: "none",
+              color: "#FFFFFF",
+              padding: "10px 22px",
+              borderRadius: "999px",
+              fontSize: "14px",
+              fontWeight: 600,
+              cursor: sectionTitle.trim() ? "pointer" : "not-allowed",
+              height: "40px",
+              opacity: sectionTitle.trim() ? 1 : 0.5
+            }}
+          >
+            Crear sección
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function EditCoursePage() {
-  const params = useParams();
   const router = useRouter();
+  const params = useParams();
   const { user } = useAuth();
-  const [course, setCourse] = useState<Course | null>(null);
+  const courseId = params?.id as string;
+  const isEditing = true;
+  
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState("");
-  const [startDate, setStartDate] = useState<string>("");
-  const [startTime, setStartTime] = useState<string>("12:00");
-  const [startPeriod, setStartPeriod] = useState<"AM" | "PM">("PM");
-  const [speakers, setSpeakers] = useState<Speaker[]>([]);
-  const [surveys, setSurveys] = useState<Survey[]>([]);
-  const [selectedSpeakers, setSelectedSpeakers] = useState<string[]>([]);
-  const [selectedCoHosts, setSelectedCoHosts] = useState<string[]>([]);
-  const [selectedEntrySurvey, setSelectedEntrySurvey] = useState<string>("");
-  const [selectedExitSurvey, setSelectedExitSurvey] = useState<string>("");
-  const [enrollmentRuleType, setEnrollmentRuleType] = useState<'before_start' | 'date_range' | 'anytime'>('anytime');
-  const [enrollmentStartDate, setEnrollmentStartDate] = useState<string>("");
-  const [enrollmentEndDate, setEnrollmentEndDate] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
+  const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
+  const [coverImagePreview, setCoverImagePreview] = useState<string | null>(null);
+  const [snackbarMessage, setSnackbarMessage] = useState<string>("");
+  const [showSnackbar, setShowSnackbar] = useState(false);
+  const [showNewSectionModal, setShowNewSectionModal] = useState(false);
+  const [savingAuto, setSavingAuto] = useState(false);
+  
+  // Estados para el formulario
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [university, setUniversity] = useState<string>("Cualquier universidad");
+  const [specialization, setSpecialization] = useState<string>("Negocios");
+  const [courseLevel, setCourseLevel] = useState<string>("Principiante");
+  const [isPublished, setIsPublished] = useState<string>("Publicado");
+  const [isHidden, setIsHidden] = useState<boolean>(false);
+  const [price, setPrice] = useState<string>("0.00");
+  const [saleAmount, setSaleAmount] = useState<string>("0.00");
+  const [salePercentage, setSalePercentage] = useState<number>(0);
+  const [description, setDescription] = useState<string>("");
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [currentCourseId, setCurrentCourseId] = useState<string | null>(courseId || null);
+  
+  const { uploadFile, uploading: uploadingImage } = useUploadFile();
 
   const {
     register,
@@ -61,735 +278,1463 @@ export default function EditCoursePage() {
     formState: { errors },
     setValue,
     watch,
-  } = useForm<UpdateCourseInput>({
-    resolver: zodResolver(updateCourseSchema),
+    trigger,
+  } = useForm<CreateCourseInput>({
+    resolver: zodResolver(createCourseSchema),
+    mode: "onChange",
+    defaultValues: {
+      title: "",
+      description: "",
+    }
   });
 
-  const coverImageUrl = watch("coverImageUrl");
+  const courseTitle = watch("title", "");
+  const watchedDescription = watch("description", "");
 
+  // Cargar curso existente
   useEffect(() => {
-    const loadData = async () => {
+    const loadCourse = async () => {
       try {
-        // Cargar speakers desde Supabase
-        const speakersData = await userRepository.findByRole('teacher');
-        setSpeakers(speakersData.map(u => ({
-          id: u.id,
-          name: u.name,
-          lastName: (u as any).lastName,
-          email: u.email,
-        })));
-
-        // Cargar encuestas
-        const { data: surveysData } = await supabaseClient
-          .from(TABLES.SURVEYS)
-          .select('id, title, type')
-          .or('is_deleted.is.null,is_deleted.eq.false');
-        setSurveys((surveysData || []).map((s: any) => ({
-          id: s.id,
-          title: s.title,
-          type: s.type,
-        })));
-
-        // Cargar curso
-        const id = params.id as string;
-        const data = await courseRepository.findById(id);
-        if (data) {
-          setCourse(data);
-          // Prellenar el formulario
-          setValue("title", data.title);
-          setValue("description", data.description);
-          setValue("difficulty", data.difficulty);
-          setValue("durationMinutes", data.durationMinutes);
-          setValue("coverImageUrl", data.coverImageUrl);
-          setValue("isActive", data.isActive);
-          setTags(data.tags || []);
-          setImagePreview(data.coverImageUrl || null);
-          
-          // Cargar ponentes y co-hosts
-          setSelectedSpeakers(data.speakerIds || []);
-          setSelectedCoHosts(data.coHostIds || []);
-          
-          // Cargar encuestas
-          setSelectedEntrySurvey(data.entrySurveyId || "");
-          setSelectedExitSurvey(data.exitSurveyId || "");
-          
-          // Cargar reglas de inscripción
-          if (data.enrollmentRules) {
-            setEnrollmentRuleType(data.enrollmentRules.type);
-          }
-          if (data.enrollmentStartDate) {
-            setEnrollmentStartDate(data.enrollmentStartDate.split('T')[0]);
-          }
-          if (data.enrollmentEndDate) {
-            setEnrollmentEndDate(data.enrollmentEndDate.split('T')[0]);
-          }
-          
-          // Cargar fecha y hora si existen
-          if (data.startDate) {
-            const date = new Date(data.startDate);
-            const dateStr = date.toISOString().split('T')[0];
-            setStartDate(dateStr);
-            
-            let hours = date.getHours();
-            const period = hours >= 12 ? "PM" : "AM";
-            hours = hours % 12 || 12;
-            const minutes = date.getMinutes();
-            setStartTime(`${hours}:${minutes.toString().padStart(2, '0')}`);
-            setStartPeriod(period);
-          }
+        setLoading(true);
+        if (!courseId) {
+          router.push("/dashboard/courses");
+          return;
         }
-      } catch (error) {
-        console.error("Error loading data:", error);
-      } finally {
+        
+        const course = await courseRepository.findById(courseId);
+        if (!course) {
+          router.push("/dashboard/courses");
+          return;
+        }
+        
+        // Cargar todos los datos del curso
+        setValue("title", course.title);
+        setValue("description", course.description || "");
+        setDescription(course.description || "");
+        setSelectedTags(course.tags || []);
+        setUniversity(course.university || "Cualquier universidad");
+        setSpecialization(course.specialization || "Negocios");
+        setCourseLevel(course.difficulty === "beginner" ? "Principiante" : course.difficulty === "intermediate" ? "Intermedio" : "Avanzado");
+        setIsPublished(course.isPublished ? "Publicado" : "Borrador");
+        setIsHidden(course.isHidden || false);
+        setPrice(course.price?.toFixed(2) || "0.00");
+        setSalePercentage(course.salePercentage || 0);
+        setCurrentCourseId(courseId);
+        
+        // Cargar imagen de portada si existe
+        if (course.coverImageUrl) {
+          setCoverImagePreview(course.coverImageUrl);
+          setValue("coverImageUrl", course.coverImageUrl);
+        }
+        
         setLoading(false);
+      } catch (err) {
+        console.error("Error loading course:", err);
+        setLoading(false);
+        router.push("/dashboard/courses");
       }
     };
+    
+    loadCourse();
+  }, [courseId, setValue, router]);
 
-    loadData();
-  }, [params.id, setValue]);
+  // Cargar lecciones del curso
+  useEffect(() => {
+    if (currentCourseId) {
+      const loadLessons = async () => {
+        try {
+          const courseLessons = await lessonRepository.findByCourseId(currentCourseId);
+          setLessons(courseLessons.map(l => ({
+            id: l.id,
+            title: l.title,
+            order: l.order
+          })));
+        } catch (err) {
+          console.error("Error loading lessons:", err);
+        }
+      };
+      loadLessons();
+    }
+  }, [currentCourseId]);
 
-  const toggleSpeaker = (speakerId: string) => {
-    setSelectedSpeakers(prev => 
-      prev.includes(speakerId)
-        ? prev.filter(id => id !== speakerId)
-        : [...prev, speakerId]
-    );
-  };
+  useEffect(() => {
+    // Calcular precio final cuando cambia el descuento
+    const priceNum = parseFloat(price) || 0;
+    const discount = (priceNum * salePercentage) / 100;
+    setSaleAmount(discount.toFixed(2));
+  }, [price, salePercentage]);
 
-  const toggleCoHost = (speakerId: string) => {
-    setSelectedCoHosts(prev => 
-      prev.includes(speakerId)
-        ? prev.filter(id => id !== speakerId)
-        : [...prev, speakerId]
-    );
+  useEffect(() => {
+    // Calcular caracteres restantes
+    const maxChars = 500;
+    const currentChars = watchedDescription?.length || 0;
+    setDescription(watchedDescription || "");
+  }, [watchedDescription]);
+
+  const showSnackbarMessage = (message: string) => {
+    setSnackbarMessage(message);
+    setShowSnackbar(true);
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setSelectedFile(file);
+      setCoverImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImagePreview(reader.result as string);
+        setCoverImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const uploadImage = async (): Promise<string | null> => {
-    if (!selectedFile) return null;
-
-    try {
-      setUploadingImage(true);
-      const timestamp = Date.now();
-      const filePath = `courses/${params.id}/${timestamp}_${selectedFile.name}`;
-      
-      const { error: uploadError } = await supabaseClient.storage
-        .from('covers')
-        .upload(filePath, selectedFile);
-      
-      if (uploadError) throw uploadError;
-      
-      const { data: urlData } = supabaseClient.storage
-        .from('covers')
-        .getPublicUrl(filePath);
-      
-      return urlData.publicUrl;
-    } catch (error) {
-      console.error("Error uploading image:", error);
-      throw error;
-    } finally {
-      setUploadingImage(false);
+  const addTag = (tag: string) => {
+    if (!selectedTags.includes(tag) && selectedTags.length < 10) {
+      setSelectedTags([...selectedTags, tag]);
     }
   };
 
-  const addTag = () => {
-    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
-      const newTags = [...tags, tagInput.trim()];
-      setTags(newTags);
-      setTagInput("");
-    }
+  const removeTag = (tag: string) => {
+    setSelectedTags(selectedTags.filter(t => t !== tag));
   };
 
-  const removeTag = (tagToRemove: string) => {
-    setTags(tags.filter(tag => tag !== tagToRemove));
+  const toggleLesson = (id: string) => {
+    // Toggle para expandir/colapsar lección
   };
 
-  const onSubmit = async (data: UpdateCourseInput) => {
+  // Guardado automático del curso
+  const autoSaveCourse = async (): Promise<string | null> => {
     try {
-      setSaving(true);
-
-      // Si hay una nueva imagen, subirla primero
-      let finalImageUrl = data.coverImageUrl;
-      if (selectedFile) {
-        const uploadedUrl = await uploadImage();
+      setSavingAuto(true);
+      setError(null);
+      
+      const formData = watch();
+      
+      // Validar campos requeridos
+      if (!formData.title || formData.title.trim().length < 3) {
+        setError("El título del curso es requerido y debe tener al menos 3 caracteres");
+        return null;
+      }
+      
+      if (!formData.description || formData.description.trim().length < 10) {
+        setError("La descripción del curso es requerida y debe tener al menos 10 caracteres");
+        return null;
+      }
+      
+      if (!user?.id) {
+        setError("Debes estar autenticado para crear un curso");
+        return null;
+      }
+      
+      // Subir imagen si existe
+      let coverImageUrl: string | undefined = undefined;
+      if (coverImageFile) {
+        const uploadedUrl = await uploadFile(coverImageFile, 'covers');
         if (uploadedUrl) {
-          finalImageUrl = uploadedUrl;
+          coverImageUrl = uploadedUrl;
         }
-      }
-
-      // Construir fecha y hora si están definidas
-      let startDateTime: string | undefined = undefined;
-      if (startDate && startTime) {
-        const [hours, minutes] = startTime.split(':').map(Number);
-        let hour24 = hours;
-        if (startPeriod === "PM" && hours !== 12) {
-          hour24 = hours + 12;
-        } else if (startPeriod === "AM" && hours === 12) {
-          hour24 = 0;
-        }
-        const dateTime = new Date(startDate);
-        dateTime.setHours(hour24, minutes, 0, 0);
-        startDateTime = dateTime.toISOString();
-      }
-
-      // Construir reglas de inscripción
-      let enrollmentRules = undefined;
-      if (enrollmentRuleType === 'before_start') {
-        enrollmentRules = {
-          type: enrollmentRuleType,
-        };
-      } else if (enrollmentRuleType === 'date_range') {
-        enrollmentRules = {
-          type: enrollmentRuleType,
-        };
-      } else {
-        enrollmentRules = {
-          type: 'anytime' as const,
-        };
       }
       
-      // Actualizar el curso
-      const updateData: any = {
-        ...data,
-        coverImageUrl: finalImageUrl,
-        startDate: startDateTime,
+      // Mapear nivel de curso
+      const levelMap: Record<string, "beginner" | "intermediate" | "advanced"> = {
+        "Principiante": "beginner",
+        "Intermedio": "intermediate",
+        "Avanzado": "advanced"
       };
       
-      // Solo agregar campos que no sean undefined
-      if (tags.length > 0) updateData.tags = tags;
-      if (selectedSpeakers.length > 0) updateData.speakerIds = selectedSpeakers;
-      if (selectedCoHosts.length > 0) updateData.coHostIds = selectedCoHosts;
-      if (selectedEntrySurvey) updateData.entrySurveyId = selectedEntrySurvey;
-      if (selectedExitSurvey) updateData.exitSurveyId = selectedExitSurvey;
-      if (enrollmentRules) updateData.enrollmentRules = enrollmentRules;
-      if (enrollmentRuleType === 'before_start' && enrollmentStartDate) updateData.enrollmentStartDate = enrollmentStartDate;
-      if (enrollmentRuleType === 'before_start' && enrollmentEndDate) updateData.enrollmentEndDate = enrollmentEndDate;
-      if (enrollmentRuleType === 'date_range' && enrollmentStartDate) updateData.enrollmentStartDate = enrollmentStartDate;
-      if (enrollmentRuleType === 'date_range' && enrollmentEndDate) updateData.enrollmentEndDate = enrollmentEndDate;
+      const courseData: CreateCourseInput = {
+        title: formData.title.trim(),
+        description: formData.description.trim(),
+        coverImageUrl,
+        tags: selectedTags,
+        difficulty: levelMap[courseLevel] || "beginner",
+        price: parseFloat(price) || 0,
+        salePercentage: salePercentage,
+        isPublished: isPublished === "Publicado",
+        isHidden,
+        university: university !== "Cualquier universidad" ? university : undefined,
+        specialization,
+        speakerIds: [user.id],
+      };
 
-      await courseRepository.update(params.id as string, updateData);
+      let savedCourseId: string;
       
-      router.push(`/dashboard/courses/${params.id}`);
-    } catch (error) {
-      console.error("Error updating course:", error);
-      alert("Error al actualizar el curso");
+      if (currentCourseId) {
+        // Actualizar curso existente
+        await courseRepository.update(currentCourseId, courseData);
+        savedCourseId = currentCourseId;
+      } else {
+        // Crear nuevo curso
+        const course = await courseRepository.create(courseData);
+        savedCourseId = course.id;
+        setCurrentCourseId(savedCourseId);
+        // Actualizar URL sin recargar
+        window.history.replaceState({}, '', `/dashboard/courses/${savedCourseId}`);
+      }
+      
+      showSnackbarMessage("Curso guardado automáticamente");
+      return savedCourseId;
+    } catch (err: any) {
+      console.error("Error auto-saving course:", err);
+      
+      // Extraer mensaje de error más detallado
+      let errorMessage = "Error al guardar el curso automáticamente";
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (err?.details) {
+        errorMessage = err.details;
+      } else if (err?.hint) {
+        errorMessage = err.hint;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+      
+      setError(errorMessage);
+      return null;
     } finally {
-      setSaving(false);
+      setSavingAuto(false);
     }
   };
 
-  if (loading) {
-    return <Loader />;
-  }
+  const handleCreateSection = async (sectionTitle: string) => {
+    // Validar que el título tenga contenido
+    if (!sectionTitle || sectionTitle.trim().length === 0) {
+      setError("El nombre de la sección es requerido");
+      return;
+    }
 
-  if (!course) {
+    // Primero guardar el curso automáticamente
+    const savedCourseId = await autoSaveCourse();
+    
+    if (!savedCourseId) {
+      // El error ya fue establecido en autoSaveCourse
+      return;
+    }
+
+    if (!user?.id) {
+      setError("Debes estar autenticado para crear una sección");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Crear la lección
+      const lesson = await lessonRepository.create({
+        courseId: savedCourseId,
+        title: sectionTitle.trim(),
+        order: lessons.length,
+        type: "video",
+        createdBy: user.id,
+      });
+
+      // Recargar lecciones
+      const courseLessons = await lessonRepository.findByCourseId(savedCourseId);
+      setLessons(courseLessons.map(l => ({
+        id: l.id,
+        title: l.title,
+        order: l.order
+      })));
+
+      // Redirigir a la página de edición de la lección
+      router.push(`/dashboard/lessons/${lesson.id}/edit`);
+    } catch (err: any) {
+      console.error("Error creating lesson:", err);
+      console.error("Full error object:", JSON.stringify(err, null, 2));
+      
+      let errorMessage = "Error al crear la sección";
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (err?.details) {
+        errorMessage = err.details;
+      } else if (err?.hint) {
+        errorMessage = err.hint;
+      } else if (err?.originalError?.message) {
+        errorMessage = err.originalError.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onSubmit = async (data: CreateCourseInput) => {
+    try {
+      setLoading(true);
+      setError(null);
+      console.log("[NewCourse] Iniciando guardado de curso...", data);
+      
+      // Validar datos mínimos
+      if (!data.title || data.title.trim().length < 3) {
+        setError("El título del curso es requerido y debe tener al menos 3 caracteres");
+        setLoading(false);
+        return;
+      }
+      
+      if (!data.description || data.description.trim().length < 10) {
+        setError("La descripción del curso es requerida y debe tener al menos 10 caracteres");
+        setLoading(false);
+        return;
+      }
+      
+      if (!user?.id) {
+        setError("Debes estar autenticado para crear un curso");
+        setLoading(false);
+        return;
+      }
+      
+      // Subir imagen si existe un archivo nuevo
+      let coverImageUrl: string | undefined = undefined;
+      if (coverImageFile) {
+        console.log("[EditCourse] Subiendo imagen...");
+        const uploadedUrl = await uploadFile(coverImageFile, 'covers');
+        if (!uploadedUrl) {
+          throw new Error("Error al subir la imagen de portada");
+        }
+        coverImageUrl = uploadedUrl;
+        console.log("[EditCourse] Imagen subida:", coverImageUrl);
+        // Actualizar el preview inmediatamente con la nueva URL
+        setCoverImagePreview(uploadedUrl);
+        setValue("coverImageUrl", uploadedUrl);
+        // Limpiar el archivo temporal ya que ya se subió
+        setCoverImageFile(null);
+      } else {
+        // Si no hay archivo nuevo, usar la imagen existente del curso (si existe)
+        // coverImagePreview ya contiene la URL existente si no se cambió
+        coverImageUrl = coverImagePreview || undefined;
+      }
+      
+      // Mapear nivel de curso
+      const levelMap: Record<string, "beginner" | "intermediate" | "advanced"> = {
+        "Principiante": "beginner",
+        "Intermedio": "intermediate",
+        "Avanzado": "advanced"
+      };
+      
+      // Construir datos del curso
+      const courseData: CreateCourseInput = {
+        title: data.title.trim(),
+        description: data.description.trim(),
+        coverImageUrl: coverImageUrl || undefined,
+        tags: selectedTags,
+        difficulty: levelMap[courseLevel] || "beginner",
+        price: parseFloat(price) || 0,
+        salePercentage: salePercentage,
+        isPublished: isPublished === "Publicado",
+        isHidden,
+        university: university !== "Cualquier universidad" ? university : undefined,
+        specialization,
+        speakerIds: [user.id],
+      };
+      
+      console.log("[EditCourse] Datos del curso a guardar:", courseData);
+      
+      // Siempre actualizar en esta página de edición
+      console.log("[EditCourse] Actualizando curso:", courseId);
+      await courseRepository.update(courseId, courseData);
+      
+      // Mostrar mensaje de éxito
+      setSnackbarMessage("¡Curso actualizado exitosamente!");
+      setShowSnackbar(true);
+      
+      // No redirigir, solo actualizar el estado local
+      console.log("[EditCourse] Curso actualizado exitosamente");
+    } catch (err: any) {
+      console.error("[EditCourse] Error al actualizar curso:", err);
+      
+      let errorMessage = "Error al actualizar el curso";
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (err?.details) {
+        errorMessage = err.details;
+      } else if (err?.hint) {
+        errorMessage = err.hint;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const finalPrice = (parseFloat(price) || 0) - (parseFloat(saleAmount) || 0);
+  const remainingChars = 500 - (description.length || 0);
+  const displayTitle = courseTitle || "Nuevo curso";
+
+  // Mostrar loader mientras carga
+  if (loading) {
     return (
-      <div className="text-center py-12">
-        <h2 className="text-2xl font-bold">Curso no encontrado</h2>
+      <div style={{
+        minHeight: "100vh",
+        backgroundColor: "#F3F4F8",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}>
+        <div style={{
+          width: 48,
+          height: 48,
+          border: "4px solid #E5E7EB",
+          borderTop: "4px solid #1A2170",
+          borderRadius: "50%",
+          animation: "spin 1s linear infinite"
+        }}></div>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
       </div>
     );
   }
 
   return (
-    <div>
-      <button onClick={() => router.back()} className="btn btn-ghost mb-6">
-        ← Volver
-      </button>
-
-      <div className="card bg-base-100 shadow-xl">
-        <div className="card-body">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold">Editar Curso</h1>
-            
-            {/* Switch de Curso Activo */}
-            <div className="form-control">
-              <label className="label cursor-pointer gap-3">
-                <span className="label-text font-semibold">Curso activo</span>
-                <input
-                  type="checkbox"
-                  {...register("isActive")}
-                  className="toggle toggle-primary [&:checked]:bg-primary [&:checked]:border-primary [&:checked]:after:bg-white"
-                />
-              </label>
-              <span className="text-xs text-base-content/70 text-right">
-                {watch("isActive") ? "Visible para estudiantes" : "Oculto para estudiantes"}
-              </span>
-            </div>
+    <div style={{ 
+      backgroundColor: "#F3F4F8", 
+      minHeight: "100vh",
+      fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif"
+    }}>
+      {/* Header Row */}
+      <div style={{
+        backgroundColor: "#FFFFFF",
+        padding: "12px 32px",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        borderBottom: "1px solid rgba(15, 23, 42, 0.10)"
+      }}>
+        <div>
+          <h1 style={{ 
+            fontSize: "28px", 
+            fontWeight: 700, 
+            color: "#1A2170",
+            margin: "8px 0 16px 0",
+            lineHeight: 1.25
+          }}>
+            {displayTitle}
+          </h1>
+          <div style={{
+            fontSize: "12px",
+            color: "#9CA3AF",
+            display: "flex",
+            gap: "4px",
+            alignItems: "center"
+          }}>
+            <span>Mi aula</span>
+            <span>/</span>
+            <span>Mis cursos</span>
+            <span>/</span>
+            <span style={{ color: "#4B5563" }}>{displayTitle}</span>
           </div>
+        </div>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            style={{
+              backgroundColor: "#F3F4F6",
+              border: "none",
+              color: "#1A2170",
+              padding: "10px 22px",
+              borderRadius: "999px",
+              fontSize: "14px",
+              fontWeight: 600,
+              cursor: "pointer",
+              height: "40px"
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              handleSubmit(onSubmit)();
+            }}
+            disabled={loading || uploadingImage || savingAuto}
+            style={{
+              backgroundColor: "#1A2170",
+              border: "none",
+              color: "#FFFFFF",
+              padding: "10px 22px",
+              borderRadius: "999px",
+              fontSize: "14px",
+              fontWeight: 600,
+              cursor: loading ? "not-allowed" : "pointer",
+              height: "40px",
+              opacity: loading ? 0.7 : 1
+            }}
+          >
+            {loading ? "Actualizando..." : "Actualizar"}
+          </button>
+        </div>
+      </div>
 
-          <form onSubmit={handleSubmit(onSubmit)}>
-            {/* Título */}
-            <div className="form-control mb-4">
-              <label className="label">
-                <span className="label-text font-semibold">Título *</span>
+      {/* Content Area */}
+      <div style={{
+        padding: "24px 32px",
+        maxWidth: "1440px",
+        margin: "0 auto"
+      }}>
+      {error && (
+        <div style={{
+          backgroundColor: "#FEE2E2",
+          border: "1px solid #EF4444",
+          borderRadius: "10px",
+          padding: "12px 16px",
+          marginBottom: "24px",
+            color: "#991B1B",
+            fontSize: "14px"
+        }}>
+          {error}
+        </div>
+      )}
+
+      <div style={{
+        display: "grid",
+          gridTemplateColumns: "8fr 4fr",
+          gap: "24px"
+        }}>
+          {/* Editor Column */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <form id="course-form" onSubmit={handleSubmit(onSubmit, (errors) => {
+              console.error("Form validation errors:", errors);
+              const firstError = Object.values(errors)[0];
+              if (firstError?.message) {
+                setError(firstError.message);
+              } else {
+                setError("Por favor, completa todos los campos requeridos correctamente");
+              }
+            })}>
+              {/* Basic Info Card */}
+            <div style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: "16px",
+                padding: "20px 18px",
+                boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
+            }}>
+              <h2 style={{
+                  fontSize: "18px",
+                fontWeight: 600,
+                color: "#1A2170",
+                  marginBottom: "16px",
+                  lineHeight: 1.35
+              }}>
+                  Información básica
+              </h2>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+                  {/* Name Field */}
+                  <div>
+                <label style={{
+                  display: "block",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  color: "#4B5563",
+                      marginBottom: "4px",
+                      lineHeight: 1.4
+                }}>
+                      NOMBRE
               </label>
               <input
                 type="text"
                 {...register("title")}
-                className="input input-bordered"
-                placeholder="Título del curso"
+                      placeholder="Nombre del curso"
+                  style={{
+                    width: "100%",
+                        height: "40px",
+                        padding: "0 12px",
+                    fontSize: "14px",
+                        border: "1px solid rgba(15, 23, 42, 0.10)",
+                    borderRadius: "10px",
+                    outline: "none",
+                        fontFamily: "inherit"
+                  }}
               />
               {errors.title && (
-                <label className="label">
-                  <span className="label-text-alt text-error">{errors.title.message}</span>
-                </label>
+                  <p style={{ color: "#EF4444", fontSize: "12px", marginTop: "6px" }}>
+                    {errors.title.message}
+                  </p>
               )}
             </div>
 
-            {/* Descripción */}
-            <div className="form-control mb-4">
-              <label className="label">
-                <span className="label-text font-semibold">Descripción *</span>
+                  {/* Description Field */}
+                  <div>
+                <label style={{
+                  display: "block",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  color: "#4B5563",
+                      marginBottom: "4px",
+                      lineHeight: 1.4
+                }}>
+                      DESCRIPCIÓN
               </label>
+                <div style={{
+                      border: "1px solid rgba(15, 23, 42, 0.10)",
+                  borderRadius: "10px",
+                  overflow: "hidden"
+                }}>
+                      {/* Toolbar */}
+                  <div style={{
+                        backgroundColor: "#F9FAFB",
+                        height: "40px",
+                        borderBottom: "1px solid rgba(15, 23, 42, 0.10)",
+                    display: "flex",
+                        alignItems: "center",
+                        padding: "0 12px",
+                    gap: "6px"
+                  }}>
+                    <select style={{
+                      padding: "4px 8px",
+                      fontSize: "13px",
+                          border: "1px solid rgba(15, 23, 42, 0.10)",
+                      borderRadius: "6px",
+                          backgroundColor: "#FFFFFF",
+                          cursor: "pointer"
+                    }}>
+                          <option>Texto normal</option>
+                    </select>
+                  </div>
               <textarea
                 {...register("description")}
-                className="textarea textarea-bordered h-32"
-                placeholder="Descripción del curso"
-              />
+                        placeholder="Describe tu curso..."
+                    style={{
+                      width: "100%",
+                          minHeight: "120px",
+                          padding: "12px",
+                      fontSize: "14px",
+                      border: "none",
+                      outline: "none",
+                          fontFamily: "inherit",
+                          lineHeight: 1.55,
+                      resize: "vertical"
+                    }}
+                  />
+                </div>
+                    <div style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      marginTop: "4px"
+                    }}>
+                <p style={{ 
+                        fontSize: "11px", 
+                  color: "#9CA3AF", 
+                        margin: 0
+                }}>
+                        {remainingChars} caracteres restantes
+                </p>
+                    </div>
               {errors.description && (
-                <label className="label">
-                  <span className="label-text-alt text-error">{errors.description.message}</span>
-                </label>
+                  <p style={{ color: "#EF4444", fontSize: "12px", marginTop: "6px" }}>
+                    {errors.description.message}
+                  </p>
               )}
             </div>
 
-            {/* Ponentes */}
-            <div className="form-control mb-4">
-              <label className="label">
-                <span className="label-text font-semibold">Ponentes *</span>
-              </label>
-              <div className="border border-base-300 rounded-lg p-4 max-h-60 overflow-y-auto">
-                {speakers.length === 0 ? (
-                  <p className="text-sm text-base-content/60">Cargando ponentes...</p>
-                ) : (
-                  <div className="space-y-2">
-                    {speakers.map(speaker => (
-                      <div key={speaker.id} className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
-                        selectedSpeakers.includes(speaker.id)
-                          ? 'bg-error/10 border-2 border-error'
-                          : 'bg-base-200 border-2 border-transparent hover:bg-base-300'
-                      }`}>
-                        <div className="flex-1">
-                          <div className="font-medium">
-                            {speaker.name} {speaker.lastName || ''}
-                          </div>
-                          <div className="text-xs text-base-content/60">{speaker.email}</div>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={selectedSpeakers.includes(speaker.id)}
-                          onChange={() => toggleSpeaker(speaker.id)}
-                          className="toggle toggle-error toggle-lg"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <label className="label">
-                <span className="label-text-alt">
-                  Selecciona los ponentes principales del curso
-                </span>
-              </label>
-            </div>
-
-            {/* Co-Hosts */}
-            <div className="form-control mb-4">
-              <label className="label">
-                <span className="label-text font-semibold">Co-Hosts (opcional)</span>
-              </label>
-              <div className="border border-base-300 rounded-lg p-4 max-h-60 overflow-y-auto">
-                {speakers.length === 0 ? (
-                  <p className="text-sm text-base-content/60">Cargando ponentes...</p>
-                ) : (
-                  <div className="space-y-2">
-                    {speakers.map(speaker => (
-                      <div key={speaker.id} className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
-                        selectedCoHosts.includes(speaker.id)
-                          ? 'bg-secondary/10 border-2 border-secondary'
-                          : 'bg-base-200 border-2 border-transparent hover:bg-base-300'
-                      }`}>
-                        <div className="flex-1">
-                          <div className="font-medium">
-                            {speaker.name} {speaker.lastName || ''}
-                          </div>
-                          <div className="text-xs text-base-content/60">{speaker.email}</div>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={selectedCoHosts.includes(speaker.id)}
-                          onChange={() => toggleCoHost(speaker.id)}
-                          className="toggle toggle-secondary toggle-lg"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <label className="label">
-                <span className="label-text-alt">
-                  Co-hosts participan en presentación/despedida pero no aparecen como ponentes principales
-                </span>
-              </label>
-            </div>
-
-            {/* Encuestas Generales del Curso */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-lg font-semibold">Encuestas generales del curso</h3>
-                <span className="badge badge-info text-white gap-2">Opcional</span>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text font-semibold">Encuesta de entrada general</span>
-                  </label>
-                  <select
-                    value={selectedEntrySurvey}
-                    onChange={(e) => setSelectedEntrySurvey(e.target.value)}
-                    className="select select-bordered"
-                  >
-                    <option value="">Sin encuesta general</option>
-                    {surveys.map(survey => (
-                      <option key={survey.id} value={survey.id}>
-                        {survey.title}
-                      </option>
-                    ))}
-                  </select>
-                  <label className="label">
-                    <span className="label-text-alt">Se muestra al iniciar el curso, antes de cualquier lección</span>
-                  </label>
-                </div>
-
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text font-semibold">Encuesta de salida general</span>
-                  </label>
-                  <select
-                    value={selectedExitSurvey}
-                    onChange={(e) => setSelectedExitSurvey(e.target.value)}
-                    className="select select-bordered"
-                  >
-                    <option value="">Sin encuesta general</option>
-                    {surveys.map(survey => (
-                      <option key={survey.id} value={survey.id}>
-                        {survey.title}
-                      </option>
-                    ))}
-                  </select>
-                  <label className="label">
-                    <span className="label-text-alt">Se muestra al completar todas las lecciones del curso</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="alert alert-info text-white">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="stroke-current shrink-0 w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                <div className="text-sm">
-                  <p className="font-semibold mb-1">Encuestas multinivel</p>
-                  <p>Los estudiantes verán las encuestas generales del curso Y las encuestas específicas de cada lección (si las configuraste al editar las lecciones).</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Imagen de portada */}
-            <div className="form-control mb-4">
-              <label className="label">
-                <span className="label-text font-semibold">Imagen de Portada</span>
+                  {/* Cover Image Field */}
+              <div>
+                <label style={{
+                  display: "block",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  color: "#4B5563",
+                      marginBottom: "4px",
+                      lineHeight: 1.4
+                }}>
+                      IMAGEN DE PORTADA
               </label>
               
-              {imagePreview && (
-                <div className="mb-4">
-                  <img
-                    src={imagePreview}
-                    alt="Preview"
-                    className="w-full h-64 object-cover rounded-lg"
+              {coverImagePreview ? (
+                  <div style={{ 
+                    position: "relative",
+                    borderRadius: "14px",
+                        overflow: "hidden",
+                        border: "1px solid rgba(15, 23, 42, 0.10)",
+                        marginTop: "10px"
+                  }}>
+                  <img 
+                    src={coverImagePreview} 
+                    alt="Vista previa" 
+                      style={{
+                        width: "100%",
+                            aspectRatio: "16/9",
+                            objectFit: "cover",
+                            display: "block"
+                      }}
                   />
-                </div>
-              )}
-
-              <div className="tabs tabs-boxed mb-2">
-                <a className="tab tab-active text-white">Subir Archivo</a>
-                <a className="tab" onClick={() => {
-                  const url = prompt("Ingresa la URL de la imagen:");
-                  if (url) {
-                    setValue("coverImageUrl", url);
-                    setImagePreview(url);
-                  }
-                }}>URL Directa</a>
-              </div>
-
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                className="file-input file-input-bordered w-full"
-              />
-              <label className="label">
-                <span className="label-text-alt">
-                  Formatos: JPG, PNG, WebP (máx. 5MB) - O usa una URL de Unsplash
-                </span>
-              </label>
-            </div>
-
-            {/* Dificultad y Duración */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text font-semibold">Nivel</span>
-                </label>
-                <select {...register("difficulty")} className="select select-bordered">
-                  <option value="">Seleccionar...</option>
-                  <option value="beginner">Principiante</option>
-                  <option value="intermediate">Intermedio</option>
-                  <option value="advanced">Avanzado</option>
-                </select>
-              </div>
-
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text font-semibold">Duración (minutos)</span>
-                </label>
-                <input
-                  type="number"
-                  {...register("durationMinutes", { valueAsNumber: true })}
-                  className="input input-bordered"
-                  placeholder="120"
-                />
-              </div>
-            </div>
-
-            {/* Fecha y Hora del Evento */}
-            <div className="form-control mb-4">
-              <label className="label">
-                <span className="label-text font-semibold">Fecha y Hora del Evento</span>
-              </label>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Fecha */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text text-sm">Fecha</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="input input-bordered"
-                  />
-                </div>
-
-                {/* Hora */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text text-sm">Hora</span>
-                  </label>
-                  <select
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="select select-bordered"
-                  >
-                    {/* Generar horas de 12:00 a 11:30 en intervalos de 30 min */}
-                    {[12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(hour => (
-                      <React.Fragment key={hour}>
-                        <option value={`${hour}:00`}>
-                          {hour.toString().padStart(2, '0')}:00
-                        </option>
-                        <option value={`${hour}:30`}>
-                          {hour.toString().padStart(2, '0')}:30
-                        </option>
-                      </React.Fragment>
-                    ))}
-                  </select>
-                </div>
-
-                {/* AM/PM */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text text-sm">Periodo</span>
-                  </label>
-                  <select
-                    value={startPeriod}
-                    onChange={(e) => setStartPeriod(e.target.value as "AM" | "PM")}
-                    className="select select-bordered"
-                  >
-                    <option value="AM">AM</option>
-                    <option value="PM">PM</option>
-                  </select>
-                </div>
-              </div>
-              
-              <label className="label">
-                <span className="label-text-alt">
-                  Configura la fecha y hora de inicio del evento
-                </span>
-              </label>
-            </div>
-
-            {/* Reglas de Inscripción */}
-            <div className="form-control mb-6">
-              <label className="label">
-                <span className="label-text font-semibold">Reglas de Inscripción</span>
-              </label>
-              
-              <select
-                value={enrollmentRuleType}
-                onChange={(e) => setEnrollmentRuleType(e.target.value as 'before_start' | 'date_range' | 'anytime')}
-                className="select select-bordered mb-4"
-              >
-                <option value="anytime">En cualquier momento (mientras esté habilitado)</option>
-                <option value="before_start">Solo antes de empezar el curso</option>
-                <option value="date_range">En un rango de fechas específico</option>
-              </select>
-
-              {/* Opciones para "antes de empezar" */}
-              {enrollmentRuleType === 'before_start' && startDate && (
-                <EnrollmentCalendar
-                  courseStartDate={startDate}
-                  onRangeChange={(start, end) => {
-                    setEnrollmentStartDate(start);
-                    setEnrollmentEndDate(end);
-                  }}
-                  initialStartDate={enrollmentStartDate}
-                  initialEndDate={enrollmentEndDate}
-                />
-              )}
-
-              {enrollmentRuleType === 'before_start' && !startDate && (
-                <div className="alert alert-warning">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="stroke-current shrink-0 w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                  <span className="text-sm">Por favor, configura primero la fecha de inicio del curso para poder definir el periodo de inscripciones.</span>
-                </div>
-              )}
-
-              {/* Opciones para "rango de fechas" */}
-              {enrollmentRuleType === 'date_range' && (
-                <div className="bg-base-200 p-4 rounded-lg">
-                  <p className="text-sm mb-3">Define el periodo de inscripciones:</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="form-control">
-                      <label className="label">
-                        <span className="label-text text-sm">Fecha de inicio</span>
-                      </label>
-                      <input
-                        type="date"
-                        value={enrollmentStartDate}
-                        onChange={(e) => setEnrollmentStartDate(e.target.value)}
-                        className="input input-bordered"
-                      />
-                    </div>
-                    <div className="form-control">
-                      <label className="label">
-                        <span className="label-text text-sm">Fecha de fin</span>
-                      </label>
-                      <input
-                        type="date"
-                        value={enrollmentEndDate}
-                        onChange={(e) => setEnrollmentEndDate(e.target.value)}
-                        className="input input-bordered"
-                      />
-                    </div>
-                  </div>
-                  <label className="label">
-                    <span className="label-text-alt">
-                      Las inscripciones estarán abiertas solo en este rango de fechas
-                    </span>
-                  </label>
-                </div>
-              )}
-
-              {/* Info para "en cualquier momento" */}
-              {enrollmentRuleType === 'anytime' && (
-                <div className="alert alert-info text-white">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="stroke-current shrink-0 w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                  <span className="text-sm">Los estudiantes podrán inscribirse en cualquier momento mientras el curso esté activo.</span>
-                </div>
-              )}
-            </div>
-
-            {/* Tags */}
-            <div className="form-control mb-4">
-              <label className="label">
-                <span className="label-text font-semibold">Etiquetas</span>
-              </label>
-              
-              <div className="flex gap-3 mb-2 flex-wrap">
-                {tags.map((tag) => (
-                  <div key={tag} className="badge badge-primary gap-2 text-white">
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => removeTag(tag)}
-                      className="btn btn-ghost btn-xs btn-circle"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCoverImageFile(null);
+                      setCoverImagePreview(null);
+                    }}
+                      style={{
+                        position: "absolute",
+                        top: "12px",
+                        right: "12px",
+                            backgroundColor: "rgba(255,255,255,0.85)",
+                            color: "#1A2170",
+                        border: "none",
+                            borderRadius: "999px",
+                            padding: "4px 8px",
+                            fontSize: "12px",
+                            fontWeight: 500,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                            gap: "4px"
+                      }}
                     >
-                      <IconX size={14} />
-                    </button>
+                          Cambiar
+                  </button>
+                </div>
+              ) : (
+                  <label style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: "100%",
+                        aspectRatio: "16/9",
+                        border: "1px dashed rgba(15, 23, 42, 0.18)",
+                    borderRadius: "14px",
+                    cursor: "pointer",
+                        backgroundColor: "#F8FAFF",
+                        marginTop: "10px"
+                  }}>
+                    <IconUpload size={48} color="#9CA3AF" style={{ marginBottom: "12px" }} />
+                    <p style={{ fontSize: "14px", color: "#4B5563", marginBottom: "6px" }}>
+                      <span style={{ fontWeight: 600 }}>Click para subir</span> o arrastra y suelta
+                    </p>
+                    <p style={{ fontSize: "12px", color: "#9CA3AF" }}>
+                      PNG, JPG o WEBP (máx. 5MB)
+                    </p>
+                  <input 
+                    type="file" 
+                      style={{ display: "none" }}
+                    accept="image/*"
+                    onChange={handleImageChange}
+                  />
+                </label>
+              )}
                   </div>
-                ))}
               </div>
+            </div>
 
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), addTag())}
-                  className="input input-bordered flex-1"
-                  placeholder="Agregar etiqueta"
-                />
+              {/* Content Card */}
+            <div style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: "16px",
+                padding: "20px 18px",
+                boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
+            }}>
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                  marginBottom: "16px"
+              }}>
+                <h2 style={{
+                    fontSize: "18px",
+                  fontWeight: 600,
+                  color: "#1A2170",
+                    margin: 0,
+                    lineHeight: 1.35
+                }}>
+                    Contenido
+                </h2>
                 <button
                   type="button"
-                  onClick={addTag}
-                  className="btn btn-outline"
+                    onClick={() => setShowNewSectionModal(true)}
+                  style={{
+                    backgroundColor: "transparent",
+                    border: "none",
+                      color: "#1A2170",
+                      fontSize: "14px",
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                      padding: "6px 12px",
+                    borderRadius: "999px"
+                  }}
                 >
-                  Agregar
+                  <IconPlus size={16} />
+                    Agregar nueva sección
                 </button>
               </div>
-            </div>
 
-            {/* Recursos del curso */}
-            {course && user && (
-              <div className="mb-6">
-                <div className="divider"></div>
-                <CourseResourceSelector
-                  courseId={course.id}
-                  speakerId={user.id}
-                />
-              </div>
-            )}
-
-            {/* Botones */}
-            <div className="flex gap-4">
-              <button
-                type="button"
-                onClick={() => router.back()}
-                className="btn btn-ghost flex-1"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                className="btn btn-primary text-white flex-1"
-                disabled={saving || uploadingImage}
-              >
-                {saving ? "Guardando..." : uploadingImage ? "Subiendo imagen..." : "Guardar Cambios"}
-              </button>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {lessons.length === 0 ? (
+                    <p style={{
+                      fontSize: "14px",
+                      color: "#9CA3AF",
+                      textAlign: "center",
+                      padding: "40px 20px"
+                    }}>
+                      No hay secciones aún. Haz clic en "Agregar nueva sección" para comenzar.
+                    </p>
+                  ) : (
+                    lessons.map((lesson) => (
+                      <div 
+                        key={lesson.id}
+                    style={{
+                          backgroundColor: "#F8FAFF",
+                          border: "1px solid rgba(15, 23, 42, 0.10)",
+                          borderRadius: "14px",
+                          padding: "14px",
+                          cursor: "pointer"
+                        }}
+                        onClick={() => router.push(`/dashboard/lessons/${lesson.id}/edit`)}
+                      >
+                        <div style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                          alignItems: "center"
+                        }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                            <IconGripVertical size={18} color="#9CA3AF" style={{ opacity: 0.6 }} />
+                        <span style={{
+                          fontSize: "14px",
+                              fontWeight: 400,
+                              color: "#1A2170",
+                              lineHeight: 1.55
+                        }}>
+                              {lesson.title}
+                        </span>
+                    </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <button
+                          type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/dashboard/lessons/${lesson.id}/edit`);
+                              }}
+                          style={{
+                            backgroundColor: "transparent",
+                            border: "none",
+                            color: "#4B5563",
+                                fontSize: "14px",
+                            cursor: "pointer",
+                                padding: "6px 12px",
+                                borderRadius: "999px",
+                                height: "32px"
+                          }}
+                        >
+                              Editar
+                        </button>
+                        <button
+                          type="button"
+                          style={{
+                            backgroundColor: "transparent",
+                            border: "none",
+                            color: "#9CA3AF",
+                            cursor: "pointer",
+                                padding: "4px 8px"
+                          }}
+                        >
+                          •••
+                        </button>
+                      </div>
+                    </div>
+                      </div>
+                    ))
+                    )}
+                    </div>
             </div>
           </form>
         </div>
+
+          {/* Side Panel */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            {/* Preview Card */}
+            <div style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: "16px",
+              padding: "16px 18px",
+              boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
+            }}>
+              <h3 style={{
+                fontSize: "15px",
+                fontWeight: 600,
+                color: "#1A2170",
+                marginBottom: "8px",
+                lineHeight: 1.35
+              }}>
+                Previsualizar curso
+              </h3>
+              <p style={{
+                fontSize: "12px",
+                color: "#9CA3AF",
+                marginBottom: "12px",
+                lineHeight: 1.45
+              }}>
+                Ver cómo otros verán tu curso
+              </p>
+          <button
+            type="button"
+            style={{
+                  width: "100%",
+                  height: "36px",
+                  backgroundColor: "transparent",
+                  border: "1px solid rgba(15, 23, 42, 0.18)",
+                  borderRadius: "999px",
+                  color: "#1A2170",
+                  fontSize: "14px",
+              fontWeight: 500,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+                  gap: "8px"
+            }}
+          >
+            <IconEye size={18} />
+                Previsualizar
+          </button>
+            </div>
+
+            {/* Status Card */}
+          <div style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: "16px",
+              padding: "16px 18px",
+              boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
+          }}>
+            <h3 style={{
+                fontSize: "15px",
+                fontWeight: 600,
+                color: "#1A2170",
+              marginBottom: "16px",
+                lineHeight: 1.35
+            }}>
+                Estado del curso
+            </h3>
+            
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div>
+              <label style={{
+                    fontSize: "12px",
+                color: "#9CA3AF",
+                marginBottom: "6px",
+                display: "block"
+              }}>
+                    Estado del producto
+                      </label>
+                      <select
+                value={isPublished}
+                onChange={(e) => setIsPublished(e.target.value)}
+                style={{
+                  width: "100%",
+                      height: "40px",
+                      padding: "0 12px",
+                      fontSize: "14px",
+                      border: "1px solid rgba(15, 23, 42, 0.10)",
+                  borderRadius: "10px",
+                  backgroundColor: "#FFFFFF",
+                      cursor: "pointer",
+                      fontFamily: "inherit"
+                    }}
+                  >
+                    {PUBLISH_STATUSES.map(status => (
+                      <option key={status}>{status}</option>
+                    ))}
+                      </select>
+                    </div>
+
+            <label style={{
+              display: "flex",
+              alignItems: "center",
+                  gap: "12px",
+              cursor: "pointer",
+                  fontSize: "14px",
+              color: "#4B5563"
+            }}>
+              <input
+                type="checkbox"
+                checked={isHidden}
+                onChange={(e) => setIsHidden(e.target.checked)}
+                    style={{ 
+                      cursor: "pointer",
+                      width: "20px",
+                      height: "20px",
+                      accentColor: "#1A2170"
+                    }}
+                  />
+                  Ocultar este curso
+                  </label>
+              </div>
+                </div>
+
+            {/* Level Card */}
+          <div style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: "16px",
+              padding: "16px 18px",
+              boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
+          }}>
+            <h3 style={{
+                fontSize: "15px",
+                fontWeight: 600,
+                color: "#1A2170",
+              marginBottom: "16px",
+                lineHeight: 1.35
+            }}>
+                Nivel del curso
+            </h3>
+            
+            <div>
+              <label style={{
+                  fontSize: "12px",
+                color: "#9CA3AF",
+                marginBottom: "6px",
+                display: "block"
+              }}>
+                  Nivel
+                      </label>
+              <select
+                value={courseLevel}
+                onChange={(e) => setCourseLevel(e.target.value)}
+                style={{
+                  width: "100%",
+                    height: "40px",
+                    padding: "0 12px",
+                    fontSize: "14px",
+                    border: "1px solid rgba(15, 23, 42, 0.10)",
+                  borderRadius: "10px",
+                  backgroundColor: "#FFFFFF",
+                    cursor: "pointer",
+                    fontFamily: "inherit"
+                  }}
+                >
+                  {COURSE_LEVELS.map(level => (
+                    <option key={level}>{level}</option>
+                  ))}
+              </select>
+                    </div>
+          </div>
+
+            {/* Organisations Card */}
+          <div style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: "16px",
+              padding: "16px 18px",
+              boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
+          }}>
+            <h3 style={{
+                fontSize: "15px",
+                fontWeight: 600,
+                color: "#1A2170",
+              marginBottom: "16px",
+                lineHeight: 1.35
+            }}>
+                Organizaciones
+            </h3>
+            
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div>
+              <label style={{
+                    fontSize: "12px",
+                color: "#9CA3AF",
+                marginBottom: "6px",
+                display: "block"
+              }}>
+                    Universidad
+                      </label>
+                      <select
+                value={university}
+                onChange={(e) => setUniversity(e.target.value)}
+                style={{
+                  width: "100%",
+                      height: "40px",
+                      padding: "0 12px",
+                      fontSize: "14px",
+                      border: "1px solid rgba(15, 23, 42, 0.10)",
+                  borderRadius: "10px",
+                  backgroundColor: "#FFFFFF",
+                      cursor: "pointer",
+                      fontFamily: "inherit"
+                }}
+              >
+                {UNIVERSITIES.map(uni => (
+                  <option key={uni}>{uni}</option>
+                        ))}
+                      </select>
+                    </div>
+
+            <div>
+              <label style={{
+                    fontSize: "12px",
+                color: "#9CA3AF",
+                marginBottom: "6px",
+                display: "block"
+              }}>
+                    Especialización
+                      </label>
+                      <select
+                value={specialization}
+                onChange={(e) => setSpecialization(e.target.value)}
+                style={{
+                  width: "100%",
+                      height: "40px",
+                      padding: "0 12px",
+                      fontSize: "14px",
+                      border: "1px solid rgba(15, 23, 42, 0.10)",
+                  borderRadius: "10px",
+                  backgroundColor: "#FFFFFF",
+                      cursor: "pointer",
+                      fontFamily: "inherit"
+                }}
+              >
+                {SPECIALIZATIONS.map(spec => (
+                  <option key={spec}>{spec}</option>
+                ))}
+                      </select>
+                  </div>
+
+                {/* Tags */}
+                <div>
+                  <label style={{
+              fontSize: "12px",
+                    color: "#9CA3AF",
+                    marginBottom: "8px",
+                    display: "block"
+                  }}>
+                    Etiquetas del curso (hasta 10)
+                  </label>
+            
+            <div style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "8px",
+              marginBottom: "12px"
+            }}>
+              {selectedTags.map(tag => (
+                <span
+                  key={tag}
+                  style={{
+                          backgroundColor: "#1A2170",
+                          color: "#F9FAFB",
+                          padding: "4px 10px",
+                    borderRadius: "999px",
+                          fontSize: "12px",
+                    display: "flex",
+                    alignItems: "center",
+                          gap: "8px"
+                  }}
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => removeTag(tag)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                            color: "#F9FAFB",
+                      cursor: "pointer",
+                      padding: 0,
+                      display: "flex",
+                            alignItems: "center",
+                            fontSize: "14px"
+                    }}
+                  >
+                    <IconX size={14} />
+                  </button>
+                    </span>
+              ))}
+              </div>
+
+            <div style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "6px"
+            }}>
+              {AVAILABLE_TAGS.filter(tag => !selectedTags.includes(tag)).map(tag => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => addTag(tag)}
+                  disabled={selectedTags.length >= 10}
+                  style={{
+                    backgroundColor: "#F3F4F6",
+                    border: "none",
+                    color: "#4B5563",
+                    padding: "6px 12px",
+                    borderRadius: "999px",
+                          fontSize: "12px",
+                    cursor: selectedTags.length >= 10 ? "not-allowed" : "pointer",
+                    opacity: selectedTags.length >= 10 ? 0.5 : 1
+                  }}
+                >
+                  + {tag}
+                </button>
+              ))}
+                  </div>
+                </div>
+            </div>
+            </div>
+
+            {/* Pricing Card */}
+          <div style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: "16px",
+              padding: "16px 18px",
+              boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
+          }}>
+            <h3 style={{
+                fontSize: "15px",
+                fontWeight: 600,
+                color: "#1A2170",
+              marginBottom: "16px",
+                lineHeight: 1.35
+            }}>
+                Precios
+            </h3>
+            
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div>
+              <label style={{
+                    fontSize: "12px",
+                color: "#9CA3AF",
+                marginBottom: "6px",
+                display: "block"
+              }}>
+                    Precio
+              </label>
+              <div style={{ position: "relative" }}>
+                <span style={{
+                  position: "absolute",
+                  left: "12px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                      fontSize: "14px",
+                  color: "#4B5563"
+                }}>
+                  $
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  style={{
+                    width: "100%",
+                        height: "40px",
+                        padding: "0 12px 0 24px",
+                        fontSize: "14px",
+                        border: "1px solid rgba(15, 23, 42, 0.10)",
+                    borderRadius: "10px",
+                        outline: "none",
+                        textAlign: "right",
+                        fontFamily: "inherit"
+                  }}
+                />
+                <span style={{
+                  position: "absolute",
+                  right: "12px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  fontSize: "11px",
+                  color: "#9CA3AF"
+                }}>
+                  USD
+                </span>
+                </div>
+            </div>
+
+                <div>
+              <label style={{
+                    fontSize: "12px",
+                color: "#9CA3AF",
+                marginBottom: "6px",
+                display: "block"
+              }}>
+                    Monto de descuento
+                      </label>
+              <div style={{ position: "relative" }}>
+                <span style={{
+                  position: "absolute",
+                  left: "12px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                      fontSize: "14px",
+                  color: "#4B5563"
+                }}>
+                  $
+                </span>
+                      <input
+                  type="number"
+                  step="0.01"
+                  value={saleAmount}
+                  readOnly
+                  style={{
+                    width: "100%",
+                        height: "40px",
+                        padding: "0 12px 0 24px",
+                        fontSize: "14px",
+                        border: "1px solid rgba(15, 23, 42, 0.10)",
+                    borderRadius: "10px",
+                        backgroundColor: "#F8FAFF",
+                        outline: "none",
+                        textAlign: "right",
+                        fontFamily: "inherit"
+                  }}
+                />
+                <span style={{
+                  position: "absolute",
+                  right: "12px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  fontSize: "11px",
+                  color: "#9CA3AF"
+                }}>
+                  USD
+                </span>
+                    </div>
+            </div>
+
+                <div>
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "8px"
+              }}>
+                <label style={{
+                      fontSize: "12px",
+                  color: "#9CA3AF"
+                }}>
+                      Descuento
+                      </label>
+                <span style={{
+                      fontSize: "14px",
+                  fontWeight: 600,
+                      color: "#1A2170"
+                }}>
+                  {salePercentage}%
+                </span>
+              </div>
+                      <input
+                type="range"
+                min="0"
+                max="100"
+                value={salePercentage}
+                onChange={(e) => setSalePercentage(parseInt(e.target.value))}
+                style={{
+                  width: "100%",
+                      height: "4px",
+                      accentColor: "#1A2170",
+                      cursor: "pointer"
+                }}
+              />
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                    fontSize: "11px",
+                color: "#9CA3AF",
+                marginTop: "4px"
+              }}>
+                <span>0%</span>
+                <span>100%</span>
+                    </div>
+                  </div>
+
+            <div style={{
+              paddingTop: "16px",
+                  borderTop: "1px solid rgba(15, 23, 42, 0.10)"
+            }}>
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center"
+              }}>
+                <span style={{
+                      fontSize: "12px",
+                  color: "#9CA3AF"
+                }}>
+                      Precio final después del descuento
+                    </span>
+                <span style={{
+                  fontSize: "16px",
+                  fontWeight: 600,
+                  color: "#22C55E"
+                }}>
+                  ${finalPrice.toFixed(2)}
+                </span>
+                </div>
+            </div>
+
+                <div style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  marginTop: "8px"
+                }}>
+              <button
+                type="button"
+                    onClick={() => {
+                      setSalePercentage(0);
+                      setSaleAmount("0.00");
+                    }}
+              style={{
+                      flex: 1,
+                      height: "36px",
+                      backgroundColor: "#F3F4F6",
+                border: "none",
+                borderRadius: "999px",
+                      color: "#1A2170",
+                      fontSize: "14px",
+                fontWeight: 500,
+                cursor: "pointer"
+              }}
+            >
+                    Reiniciar descuento
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      flex: 1,
+                      height: "36px",
+                      backgroundColor: "#1A2170",
+                      border: "none",
+                      borderRadius: "999px",
+                      color: "#FFFFFF",
+                      fontSize: "14px",
+                      fontWeight: 500,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Aplicar
+              </button>
+            </div>
+        </div>
       </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Snackbar */}
+      <Snackbar 
+        message={snackbarMessage}
+        isVisible={showSnackbar}
+        onClose={() => setShowSnackbar(false)}
+      />
+
+      {/* Modal para nueva sección */}
+      <NewSectionModal
+        isOpen={showNewSectionModal}
+        onClose={() => setShowNewSectionModal(false)}
+        onCreate={handleCreateSection}
+      />
     </div>
   );
 }
