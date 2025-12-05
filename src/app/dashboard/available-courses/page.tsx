@@ -16,10 +16,7 @@ import {
   IconPlayerPlay,
   IconCalendar
 } from "@tabler/icons-react";
-import { supabaseClient } from "@/lib/supabase";
-import { TABLES } from "@/utils/constants";
 import { userRepository } from "@/lib/repositories/userRepository";
-import { studentRepository } from "@/lib/repositories/studentRepository";
 
 interface Enrollment {
   id: string;
@@ -59,22 +56,14 @@ export default function AvailableCoursesPage() {
         const activeCourses = allCourses.filter(c => c.isActive);
         setCourses(activeCourses);
 
-        // Cargar inscripciones del estudiante desde Supabase
-        const { data: enrollmentsData } = await supabaseClient
-          .from(TABLES.STUDENT_ENROLLMENTS)
-          .select('id, course_id, student_id, enrolled_at, progress, completed_lessons')
-          .eq('student_id', user.id);
-        
-        const enrollments = (enrollmentsData || []).map((e: any) => ({
-          id: e.id,
-          courseId: e.course_id,
-          studentId: e.student_id,
-          enrolledAt: e.enrolled_at,
-          progress: e.progress || 0,
-          completedLessons: e.completed_lessons || [],
-        })) as Enrollment[];
-        
-        setEnrollments(enrollments);
+        // Cargar inscripciones del estudiante usando API admin
+        const enrollmentsRes = await fetch(`/api/admin/getEnrollments?userId=${user.id}`);
+        if (enrollmentsRes.ok) {
+          const enrollmentsData = await enrollmentsRes.json();
+          setEnrollments(enrollmentsData.enrollments || []);
+        } else {
+          setEnrollments([]);
+        }
 
         // Cargar información de los speakers
         const speakerIds = new Set<string>();
@@ -137,41 +126,34 @@ export default function AvailableCoursesPage() {
     try {
       setEnrolling(courseId);
       
-      // Primero obtener o crear el student record
-      let studentId = user.id;
-      const { data: existingStudent } = await supabaseClient
-        .from(TABLES.STUDENTS)
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-      
-      if (!existingStudent) {
-        const { data: newStudent } = await supabaseClient
-          .from(TABLES.STUDENTS)
-          .insert({ user_id: user.id })
-          .select('id')
-          .single();
-        if (newStudent) studentId = newStudent.id;
-      } else {
-        studentId = existingStudent.id;
+      // Usar API admin para inscribirse
+      const res = await fetch('/api/admin/enrollStudent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          courseId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al inscribirse');
       }
 
-      // Crear enrollment
-      await supabaseClient
-        .from(TABLES.STUDENT_ENROLLMENTS)
-        .insert({
-          course_id: courseId,
-          student_id: studentId,
-          progress: 0,
-          completed_lessons: [],
-        });
+      if (data.alreadyEnrolled) {
+        alert('Ya estás inscrito en este curso');
+        router.push(`/dashboard/student/courses/${courseId}`);
+        return;
+      }
 
       // Actualizar estado local
       setEnrollments(prev => [...prev, {
-        id: `temp-${Date.now()}`,
-        courseId,
-        studentId: user.id,
-        enrolledAt: new Date().toISOString(),
+        id: data.enrollment.id,
+        courseId: data.enrollment.courseId,
+        studentId: data.enrollment.studentId,
+        enrolledAt: data.enrollment.enrolledAt,
         progress: 0,
         completedLessons: [],
       }]);
@@ -184,9 +166,9 @@ export default function AvailableCoursesPage() {
       setTimeout(() => {
         router.push(`/dashboard/student/courses/${courseId}`);
       }, 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error enrolling:', error);
-      alert('Error al inscribirse al curso');
+      alert(error.message || 'Error al inscribirse al curso');
     } finally {
       setEnrolling(null);
     }

@@ -53,7 +53,7 @@ export function DashboardTopbar({ onToggleSidebar, user, onSignOut }: DashboardT
   const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
 
   return (
-    <header className="sticky top-0 z-20 bg-white shadow-card-soft">
+    <header className="sticky top-0 z-50 bg-white shadow-card-soft">
       <div className="flex items-center justify-between px-6 py-4">
         {/* Left: Mobile menu + Date */}
         <div className="flex items-center gap-4">
@@ -89,7 +89,7 @@ export function DashboardTopbar({ onToggleSidebar, user, onSignOut }: DashboardT
             </label>
             <ul
               tabIndex={0}
-              className="mt-3 z-[1] p-3 shadow-card menu menu-sm dropdown-content bg-white rounded-xl w-80"
+              className="mt-3 z-[100] p-3 shadow-card menu menu-sm dropdown-content bg-white rounded-xl w-80"
             >
               <li className="menu-title px-3 py-2">
                 <span className="text-base font-semibold text-slate-900">Notificaciones</span>
@@ -147,7 +147,7 @@ export function DashboardTopbar({ onToggleSidebar, user, onSignOut }: DashboardT
             </label>
             <ul
               tabIndex={0}
-              className="mt-3 z-[1] p-3 shadow-card menu menu-sm dropdown-content bg-white rounded-xl w-56"
+              className="mt-3 z-[100] p-3 shadow-card menu menu-sm dropdown-content bg-white rounded-xl w-56"
             >
               <li className="px-3 py-2 border-b border-slate-100">
                 <div className="flex flex-col gap-0.5">

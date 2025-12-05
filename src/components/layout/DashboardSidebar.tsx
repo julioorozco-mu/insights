@@ -151,6 +151,7 @@ const adminMenuConfig: RoleMenuConfig = {
       icon: BookOpen,
       items: [
         { path: "/dashboard/certificates", label: "Insignias", icon: Award, indent: true },
+        { path: "/dashboard/courses", label: "Cursos", icon: BookOpen, indent: true },
         { path: "/dashboard/resources", label: "Recursos", icon: FolderOpen, indent: true },
       ],
     },
@@ -285,9 +286,14 @@ export function DashboardSidebar({
 
   // Toggle para expandir/colapsar sección + navegar al primer item
   const toggleSection = (sectionTitle: string, section: MenuSection) => {
+    // Si el sidebar está colapsado, expandirlo primero
+    if (isCollapsed) {
+      onToggleCollapse();
+    }
+    
     const isCurrentlyExpanded = isSectionExpanded(section);
     
-    if (isCurrentlyExpanded) {
+    if (isCurrentlyExpanded && !isCollapsed) {
       // Colapsar: agregar a manuallyCollapsed y remover de expandedSections
       setManuallyCollapsed((prev) => new Set(prev).add(sectionTitle));
       setExpandedSections((prev) => {
@@ -324,6 +330,14 @@ export function DashboardSidebar({
   // Obtener configuración de menú basada en el rol del usuario
   const menuConfig = getMenuConfigByRole(user?.role);
 
+  // Handler para expandir sidebar al hacer clic en un item cuando está colapsado
+  const handleMenuItemClick = () => {
+    if (isCollapsed) {
+      onToggleCollapse();
+    }
+    onClose();
+  };
+
   const renderMenuItem = (item: MenuItem, index: number) => {
     const Icon = item.icon;
     const active = isActive(item.path);
@@ -333,7 +347,7 @@ export function DashboardSidebar({
       <li key={uniqueKey}>
         <Link
           href={item.path}
-          onClick={() => onClose()}
+          onClick={handleMenuItemClick}
           className={`flex items-center ${isCollapsed ? "justify-center" : "justify-between"} rounded-full ${item.indent && !isCollapsed ? "pl-11 pr-4" : "px-4"} py-2 text-sm font-medium transition relative ${
             active ? "bg-white/15 text-white" : "text-white/70 hover:bg-white/10"
           }`}

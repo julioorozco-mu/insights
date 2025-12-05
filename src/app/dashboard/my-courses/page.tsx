@@ -7,7 +7,7 @@ import { courseRepository } from "@/lib/repositories/courseRepository";
 import { Course } from "@/types/course";
 import { Loader } from "@/components/common/Loader";
 import { formatDate } from "@/utils/formatDate";
-import { IconBook, IconUsers, IconClock } from "@tabler/icons-react";
+import { IconBook, IconUsers, IconClock, IconPlus } from "@tabler/icons-react";
 
 export default function MyCoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
@@ -51,6 +51,10 @@ export default function MyCoursesPage() {
             Cursos donde eres ponente o co-host
           </p>
         </div>
+        <Link href="/dashboard/courses/new" className="btn btn-primary text-white gap-2">
+          <IconPlus size={20} />
+          Crear Curso
+        </Link>
       </div>
 
       {/* Estadísticas */}
@@ -95,9 +99,13 @@ export default function MyCoursesPage() {
             </div>
             <h2 className="text-2xl font-bold mb-2">No tienes cursos asignados</h2>
             <p className="text-base-content/70 mb-4">
-              Aún no has sido asignado como ponente o co-host en ningún curso.
-              Contacta al administrador para que te asigne a cursos o lecciones.
+              Comienza creando tu primer curso o contacta al administrador 
+              para que te asigne a cursos existentes.
             </p>
+            <Link href="/dashboard/courses/new" className="btn btn-primary text-white gap-2 mx-auto">
+              <IconPlus size={20} />
+              Crear Primer Curso
+            </Link>
           </div>
         </div>
       ) : (

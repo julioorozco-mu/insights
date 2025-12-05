@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
-import { supabaseClient } from "@/lib/supabase";
-import { TABLES } from "@/utils/constants";
 import { courseRepository } from "@/lib/repositories/courseRepository";
 import { Loader } from "@/components/common/Loader";
 import { IconBook, IconPlayerPlay, IconClock, IconUsers } from "@tabler/icons-react";
@@ -36,30 +34,22 @@ export default function EnrolledCoursesPage() {
       if (!user) return;
 
       try {
-        // Obtener el student record primero
-        const { data: studentData } = await supabaseClient
-          .from(TABLES.STUDENTS)
-          .select('id')
-          .eq('user_id', user.id)
-          .single();
+        // Obtener inscripciones del estudiante usando API admin
+        const enrollmentsRes = await fetch(`/api/admin/getEnrollments?userId=${user.id}`);
         
-        if (!studentData) {
+        if (!enrollmentsRes.ok) {
           setCourses([]);
           return;
         }
 
-        // Obtener inscripciones del estudiante desde Supabase
-        const { data: enrollmentsData } = await supabaseClient
-          .from(TABLES.STUDENT_ENROLLMENTS)
-          .select('id, course_id, student_id, enrolled_at')
-          .eq('student_id', studentData.id);
+        const enrollmentsData = await enrollmentsRes.json();
+        const enrollments: Enrollment[] = enrollmentsData.enrollments || [];
         
-        const enrollments: Enrollment[] = (enrollmentsData || []).map((e: any) => ({
-          id: e.id,
-          courseId: e.course_id,
-          studentId: e.student_id,
-          enrolledAt: e.enrolled_at,
-        }));
+        if (enrollments.length === 0) {
+          setCourses([]);
+          setLoading(false);
+          return;
+        }
 
         // Obtener información de cada curso
         const coursesPromises = enrollments.map(async (enrollment) => {

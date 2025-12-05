@@ -6,6 +6,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createCourseSchema, CreateCourseInput } from "@/lib/validators/courseSchema";
+import { courseRepository } from "@/lib/repositories/courseRepository";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
 import { IconX, IconUpload, IconPlus, IconChevronDown, IconEye, IconGripVertical, IconCheck } from "@tabler/icons-react";
 import { useUploadFile } from "@/hooks/useUploadFile";
 
@@ -477,16 +479,36 @@ export default function EditCoursePage() {
       let savedCourseId: string;
       
       if (currentCourseId) {
-        // Actualizar curso existente
-        await courseRepository.update(currentCourseId, courseData);
+        // Actualizar curso existente usando API admin
+        const updateRes = await fetch('/api/admin/updateCourse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            courseId: currentCourseId,
+            title: courseData.title,
+            description: courseData.description,
+            coverImageUrl: courseData.coverImageUrl,
+            tags: courseData.tags,
+            difficulty: courseData.difficulty,
+            price: courseData.price,
+            salePercentage: courseData.salePercentage,
+            isPublished: courseData.isPublished,
+            isHidden: courseData.isHidden,
+            university: courseData.university,
+            specialization: courseData.specialization,
+            speakerIds: courseData.speakerIds,
+          }),
+        });
+
+        if (!updateRes.ok) {
+          const errorData = await updateRes.json();
+          throw new Error(errorData.error || 'Error al actualizar el curso');
+        }
+
         savedCourseId = currentCourseId;
       } else {
-        // Crear nuevo curso
-        const course = await courseRepository.create(courseData);
-        savedCourseId = course.id;
-        setCurrentCourseId(savedCourseId);
-        // Actualizar URL sin recargar
-        window.history.replaceState({}, '', `/dashboard/courses/${savedCourseId}`);
+        // Este es un caso que no debería ocurrir en la página de edición
+        throw new Error('No se puede crear un curso desde la página de edición');
       }
       
       showSnackbarMessage("Curso guardado automáticamente");
@@ -537,14 +559,25 @@ export default function EditCoursePage() {
       setLoading(true);
       setError(null);
       
-      // Crear la lección
-      const lesson = await lessonRepository.create({
-        courseId: savedCourseId,
-        title: sectionTitle.trim(),
-        order: lessons.length,
-        type: "video",
-        createdBy: user.id,
+      // Crear la lección usando API admin para bypasear RLS
+      const createRes = await fetch('/api/admin/createLesson', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId: savedCourseId,
+          title: sectionTitle.trim(),
+          order: lessons.length,
+          type: "video",
+          createdBy: user.id,
+        }),
       });
+
+      if (!createRes.ok) {
+        const errorData = await createRes.json();
+        throw new Error(errorData.error || 'Error al crear la sección');
+      }
+
+      const { lesson } = await createRes.json();
 
       // Recargar lecciones usando API
       const res = await fetch(`/api/admin/getLessonsByCourse?courseId=${savedCourseId}`);
@@ -557,19 +590,10 @@ export default function EditCoursePage() {
       router.push(`/dashboard/lessons/${lesson.id}/edit`);
     } catch (err: any) {
       console.error("Error creating lesson:", err);
-      console.error("Full error object:", JSON.stringify(err, null, 2));
       
       let errorMessage = "Error al crear la sección";
       if (err?.message) {
         errorMessage = err.message;
-      } else if (err?.details) {
-        errorMessage = err.details;
-      } else if (err?.hint) {
-        errorMessage = err.hint;
-      } else if (err?.originalError?.message) {
-        errorMessage = err.originalError.message;
-      } else if (typeof err === 'string') {
-        errorMessage = err;
       }
       
       setError(errorMessage);
@@ -649,9 +673,32 @@ export default function EditCoursePage() {
       
       console.log("[EditCourse] Datos del curso a guardar:", courseData);
       
-      // Siempre actualizar en esta página de edición
+      // Siempre actualizar en esta página de edición usando API admin
       console.log("[EditCourse] Actualizando curso:", courseId);
-      await courseRepository.update(courseId, courseData);
+      const updateRes = await fetch('/api/admin/updateCourse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId: courseId,
+          title: courseData.title,
+          description: courseData.description,
+          coverImageUrl: courseData.coverImageUrl,
+          tags: courseData.tags,
+          difficulty: courseData.difficulty,
+          price: courseData.price,
+          salePercentage: courseData.salePercentage,
+          isPublished: courseData.isPublished,
+          isHidden: courseData.isHidden,
+          university: courseData.university,
+          specialization: courseData.specialization,
+          speakerIds: courseData.speakerIds,
+        }),
+      });
+
+      if (!updateRes.ok) {
+        const errorData = await updateRes.json();
+        throw new Error(errorData.error || 'Error al actualizar el curso');
+      }
       
       // Mostrar mensaje de éxito
       setSnackbarMessage("¡Curso actualizado exitosamente!");

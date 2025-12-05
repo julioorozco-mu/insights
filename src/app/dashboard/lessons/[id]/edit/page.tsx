@@ -906,7 +906,10 @@ export default function EditLessonPage() {
         // Parsear contenido si existe
         if (lesson.content) {
           try {
+            console.log("[EditLesson] Raw content:", lesson.content);
             const contentData = JSON.parse(lesson.content);
+            console.log("[EditLesson] Parsed content:", contentData);
+            
             if (contentData.subsections && Array.isArray(contentData.subsections)) {
               // Convertir las subsecciones guardadas al formato esperado
               const loadedSubsections: Subsection[] = contentData.subsections.map((sub: any, idx: number) => ({
@@ -914,6 +917,8 @@ export default function EditLessonPage() {
                 title: sub.title || "Nueva subsección",
                 blocks: sub.blocks || [],
               }));
+              
+              console.log("[EditLesson] Loaded subsections:", loadedSubsections);
               
               if (loadedSubsections.length > 0) {
                 setSubsections(loadedSubsections);
@@ -924,6 +929,8 @@ export default function EditLessonPage() {
             console.error("Error parsing lesson content:", parseError);
             // Si hay error, usar los valores por defecto
           }
+        } else {
+          console.log("[EditLesson] No content found, using default subsections");
         }
         
         setLoading(false);
@@ -1361,9 +1368,10 @@ export default function EditLessonPage() {
     try {
       setSaving(true);
       
-      // Preparar contenido serializado
+      // Preparar contenido serializado (incluir id para mantener consistencia al cargar)
       const contentData = {
         subsections: subsections.map(s => ({
+          id: s.id,
           title: s.title,
           blocks: s.blocks,
         })),
