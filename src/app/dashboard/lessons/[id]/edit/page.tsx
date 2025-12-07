@@ -67,6 +67,7 @@ import {
   IconColumnInsertRight,
   IconFileTypePdf,
   IconFileTypeDoc,
+  IconPencil,
 } from "@tabler/icons-react";
 
 // Design System Colors - Color primario #1A2170
@@ -760,6 +761,7 @@ export default function EditLessonPage() {
   const { user } = useAuth();
   const lessonId = params.id as string;
   const tabParam = searchParams.get("tab"); // ID de subsección a activar
+  const actionParam = searchParams.get("action"); // Acción a ejecutar (ej: "add")
   
   // Estados principales
   const [loading, setLoading] = useState(true);
@@ -923,12 +925,29 @@ export default function EditLessonPage() {
               console.log("[EditLesson] Loaded subsections:", loadedSubsections);
               
               if (loadedSubsections.length > 0) {
-                setSubsections(loadedSubsections);
-                // Si hay un parámetro tab en la URL, activar esa subsección
-                const targetSubsection = tabParam 
-                  ? loadedSubsections.find(s => s.id === tabParam)
-                  : null;
-                setActiveSubsection(targetSubsection?.id || loadedSubsections[0].id);
+                // Si hay action=add, agregar nueva subsección a las cargadas
+                if (actionParam === "add") {
+                  const newId = Date.now().toString();
+                  const newSubsection: Subsection = {
+                    id: newId,
+                    title: `Nueva lección`,
+                    blocks: [
+                      { id: `${newId}-b1`, type: "heading", content: `Nueva lección` },
+                      { id: `${newId}-b2`, type: "text", content: "Escribe el contenido aquí..." },
+                    ],
+                  };
+                  setSubsections([...loadedSubsections, newSubsection]);
+                  setActiveSubsection(newId);
+                  // Limpiar el parámetro action de la URL
+                  window.history.replaceState(null, '', `/dashboard/lessons/${lessonId}/edit`);
+                } else {
+                  setSubsections(loadedSubsections);
+                  // Si hay un parámetro tab en la URL, activar esa subsección
+                  const targetSubsection = tabParam 
+                    ? loadedSubsections.find(s => s.id === tabParam)
+                    : null;
+                  setActiveSubsection(targetSubsection?.id || loadedSubsections[0].id);
+                }
               }
             }
           } catch (parseError) {
@@ -937,6 +956,21 @@ export default function EditLessonPage() {
           }
         } else {
           console.log("[EditLesson] No content found, using default subsections");
+          // Si hay action=add y no hay contenido, crear subsección inicial
+          if (actionParam === "add") {
+            const newId = Date.now().toString();
+            const newSubsection: Subsection = {
+              id: newId,
+              title: `Nueva lección`,
+              blocks: [
+                { id: `${newId}-b1`, type: "heading", content: `Nueva lección` },
+                { id: `${newId}-b2`, type: "text", content: "Escribe el contenido aquí..." },
+              ],
+            };
+            setSubsections(prev => [...prev, newSubsection]);
+            setActiveSubsection(newId);
+            window.history.replaceState(null, '', `/dashboard/lessons/${lessonId}/edit`);
+          }
         }
         
         setLoading(false);
@@ -947,7 +981,8 @@ export default function EditLessonPage() {
     };
     
     loadLesson();
-  }, [lessonId, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lessonId]);
   
   // Cargar quizzes disponibles
   const loadQuizzes = async () => {
@@ -1499,22 +1534,27 @@ export default function EditLessonPage() {
       </button>
 
             <div>
-            <input
-              type="text"
-                value={lessonTitle}
-                onChange={(e) => setLessonTitle(e.target.value)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: COLORS.text.onDark,
-                  fontSize: 15,
-                  fontWeight: 500,
-                  outline: "none",
-                  width: "100%",
-                  minWidth: 300,
-                }}
-                placeholder="Título de la lección"
-              />
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="text"
+                  value={lessonTitle}
+                  onChange={(e) => setLessonTitle(e.target.value)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: COLORS.text.onDark,
+                    fontSize: 15,
+                    fontWeight: 500,
+                    outline: "none",
+                    width: "auto",
+                    minWidth: 100,
+                    maxWidth: 300,
+                  }}
+                  size={lessonTitle.length || 10}
+                  placeholder="Título de la lección"
+                />
+                <IconPencil size={12} style={{ color: "rgba(249,250,251,0.5)", flexShrink: 0 }} />
+              </div>
               <p style={{
                 fontSize: 11,
                 color: "rgba(249,250,251,0.7)",

@@ -424,12 +424,17 @@ export default function EditCoursePage() {
 
   // Manejar reordenamiento de secciones
   const handleSectionsReorder = async (newSections: CourseSection[]) => {
-    // Actualizar estado local
-    const reorderedLessons = newSections.map((section, index) => ({
-      id: section.id,
-      title: section.title,
-      order: index,
-    }));
+    // Actualizar estado local preservando las subsecciones
+    const reorderedLessons = newSections.map((section, index) => {
+      // Buscar la lección original para preservar sus subsecciones
+      const originalLesson = lessons.find(l => l.id === section.id);
+      return {
+        id: section.id,
+        title: section.title,
+        order: index,
+        subsections: originalLesson?.subsections || section.lessons.map(l => ({ id: l.id, title: l.title })),
+      };
+    });
     setLessons(reorderedLessons);
 
     // Guardar en servidor
@@ -964,6 +969,7 @@ export default function EditCoursePage() {
                   onReorder={handleSectionsReorder}
                   onEditSection={(sectionId) => router.push(`/dashboard/lessons/${sectionId}/edit`)}
                   onEditSubsection={(sectionId, subsectionId) => router.push(`/dashboard/lessons/${sectionId}/edit?tab=${subsectionId}`)}
+                  onAddSubsection={(sectionId) => router.push(`/dashboard/lessons/${sectionId}/edit?action=add`)}
                   emptyMessage="Aún no hay secciones"
                 />
               </div>

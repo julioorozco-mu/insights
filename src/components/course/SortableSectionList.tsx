@@ -54,6 +54,7 @@ interface SortableSectionItemProps {
   onToggle: () => void;
   onEditSection: (sectionId: string) => void;
   onEditSubsection: (sectionId: string, subsectionId: string) => void;
+  onAddSubsection: (sectionId: string) => void;
   onDelete?: (sectionId: string) => void;
 }
 
@@ -62,6 +63,7 @@ interface SortableSectionListProps {
   onReorder: (sections: CourseSection[]) => void;
   onEditSection: (sectionId: string) => void;
   onEditSubsection: (sectionId: string, subsectionId: string) => void;
+  onAddSubsection: (sectionId: string) => void;
   onDeleteSection?: (sectionId: string) => void;
   emptyMessage?: string;
 }
@@ -77,6 +79,7 @@ function SortableSectionItem({
   onToggle,
   onEditSection,
   onEditSubsection,
+  onAddSubsection,
   onDelete,
 }: SortableSectionItemProps) {
   const {
@@ -211,6 +214,7 @@ function SortableSectionItem({
             {/* Add Lesson Button */}
             <button
               type="button"
+              onClick={() => onAddSubsection(section.id)}
               className="text-xs text-[#A855F7] hover:text-[#9333EA] font-medium flex items-center gap-1 mt-3"
             >
               <Plus size={12} />
@@ -232,6 +236,7 @@ export default function SortableSectionList({
   onReorder,
   onEditSection,
   onEditSubsection,
+  onAddSubsection,
   onDeleteSection,
   emptyMessage = "Aún no hay secciones",
 }: SortableSectionListProps) {
@@ -312,6 +317,7 @@ export default function SortableSectionList({
               onToggle={() => toggleSection(section.id)}
               onEditSection={onEditSection}
               onEditSubsection={onEditSubsection}
+              onAddSubsection={onAddSubsection}
               onDelete={onDeleteSection}
             />
           ))}
