@@ -52,14 +52,16 @@ interface SortableSectionItemProps {
   index: number;
   isExpanded: boolean;
   onToggle: () => void;
-  onEdit: (lessonId: string) => void;
+  onEditSection: (sectionId: string) => void;
+  onEditSubsection: (sectionId: string, subsectionId: string) => void;
   onDelete?: (sectionId: string) => void;
 }
 
 interface SortableSectionListProps {
   sections: CourseSection[];
   onReorder: (sections: CourseSection[]) => void;
-  onEditLesson: (lessonId: string) => void;
+  onEditSection: (sectionId: string) => void;
+  onEditSubsection: (sectionId: string, subsectionId: string) => void;
   onDeleteSection?: (sectionId: string) => void;
   emptyMessage?: string;
 }
@@ -73,7 +75,8 @@ function SortableSectionItem({
   index,
   isExpanded,
   onToggle,
-  onEdit,
+  onEditSection,
+  onEditSubsection,
   onDelete,
 }: SortableSectionItemProps) {
   const {
@@ -132,9 +135,9 @@ function SortableSectionItem({
             )}
           </button>
 
-          {/* Section Title */}
+          {/* Section Title - Mostrar exactamente lo que se guardó */}
           <span className="text-sm font-medium text-brand-primary leading-relaxed">
-            Semana {index + 1} - {section.title}
+            {section.title}
           </span>
 
           {/* Lesson Count Badge */}
@@ -146,17 +149,12 @@ function SortableSectionItem({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Edit Section Button - Siempre visible */}
+          {/* Edit Section Button - Navega al editor general de la lección */}
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              // Si hay lecciones, ir a la primera; si no, ir a la sección misma
-              if (section.lessons.length > 0) {
-                onEdit(section.lessons[0].id);
-              } else {
-                onEdit(section.id);
-              }
+              onEditSection(section.id);
             }}
             className="h-8 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-sm rounded-full transition-colors"
           >
@@ -199,7 +197,7 @@ function SortableSectionItem({
                     </div>
                     <button
                       type="button"
-                      onClick={() => onEdit(lesson.id)}
+                      onClick={() => onEditSubsection(section.id, lesson.id)}
                       className="text-xs text-[#A855F7] hover:text-[#9333EA] font-medium flex items-center gap-1"
                     >
                       <Edit3 size={12} />
@@ -232,7 +230,8 @@ function SortableSectionItem({
 export default function SortableSectionList({
   sections,
   onReorder,
-  onEditLesson,
+  onEditSection,
+  onEditSubsection,
   onDeleteSection,
   emptyMessage = "Aún no hay secciones",
 }: SortableSectionListProps) {
@@ -311,7 +310,8 @@ export default function SortableSectionList({
               index={index}
               isExpanded={expandedSections.has(section.id)}
               onToggle={() => toggleSection(section.id)}
-              onEdit={onEditLesson}
+              onEditSection={onEditSection}
+              onEditSubsection={onEditSubsection}
               onDelete={onDeleteSection}
             />
           ))}

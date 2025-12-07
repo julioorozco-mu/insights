@@ -29,11 +29,17 @@ interface Section {
   lessons: Lesson[];
 }
 
+interface Subsection {
+  id: string;
+  title: string;
+}
+
 interface Lesson {
   id: string;
   title: string;
   order: number;
   sectionId?: string;
+  subsections?: Subsection[];
 }
 
 // ============================================================================
@@ -401,18 +407,19 @@ export default function EditCoursePage() {
   const isSectionExpanded = (sectionId: string) => expandedSections.has(sectionId);
 
   // Convertir lessons a formato de secciones para el componente SortableSectionList
-  // Cada lección se muestra como una sección que contiene a sí misma como sub-lección
+  // Cada lección es una sección, y sus subsecciones son las "lecciones" dentro del acordeón
   const lessonsAsSections: CourseSection[] = lessons.map((lesson, index) => ({
     id: lesson.id,
     title: lesson.title,
     order: lesson.order || index,
     isExpanded: false,
-    lessons: [{
-      id: lesson.id,
-      title: lesson.title,
-      order: 0,
-      sectionId: lesson.id,
-    }],
+    // Usar las subsecciones reales de la lección, o mostrar vacío si no hay
+    lessons: (lesson.subsections || []).map((sub, subIndex) => ({
+      id: sub.id,
+      title: sub.title,
+      order: subIndex,
+      sectionId: lesson.id, // El ID de la lección padre
+    })),
   }));
 
   // Manejar reordenamiento de secciones
@@ -955,7 +962,8 @@ export default function EditCoursePage() {
                 <SortableSectionList
                   sections={lessonsAsSections}
                   onReorder={handleSectionsReorder}
-                  onEditLesson={(lessonId) => router.push(`/dashboard/lessons/${lessonId}/edit`)}
+                  onEditSection={(sectionId) => router.push(`/dashboard/lessons/${sectionId}/edit`)}
+                  onEditSubsection={(sectionId, subsectionId) => router.push(`/dashboard/lessons/${sectionId}/edit?tab=${subsectionId}`)}
                   emptyMessage="Aún no hay secciones"
                 />
               </div>

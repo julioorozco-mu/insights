@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { supabaseClient } from "@/lib/supabase";
 import { lessonRepository } from "@/lib/repositories/lessonRepository";
@@ -756,8 +756,10 @@ function CanvasDropzone({ children, id }: { children: React.ReactNode; id: strin
 export default function EditLessonPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const lessonId = params.id as string;
+  const tabParam = searchParams.get("tab"); // ID de subsección a activar
   
   // Estados principales
   const [loading, setLoading] = useState(true);
@@ -922,7 +924,11 @@ export default function EditLessonPage() {
               
               if (loadedSubsections.length > 0) {
                 setSubsections(loadedSubsections);
-                setActiveSubsection(loadedSubsections[0].id);
+                // Si hay un parámetro tab en la URL, activar esa subsección
+                const targetSubsection = tabParam 
+                  ? loadedSubsections.find(s => s.id === tabParam)
+                  : null;
+                setActiveSubsection(targetSubsection?.id || loadedSubsections[0].id);
               }
             }
           } catch (parseError) {
@@ -1208,7 +1214,7 @@ export default function EditLessonPage() {
     });
   };
   
-  // Actualizar bloque
+  // Actualizar bloque - Solo actualiza el contenido del bloque, NO sincroniza con lessonTitle
   const updateBlockContent = (blockId: string, content: string, data?: any) => {
     setSubsections(subs => subs.map(s => {
       // Verificar si el bloque es el primer heading de la subsección
@@ -1218,7 +1224,7 @@ export default function EditLessonPage() {
       
       return {
         ...s,
-        // Si es el primer heading, sincronizar con el título de la subsección
+        // Si es el primer heading, sincronizar con el título de la subsección (tab)
         title: isFirstHeading ? content : s.title,
         blocks: s.blocks.map(b => b.id === blockId ? { ...b, content, data: data !== undefined ? data : b.data } : b)
       };
