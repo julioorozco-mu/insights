@@ -1,0 +1,404 @@
+{
+  design_profile {
+    name Quiz Creation – Web Layout,
+    description Three-column quiz editor screen with dark section header, pill-style question-type sidebar, central question builder card and compact settingsoverview panel on the right.
+  },
+  foundations {
+    colors {
+      mode light,
+      background {
+        app #F3F4F8,
+        header_bar #111827,
+        tabs_bar #FFFFFF,
+        canvas #FFFFFF,
+        sidebar #FFFFFF,
+        right_panel #FFFFFF
+      },
+      text {
+        primary #111827,
+        secondary #4B5563,
+        muted #9CA3AF,
+        placeholder #9CA3AF,
+        on_dark #F9FAFB,
+        on_accent #FFFFFF
+      },
+      accent {
+        primary #A855F7,
+        primary_soft #F4E9FF,
+        secondary #6366F1,
+        border_subtle rgba(15,23,42,0.10),
+        border_strong rgba(15,23,42,0.18),
+        focus #A855F7
+      },
+      status {
+        success #22C55E,
+        warning #F59E0B,
+        danger #EF4444,
+        info #0EA5E9
+      },
+      question_type_badges {
+        multiple_choice #A855F7,
+        true_false #6366F1,
+        open_ended #0EA5E9,
+        poll #22C55E,
+        reorder #22C55E,
+        match #0EA5E9,
+        drag_drop #6366F1,
+        sequencing #F97316
+      }
+    },
+    typography {
+      font_family system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif,
+      scale {
+        header_title { size 15, weight 500, line_height 1.4 },
+        section_heading { size 18, weight 600, line_height 1.35 },
+        panel_heading { size 14, weight 600, line_height 1.35 },
+        body { size 14, weight 400, line_height 1.6 },
+        small { size 12, weight 400, line_height 1.45 },
+        label { size 12, weight 500, line_height 1.4 },
+        meta { size 11, weight 400, line_height 1.4 }
+      },
+      styles {
+        tab_label { size 13, weight 500 },
+        sidebar_group_label { size 11, weight 500, uppercase true, letter_spacing 0.06 },
+        badge_label { size 11, weight 500 }
+      }
+    },
+    spacing {
+      unit 4,
+      page_padding { x 32, y 24 },
+      header_padding { x 32, y 12 },
+      tabs_padding { x 24, y 10 },
+      canvas_padding { x 24, y 20 },
+      sidebar_padding { x 16, y 24 },
+      panel_padding { x 18, y 18 },
+      gaps {
+        between_columns 24,
+        between_sections 20,
+        between_sidebar_items 8,
+        between_controls 12,
+        between_answer_options 8
+      }
+    },
+    radius {
+      sm 6,
+      md 10,
+      lg 16,
+      pill 999
+    },
+    shadows {
+      card 0 10px 30px rgba(15,23,42,0.10),
+      soft 0 4px 16px rgba(15,23,42,0.06)
+    },
+    iconography {
+      style rounded line icons,
+      size { sm 14, md 18, lg 20 }
+    }
+  },
+  layout {
+    grid_system {
+      columns 12,
+      max_width 1440,
+      gutter 24
+    },
+    page_structure {
+      header_bar {
+        background colors.background.header_bar,
+        height 64,
+        content {
+          left [
+            menu_icon,
+            section_title,
+            subtitle_meta
+          ],
+          right [
+            changes_saved_chip,
+            preview_section_button
+          ]
+        }
+      },
+      tabs_bar {
+        background colors.background.tabs_bar,
+        height 52,
+        content {
+          left add_subsection_button,
+          center scrollable_tabs_row
+        }
+      },
+      main_area {
+        background colors.background.app,
+        padding foundations.spacing.page_padding,
+        columns [
+          {
+            id question_type_sidebar,
+            span 2,
+            min_width 220
+          },
+          {
+            id question_editor,
+            span 7,
+            min_width 620
+          },
+          {
+            id settings_panel,
+            span 3,
+            min_width 280
+          }
+        ]
+      }
+    }
+  },
+  components {
+    header_bar {
+      title_style typography.scale.header_title,
+      subtitle_style { size 11, weight 400, color rgba(249,250,251,0.7) },
+      changes_chip {
+        background rgba(15,23,42,0.9),
+        text_color colors.text.on_dark,
+        border_radius radius.pill,
+        font typography.scale.meta
+      },
+      primary_button {
+        label Preview section,
+        height 36,
+        padding_x 18,
+        border_radius radius.pill,
+        background colors.accent.primary,
+        text_color colors.text.on_accent
+      }
+    },
+    tabs_bar {
+      add_button {
+        label Add subsection,
+        variant ghost,
+        icon plus,
+        border_radius radius.pill,
+        height 34,
+        text_color colors.accent.primary
+      },
+      tab {
+        shape pill,
+        padding_x 18,
+        padding_y 8,
+        font typography.styles.tab_label,
+        states {
+          default { background transparent, text_color colors.text.secondary },
+          hover { background #F3F4F6 },
+          active { background colors.accent.primary_soft, text_color colors.accent.primary }
+        }
+      }
+    },
+    question_type_sidebar {
+      container {
+        background colors.background.sidebar,
+        border_radius radius.lg,
+        shadow shadows.card,
+        padding foundations.spacing.sidebar_padding
+      },
+      group_label_style typography.styles.sidebar_group_label,
+      item {
+        height 44,
+        border_radius radius.pill,
+        layout icon_left + label_right,
+        icon_badge {
+          size 24,
+          border_radius radius.pill,
+          background question_type_color
+        },
+        label_style typography.styles.badge_label,
+        states {
+          default { background transparent, text_color colors.text.secondary },
+          hover { background #F3F4F6 },
+          active { background colors.accent.primary_soft, text_color colors.accent.primary }
+        }
+      }
+    },
+    question_editor_card {
+      container {
+        background colors.background.canvas,
+        border_radius radius.lg,
+        shadow shadows.card,
+        padding foundations.spacing.canvas_padding
+      },
+      header_row {
+        layout drag_handle + question_type_selects + spacer + duplicate_delete_buttons,
+        question_type_selects [
+          question_type_dropdown,
+          time_limit_dropdown,
+          points_dropdown
+        ],
+        button_style {
+          shape rounded_square,
+          size 32,
+          background #F3F4F6
+        }
+      },
+      question_field {
+        label Question,
+        label_style typography.scale.label,
+        input_style {
+          border_radius radius.md,
+          border 1px solid colors.accent.border_subtle,
+          padding_x 12,
+          height 40
+        },
+        add_media_link {
+          text_style typography.small,
+          color colors.accent.primary,
+          icon plus
+        }
+      },
+      allow_multiple_toggle {
+        label Allow multiple answers,
+        type switch,
+        track_bg_off #E5E7EB,
+        track_bg_on colors.accent.primary,
+        thumb_color #FFFFFF
+      },
+      answer_option {
+        container {
+          border_radius radius.pill,
+          border 1px solid colors.accent.border_subtle,
+          background #FFFFFF,
+          padding_x 14,
+          height 40,
+          layout state_icon + text_input + spacer + delete_icon
+        },
+        correct_indicator {
+          icon check_circle,
+          color colors.status.success
+        },
+        text_input_style {
+          border none,
+          placeholder_color colors.text.placeholder,
+          font typography.body
+        },
+        delete_icon_color colors.status.danger
+      },
+      add_choice_button {
+        label Add Choice,
+        variant ghost,
+        icon plus,
+        border_radius radius.pill,
+        height 38,
+        background #F3F4F6,
+        text_color colors.text.secondary
+      },
+      add_explanation_link {
+        label Add an explanation,
+        icon info_outline,
+        style typography.small,
+        color colors.accent.primary
+      }
+    },
+    bulk_update_panel {
+      container {
+        background colors.background.right_panel,
+        border_radius radius.lg,
+        shadow shadows.card,
+        padding foundations.spacing.panel_padding
+      },
+      title {
+        text Bulk update questions,
+        style typography.scale.panel_heading
+      },
+      fields [
+        {
+          type select,
+          label Time,
+          options time_limit_presets
+        },
+        {
+          type select,
+          label Points,
+          options points_presets
+        }
+      ],
+      select_style {
+        height 36,
+        border_radius radius.md,
+        border 1px solid colors.accent.border_subtle
+      }
+    },
+    quiz_overview_panel {
+      container {
+        background colors.background.right_panel,
+        border_radius radius.lg,
+        shadow shadows.card,
+        padding foundations.spacing.panel_padding,
+        margin_top 16
+      },
+      title {
+        text Quiz overview,
+        style typography.scale.panel_heading
+      },
+      description_field {
+        label Description,
+        type textarea,
+        min_height 80,
+        border_radius radius.md,
+        border 1px solid colors.accent.border_subtle
+      },
+      media_upload {
+        label Additional media,
+        dropzone {
+          border_style dashed,
+          border_color colors.accent.border_subtle,
+          border_radius radius.md,
+          background #F9FAFF,
+          height 120,
+          icon upload_cloud
+        },
+        hint_text_style typography.small
+      },
+      course_meta {
+        layout thumbnail_left + text + instructor_avatar_and_progress,
+        progress_bar {
+          height 6,
+          border_radius radius.pill,
+          track_color #E5E7EB,
+          fill_color colors.accent.primary
+        }
+      }
+    }
+  },
+  interaction {
+    hover {
+      buttons {
+        primary { brightness 1.05, shadow shadows.soft },
+        ghost { background #E5E7EB }
+      },
+      question_type_item { background #F3F4F6 },
+      answer_option { border_color colors.accent.border_strong }
+    },
+    focus {
+      outline 2px solid colors.accent.focus,
+      outline_offset 2,
+      applies_to [inputs, selects, buttons]
+    },
+    drag_and_drop {
+      enabled_for [question_items, answer_options],
+      handle_icon drag_handle,
+      shadow_on_drag shadows.card,
+      scale_on_drag 1.02
+    },
+    transitions {
+      duration_ms 150,
+      properties [background-color, border-color, box-shadow, transform],
+      easing ease-out
+    }
+  },
+  responsiveness {
+    breakpoints {
+      md 768,
+      lg 1024,
+      xl 1280
+    },
+    behavior {
+      lg_plus three-column layout as defined,
+      md_to_lg question type sidebar shrinks; right panel keeps width,
+      sm_to_md right settings panel stacks under question editor; question type sidebar collapses to horizontal strip or overlay,
+      xs single-column layout with question editor first, then settings, and a collapsible question-type drawer
+    }
+  }
+}

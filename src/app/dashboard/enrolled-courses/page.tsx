@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { courseRepository } from "@/lib/repositories/courseRepository";
+import { lessonRepository } from "@/lib/repositories/lessonRepository";
 import { Loader } from "@/components/common/Loader";
 import { IconBook, IconPlayerPlay, IconClock, IconUsers } from "@tabler/icons-react";
 
@@ -13,7 +14,7 @@ interface Course {
   description?: string;
   coverImageUrl?: string;
   speakerName?: string;
-  lessonIds?: string[];
+  lessonCount: number;
   createdAt: any;
 }
 
@@ -51,16 +52,20 @@ export default function EnrolledCoursesPage() {
           return;
         }
 
-        // Obtener información de cada curso
+        // Obtener información de cada curso con conteo real de lecciones
         const coursesPromises = enrollments.map(async (enrollment) => {
           const course = await courseRepository.findById(enrollment.courseId);
           if (course) {
+            // Obtener conteo real de lecciones desde la tabla lessons
+            const lessons = await lessonRepository.findByCourseId(course.id);
+            const activeLessons = lessons.filter(l => l.isActive !== false);
+            
             return {
               id: course.id,
               title: course.title,
               description: course.description,
               coverImageUrl: course.coverImageUrl,
-              lessonIds: course.lessonIds,
+              lessonCount: activeLessons.length,
               createdAt: course.createdAt,
             } as Course;
           }
@@ -141,10 +146,10 @@ export default function EnrolledCoursesPage() {
                       <span>{course.speakerName}</span>
                     </div>
                   )}
-                  {course.lessonIds && (
+                  {course.lessonCount > 0 && (
                     <div className="flex items-center gap-1">
                       <IconPlayerPlay size={16} />
-                      <span>{course.lessonIds.length} lecciones</span>
+                      <span>{course.lessonCount} {course.lessonCount === 1 ? 'lección' : 'lecciones'}</span>
                     </div>
                   )}
                 </div>

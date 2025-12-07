@@ -1,0 +1,307 @@
+{
+  "design_profile": {
+    "name": "Passing Quiz – Web Layout",
+    "description": "Two-column quiz-taking screen with a dark left sidebar showing quiz list and timer, and a light main canvas for the current question with pastel purple accents."
+  },
+  "foundations": {
+    "colors": {
+      "mode": "light",
+      "background": {
+        "app": "#F3F4F8",
+        "sidebar": "#111827",
+        "canvas": "#FFFFFF",
+        "card": "#FFFFFF",
+        "card_alt": "#F9FAFF",
+        "timer": "#111827",
+        "current_quiz": "#EDE9FE",
+        "completed_quiz": "#E7F9EE"
+      },
+      "text": {
+        "primary": "#111827",
+        "secondary": "#4B5563",
+        "muted": "#9CA3AF",
+        "on_dark": "#F9FAFB",
+        "on_accent": "#FFFFFF",
+        "success": "#15803D"
+      },
+      "accent": {
+        "primary": "#A855F7",
+        "primary_soft": "#F4E9FF",
+        "border_subtle": "rgba(15,23,42,0.10)",
+        "border_strong": "rgba(15,23,42,0.18)",
+        "focus": "#A855F7"
+      },
+      "status": {
+        "success": "#22C55E",
+        "warning": "#F59E0B",
+        "danger": "#EF4444",
+        "info": "#0EA5E9"
+      }
+    },
+    "typography": {
+      "font_family": "system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif",
+      "scale": {
+        "sidebar_course_title": { "size": 14, "weight": 600, "line_height": 1.4 },
+        "lesson_meta": { "size": 13, "weight": 500, "line_height": 1.4 },
+        "question_heading": { "size": 20, "weight": 600, "line_height": 1.35 },
+        "question_body": { "size": 16, "weight": 500, "line_height": 1.5 },
+        "body": { "size": 14, "weight": 400, "line_height": 1.55 },
+        "small": { "size": 12, "weight": 400, "line_height": 1.45 },
+        "meta": { "size": 11, "weight": 400, "line_height": 1.4 }
+      },
+      "styles": {
+        "sidebar_item": { "size": 13, "weight": 500 },
+        "timer_label": { "size": 11, "weight": 500, "letter_spacing": 0.08 },
+        "timer_value": { "size": 18, "weight": 600, "letter_spacing": 0.12 },
+        "button": { "size": 14, "weight": 600 }
+      }
+    },
+    "spacing": {
+      "unit": 4,
+      "page_padding": { "x": 32, "y": 24 },
+      "sidebar_padding": { "x": 20, "y": 24 },
+      "canvas_padding": { "x": 32, "y": 24 },
+      "card_padding": { "x": 24, "y": 20 },
+      "gaps": {
+        "between_columns": 24,
+        "between_sections": 20,
+        "between_sidebar_items": 8,
+        "between_quiz_cards": 12,
+        "between_answers": 10
+      }
+    },
+    "radius": {
+      "sm": 6,
+      "md": 10,
+      "lg": 16,
+      "pill": 999
+    },
+    "shadows": {
+      "card": "0 10px 30px rgba(15,23,42,0.10)",
+      "soft": "0 4px 16px rgba(15,23,42,0.06)"
+    },
+    "iconography": {
+      "style": "rounded line icons",
+      "size": { "sm": 14, "md": 18, "lg": 20 }
+    }
+  },
+  "layout": {
+    "grid_system": {
+      "columns": 12,
+      "max_width": 1440,
+      "gutter": 24
+    },
+    "page_structure": {
+      "columns": [
+        {
+          "id": "sidebar",
+          "span": 3,
+          "min_width": 260
+        },
+        {
+          "id": "content",
+          "span": 9,
+          "min_width": 720
+        }
+      ],
+      "sidebar": {
+        "background": "colors.background.sidebar",
+        "padding": "foundations.spacing.sidebar_padding",
+        "sections": [
+          "toggle_header",
+          "exam_meta_block",
+          "quiz_list",
+          "timer_card"
+        ]
+      },
+      "content": {
+        "background": "colors.background.canvas",
+        "padding": "foundations.spacing.canvas_padding",
+        "sections": [
+          "lesson_meta",
+          "question_header",
+          "question_media",
+          "answer_options",
+          "bottom_actions"
+        ]
+      }
+    }
+  },
+  "components": {
+    "sidebar_toggle_header": {
+      "layout": "icon_left + label_right",
+      "label_style": { "size": 13, "weight": 500, "color": "colors.text.on_dark" },
+      "padding_bottom": 12
+    },
+    "exam_meta_block": {
+      "title_style": "typography.scale.sidebar_course_title",
+      "title_color": "colors.text.on_dark",
+      "instructor_row": {
+        "avatar_size": 32,
+        "name_style": { "size": 12, "weight": 400, "color": "rgba(249,250,251,0.9)" }
+      },
+      "spacing_bottom": 16
+    },
+    "quiz_list": {
+      "item": {
+        "layout": "vertical_quiz_chip",
+        "padding_y": 8,
+        "padding_x": 10,
+        "border_radius": "radius.md",
+        "label_style": "typography.styles.sidebar_item",
+        "max_lines": 2,
+        "states": {
+          "default": {
+            "background": "rgba(15,23,42,0.7)",
+            "text_color": "rgba(249,250,251,0.8)"
+          },
+          "current": {
+            "background": "colors.background.current_quiz",
+            "text_color": "colors.text.secondary",
+            "border_left": "3px solid colors.accent.primary"
+          },
+          "completed": {
+            "background": "colors.background.completed_quiz",
+            "text_color": "colors.text.secondary"
+          }
+        }
+      }
+    },
+    "timer_card": {
+      "container": {
+        "background": "colors.background.timer",
+        "border_radius": "radius.lg",
+        "padding": { "x": 16, "y": 12 },
+        "margin_top": 20
+      },
+      "label_style": "typography.styles.timer_label",
+      "label_color": "colors.text.on_dark",
+      "time_layout": "grouped_digits_with_colons",
+      "digit_box": {
+        "background": "#000000",
+        "border_radius": 6,
+        "padding_x": 6,
+        "padding_y": 4,
+        "text_style": "typography.styles.timer_value",
+        "text_color": "colors.text.on_dark"
+      }
+    },
+    "lesson_meta": {
+      "layout": "left_text + right_button",
+      "breadcrumb_style": { "size": 12, "weight": 400, "color": "colors.text.muted" },
+      "title_style": "typography.scale.lesson_meta",
+      "next_lesson_button": {
+        "label": "Next lesson",
+        "variant": "outline",
+        "height": 36,
+        "border_radius": "radius.pill",
+        "border_color": "colors.accent.border_subtle",
+        "text_color": "colors.text.secondary"
+      }
+    },
+    "question_header": {
+      "meta_style": { "size": 13, "weight": 500, "color": "colors.accent.primary" },
+      "question_title_style": "typography.scale.question_heading",
+      "description_style": "typography.scale.body",
+      "spacing_bottom": 12
+    },
+    "question_media": {
+      "container": {
+        "border_radius": "radius.lg",
+        "overflow": "hidden",
+        "margin_bottom": 20
+      },
+      "image": {
+        "aspect_ratio": "16:9",
+        "object_fit": "cover"
+      }
+    },
+    "answer_options": {
+      "layout": "vertical_stack",
+      "spacing_vertical": "foundations.spacing.gaps.between_answers",
+      "option": {
+        "container": {
+          "border_radius": "radius.md",
+          "border": "1px solid colors.accent.border_subtle",
+          "background": "#FFFFFF",
+          "padding_x": 16,
+          "height": 44,
+          "layout": "left_label + optional_icon_right"
+        },
+        "selected_state": {
+          "background": "colors.accent.primary_soft",
+          "border_color": "colors.accent.primary"
+        },
+        "label_style": "typography.scale.question_body"
+      }
+    },
+    "bottom_actions": {
+      "container": {
+        "margin_top": 24,
+        "padding_top": 16,
+        "border_top": "1px solid colors.accent.border_subtle",
+        "layout": "left_button + spacer + right_button"
+      },
+      "finish_button": {
+        "label": "Finish quiz",
+        "variant": "outline",
+        "height": 40,
+        "border_radius": "radius.pill",
+        "border_color": "colors.accent.border_strong",
+        "text_color": "colors.text.secondary"
+      },
+      "next_button": {
+        "label": "Next question",
+        "variant": "primary",
+        "height": 40,
+        "border_radius": "radius.pill",
+        "background": "colors.accent.primary",
+        "text_color": "colors.text.on_accent"
+      }
+    }
+  },
+  "interaction": {
+    "hover": {
+      "answer_option": {
+        "background": "#F3F4F6",
+        "border_color": "colors.accent.border_strong"
+      },
+      "buttons": {
+        "primary": { "brightness": 1.05, "shadow": "shadows.soft" },
+        "outline": { "background": "#EEF2FF" }
+      },
+      "sidebar_quiz_item": {
+        "background": "rgba(249,250,251,0.1)"
+      }
+    },
+    "focus": {
+      "outline": "2px solid colors.accent.focus",
+      "outline_offset": 2,
+      "applies_to": ["buttons", "answer_options"]
+    },
+    "selection": {
+      "answer": {
+        "transition_duration_ms": 160,
+        "effects": ["background-color", "border-color"]
+      }
+    },
+    "transitions": {
+      "duration_ms": 150,
+      "properties": ["background-color", "border-color", "box-shadow", "transform"],
+      "easing": "ease-out"
+    }
+  },
+  "responsiveness": {
+    "breakpoints": {
+      "md": 768,
+      "lg": 1024,
+      "xl": 1280
+    },
+    "behavior": {
+      "lg_plus": "sidebar + main question column as defined",
+      "md_to_lg": "sidebar keeps fixed width, main column shrinks",
+      "sm_to_md": "sidebar collapses to top quiz list; timer becomes sticky above content",
+      "xs": "single-column layout with quiz list and timer in collapsible panel above question"
+    }
+  }
+}

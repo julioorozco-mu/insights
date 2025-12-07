@@ -20,10 +20,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'createdBy es requerido' }, { status: 400 });
     }
 
-    // Verificar que el curso exista
+    // Verificar que el curso exista y obtener lesson_ids actual
     const { data: course, error: courseError } = await supabaseAdmin
       .from(TABLES.COURSES)
-      .select('id')
+      .select('id, lesson_ids')
       .eq('id', courseId)
       .single();
 
@@ -66,6 +66,20 @@ export async function POST(req: NextRequest) {
 
     if (!lesson) {
       return NextResponse.json({ error: 'No se pudo crear la lección' }, { status: 500 });
+    }
+
+    // Actualizar el array lesson_ids del curso para mantener consistencia
+    const currentLessonIds = (course.lesson_ids as string[]) || [];
+    const updatedLessonIds = [...currentLessonIds, lesson.id];
+    
+    const { error: updateCourseError } = await supabaseAdmin
+      .from(TABLES.COURSES)
+      .update({ lesson_ids: updatedLessonIds })
+      .eq('id', courseId);
+
+    if (updateCourseError) {
+      console.error('[createLesson API] Error updating course lesson_ids:', updateCourseError);
+      // No fallamos la operación, la lección ya fue creada con course_id
     }
 
     // Mapear respuesta

@@ -1,0 +1,317 @@
+{
+  design_profile {
+    name Checking Quiz – Web Layout,
+    description Two-column quiz results screen with a dark course-progress sidebar on the left and a light results canvas on the right, using soft green feedback cards and purple accents for navigation.
+  },
+  foundations {
+    colors {
+      mode light,
+      background {
+        app #F3F4F8,
+        sidebar #111827,
+        sidebar_item_active #111827,
+        sidebar_item_idle #111827,
+        canvas #FFFFFF,
+        card #FFFFFF,
+        card_alt #F9FAFF,
+        feedback_correct #E7F9EE,
+        feedback_neutral #FFFFFF,
+        footer_bar #FFFFFF
+      },
+      text {
+        primary #111827,
+        secondary #4B5563,
+        muted #9CA3AF,
+        on_dark #F9FAFB,
+        on_accent #FFFFFF,
+        success #15803D
+      },
+      accent {
+        primary #A855F7,
+        primary_soft #F4E9FF,
+        border_subtle rgba(15,23,42,0.10),
+        border_strong rgba(15,23,42,0.18),
+        focus #A855F7
+      },
+      status {
+        success #22C55E,
+        warning #F59E0B,
+        danger #EF4444,
+        info #0EA5E9
+      }
+    },
+    typography {
+      font_family system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif,
+      scale {
+        sidebar_course_title { size 14, weight 600, line_height 1.4 },
+        page_meta { size 13, weight 500, line_height 1.4 },
+        section_heading { size 20, weight 600, line_height 1.35 },
+        quiz_question { size 15, weight 500, line_height 1.6 },
+        body { size 14, weight 400, line_height 1.55 },
+        small { size 12, weight 400, line_height 1.45 },
+        meta { size 11, weight 400, line_height 1.4 }
+      },
+      styles {
+        breadcrumb { size 12, weight 400 },
+        sidebar_item { size 13, weight 500 },
+        button { size 14, weight 600 }
+      }
+    },
+    spacing {
+      unit 4,
+      page_padding { x 32, y 24 },
+      sidebar_padding { x 20, y 24 },
+      canvas_padding { x 32, y 24 },
+      card_padding { x 24, y 20 },
+      gaps {
+        between_columns 24,
+        between_sections 20,
+        between_quiz_cards 16,
+        between_sidebar_items 8
+      }
+    },
+    radius {
+      sm 6,
+      md 10,
+      lg 16,
+      pill 999
+    },
+    shadows {
+      card 0 10px 30px rgba(15,23,42,0.10),
+      soft 0 4px 16px rgba(15,23,42,0.06)
+    },
+    iconography {
+      style rounded line icons,
+      size { sm 14, md 18, lg 20 }
+    }
+  },
+  layout {
+    grid_system {
+      columns 12,
+      max_width 1440,
+      gutter 24
+    },
+    page_structure {
+      columns [
+        {
+          id sidebar,
+          span 3,
+          min_width 260
+        },
+        {
+          id content,
+          span 9,
+          min_width 720
+        }
+      ],
+      sidebar {
+        background colors.background.sidebar,
+        padding foundations.spacing.sidebar_padding,
+        sections [
+          toggle_header,
+          course_progress_card,
+          lesson_list
+        ]
+      },
+      content {
+        background colors.background.canvas,
+        padding foundations.spacing.canvas_padding,
+        sections [
+          lesson_meta_row,
+          results_summary,
+          quiz_cards_list,
+          footer_actions
+        ]
+      }
+    }
+  },
+  components {
+    sidebar_toggle_header {
+      layout icon_left + label_right,
+      label_style { size 13, weight 500, color colors.text.on_dark },
+      padding_bottom 12
+    },
+    course_progress_card {
+      background transparent,
+      title_style typography.scale.sidebar_course_title,
+      title_color colors.text.on_dark,
+      instructor_row {
+        avatar_size 32,
+        name_style { size 12, weight 400, color rgba(249,250,251,0.9) }
+      },
+      progress_bar {
+        height 6,
+        border_radius radius.pill,
+        track_color rgba(15,23,42,0.6),
+        fill_color colors.accent.primary
+      },
+      progress_label_style { size 11, weight 400, color colors.text.on_dark },
+      spacing_bottom 16
+    },
+    sidebar_lesson_list {
+      item {
+        layout icon_left + text_right + optional_status_icon,
+        padding_y 8,
+        padding_x 10,
+        border_radius radius.md,
+        label_style typography.styles.sidebar_item,
+        label_color_default rgba(249,250,251,0.85),
+        label_color_muted rgba(249,250,251,0.6),
+        states {
+          default {
+            background transparent
+          },
+          active {
+            background #F3F4F6,
+            label_color colors.text.primary,
+            icon_color colors.accent.primary
+          },
+          completed {
+            icon check_circle_filled,
+            icon_color colors.accent.primary
+          },
+          current {
+            icon progress_spinner,
+            icon_color colors.accent.primary
+          }
+        }
+      }
+    },
+    lesson_meta_row {
+      placement top_of_content,
+      breadcrumb_style typography.styles.breadcrumb,
+      breadcrumb_color colors.text.muted,
+      title_style { size 13, weight 500, color colors.text.secondary },
+      next_lesson_button {
+        label Next lesson,
+        variant outline,
+        height 36,
+        border_radius radius.pill,
+        border_color colors.accent.border_subtle,
+        text_color colors.text.secondary,
+        align right
+      }
+    },
+    results_summary {
+      title_style typography.scale.section_heading,
+      description_style typography.scale.body,
+      margin_bottom 16
+    },
+    quiz_card {
+      container {
+        background colors.background.feedback_correct,
+        border_radius radius.lg,
+        border 1px solid rgba(34,197,94,0.25),
+        padding foundations.spacing.card_padding,
+        margin_bottom 16
+      },
+      header {
+        layout status_icon + quiz_label + spacer,
+        status_icon {
+          icon check_circle_filled,
+          color colors.status.success
+        },
+        label_style { size 13, weight 600, color colors.text.secondary }
+      },
+      question_text_style typography.scale.quiz_question,
+      answers_list {
+        layout vertical,
+        spacing_vertical 6,
+        option {
+          container {
+            border_radius radius.md,
+            border 1px solid colors.accent.border_subtle,
+            background #FFFFFF,
+            padding_x 12,
+            height 40,
+            layout radio_icon + label
+          },
+          label_style typography.body,
+          radio_default_color colors.accent.border_subtle,
+          radio_correct_color colors.status.success,
+          states {
+            default {},
+            selected_correct {
+              border_color colors.status.success,
+              text_color colors.text.success
+            },
+            selected_incorrect {
+              border_color colors.status.danger
+            }
+          }
+        }
+      },
+      your_answer_text {
+        style typography.body,
+        color colors.text.success,
+        margin_top 8
+      },
+      explanation_block {
+        label_style { size 13, weight 500, color colors.text.secondary },
+        body_style typography.body,
+        margin_top 6
+      }
+    },
+    footer_actions {
+      container {
+        background colors.background.footer_bar,
+        border_top 1px solid colors.accent.border_subtle,
+        padding { x 32, y 16 },
+        layout left_button + spacer + right_button
+      },
+      retake_button {
+        label Retake quiz,
+        variant outline,
+        height 40,
+        border_radius radius.pill,
+        border_color colors.accent.border_strong,
+        text_color colors.text.secondary
+      },
+      next_lesson_button {
+        label Next lesson,
+        variant primary,
+        height 40,
+        border_radius radius.pill,
+        background colors.accent.primary,
+        text_color colors.text.on_accent
+      }
+    }
+  },
+  interaction {
+    hover {
+      buttons {
+        primary { brightness 1.05, shadow shadows.soft },
+        outline { background #EEF2FF }
+      },
+      sidebar_items {
+        background rgba(249,250,251,0.1)
+      },
+      quiz_option {
+        border_color colors.accent.border_strong
+      }
+    },
+    focus {
+      outline 2px solid colors.accent.focus,
+      outline_offset 2,
+      applies_to [buttons, links, interactive_options]
+    },
+    transitions {
+      duration_ms 150,
+      properties [background-color, border-color, box-shadow, transform],
+      easing ease-out
+    }
+  },
+  responsiveness {
+    breakpoints {
+      md 768,
+      lg 1024,
+      xl 1280
+    },
+    behavior {
+      lg_plus sidebar + main results column as defined,
+      md_to_lg sidebar keeps fixed width; results column shrinks,
+      sm_to_md sidebar collapses to top section selector; results content full-width below,
+      xs single column; course progress shown above quiz results in collapsible panel
+    }
+  }
+}
