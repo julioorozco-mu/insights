@@ -20,8 +20,8 @@ export type ProductivityPoint = {
 
 export function ProductivityChart({ data }: { data: ProductivityPoint[] }) {
   return (
-    <div className="h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full min-w-0 min-h-[256px] h-[256px]">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
         <BarChart data={data} barCategoryGap={12}>
           <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
           <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fill: "#94A3B8", fontSize: 12 }} />

@@ -92,7 +92,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!user) return;
     const timer = setTimeout(() => {
       setSidebarCollapsed(true);
-    }, 15000);
+    }, 10000);
     return () => clearTimeout(timer);
   }, [user]);
 

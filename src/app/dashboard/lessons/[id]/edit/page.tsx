@@ -1210,10 +1210,19 @@ export default function EditLessonPage() {
   
   // Actualizar bloque
   const updateBlockContent = (blockId: string, content: string, data?: any) => {
-    setSubsections(subs => subs.map(s => ({
-      ...s,
-      blocks: s.blocks.map(b => b.id === blockId ? { ...b, content, data: data !== undefined ? data : b.data } : b)
-    })));
+    setSubsections(subs => subs.map(s => {
+      // Verificar si el bloque es el primer heading de la subsección
+      const blockIndex = s.blocks.findIndex(b => b.id === blockId);
+      const block = s.blocks[blockIndex];
+      const isFirstHeading = blockIndex === 0 && block?.type === "heading";
+      
+      return {
+        ...s,
+        // Si es el primer heading, sincronizar con el título de la subsección
+        title: isFirstHeading ? content : s.title,
+        blocks: s.blocks.map(b => b.id === blockId ? { ...b, content, data: data !== undefined ? data : b.data } : b)
+      };
+    }));
   };
   
   // Eliminar bloque

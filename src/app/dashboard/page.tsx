@@ -229,8 +229,8 @@ export default function DashboardPage() {
               <button className="text-sm font-medium text-brand-secondary">Ver todos</button>
             </div>
             <div className="grid gap-6 md:grid-cols-2">
-              {topCourses.map((course) => (
-                <CourseCard key={course.title} {...course} />
+          {topCourses.map((course, idx) => (
+            <CourseCard key={course.title} {...course} priority={idx === 0} />
               ))}
             </div>
           </section>

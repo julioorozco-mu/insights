@@ -399,6 +399,25 @@ COMMENT ON TABLE "public"."certificates" IS 'Certificados emitidos a estudiantes
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."course_sections" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "course_id" "uuid" NOT NULL,
+    "title" character varying(255) NOT NULL,
+    "description" "text",
+    "order" integer DEFAULT 0 NOT NULL,
+    "is_expanded" boolean DEFAULT false,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."course_sections" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."course_sections" IS 'Secciones de cursos para agrupar lecciones (ej: Week 1, Module A)';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."courses" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "title" character varying(255) NOT NULL,
@@ -592,7 +611,8 @@ CREATE TABLE IF NOT EXISTS "public"."lessons" (
     "is_active" boolean DEFAULT true,
     "is_published" boolean DEFAULT false,
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "section_id" "uuid"
 );
 
 
@@ -600,6 +620,10 @@ ALTER TABLE "public"."lessons" OWNER TO "postgres";
 
 
 COMMENT ON TABLE "public"."lessons" IS 'Lecciones/módulos de cada curso';
+
+
+
+COMMENT ON COLUMN "public"."lessons"."section_id" IS 'Sección a la que pertenece la lección (opcional)';
 
 
 
@@ -976,6 +1000,11 @@ ALTER TABLE ONLY "public"."certificates"
 
 
 
+ALTER TABLE ONLY "public"."course_sections"
+    ADD CONSTRAINT "course_sections_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."courses"
     ADD CONSTRAINT "courses_pkey" PRIMARY KEY ("id");
 
@@ -1156,6 +1185,14 @@ CREATE INDEX "idx_certificates_student" ON "public"."certificates" USING "btree"
 
 
 
+CREATE INDEX "idx_course_sections_course_id" ON "public"."course_sections" USING "btree" ("course_id");
+
+
+
+CREATE INDEX "idx_course_sections_order" ON "public"."course_sections" USING "btree" ("course_id", "order");
+
+
+
 CREATE INDEX "idx_courses_difficulty" ON "public"."courses" USING "btree" ("difficulty");
 
 
@@ -1217,6 +1254,10 @@ CREATE INDEX "idx_lessons_is_live" ON "public"."lessons" USING "btree" ("is_live
 
 
 CREATE INDEX "idx_lessons_order" ON "public"."lessons" USING "btree" ("course_id", "order");
+
+
+
+CREATE INDEX "idx_lessons_section_id" ON "public"."lessons" USING "btree" ("section_id");
 
 
 
@@ -1332,6 +1373,10 @@ CREATE OR REPLACE TRIGGER "update_certificate_templates_updated_at" BEFORE UPDAT
 
 
 
+CREATE OR REPLACE TRIGGER "update_course_sections_updated_at" BEFORE UPDATE ON "public"."course_sections" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
 CREATE OR REPLACE TRIGGER "update_courses_updated_at" BEFORE UPDATE ON "public"."courses" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
 
 
@@ -1428,6 +1473,11 @@ ALTER TABLE ONLY "public"."certificates"
 
 
 
+ALTER TABLE ONLY "public"."course_sections"
+    ADD CONSTRAINT "course_sections_course_id_fkey" FOREIGN KEY ("course_id") REFERENCES "public"."courses"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."file_attachments_course"
     ADD CONSTRAINT "file_attachments_course_course_id_fkey" FOREIGN KEY ("course_id") REFERENCES "public"."courses"("id") ON DELETE CASCADE;
 
@@ -1470,6 +1520,11 @@ ALTER TABLE ONLY "public"."lesson_attendance"
 
 ALTER TABLE ONLY "public"."lessons"
     ADD CONSTRAINT "lessons_course_id_fkey" FOREIGN KEY ("course_id") REFERENCES "public"."courses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."lessons"
+    ADD CONSTRAINT "lessons_section_id_fkey" FOREIGN KEY ("section_id") REFERENCES "public"."course_sections"("id") ON DELETE SET NULL;
 
 
 
@@ -1794,6 +1849,37 @@ ALTER TABLE "public"."certificate_templates" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."certificates" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."course_sections" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "course_sections_admin_all" ON "public"."course_sections" USING ((EXISTS ( SELECT 1
+   FROM "public"."users" "u"
+  WHERE (("u"."id" = "auth"."uid"()) AND ("u"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role"]))))));
+
+
+
+CREATE POLICY "course_sections_manage_authenticated" ON "public"."course_sections" USING (("auth"."uid"() IS NOT NULL)) WITH CHECK (("auth"."uid"() IS NOT NULL));
+
+
+
+CREATE POLICY "course_sections_manage_teacher" ON "public"."course_sections" USING ((EXISTS ( SELECT 1
+   FROM "public"."courses" "c"
+  WHERE (("c"."id" = "course_sections"."course_id") AND ("auth"."uid"() = ANY ("c"."teacher_ids")))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."courses" "c"
+  WHERE (("c"."id" = "course_sections"."course_id") AND ("auth"."uid"() = ANY ("c"."teacher_ids"))))));
+
+
+
+CREATE POLICY "course_sections_select_all" ON "public"."course_sections" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "course_sections_select_published" ON "public"."course_sections" FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM "public"."courses" "c"
+  WHERE (("c"."id" = "course_sections"."course_id") AND ("c"."is_published" = true)))));
+
 
 
 ALTER TABLE "public"."courses" ENABLE ROW LEVEL SECURITY;
@@ -2142,6 +2228,12 @@ GRANT ALL ON TABLE "public"."certificate_templates" TO "service_role";
 GRANT ALL ON TABLE "public"."certificates" TO "anon";
 GRANT ALL ON TABLE "public"."certificates" TO "authenticated";
 GRANT ALL ON TABLE "public"."certificates" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."course_sections" TO "anon";
+GRANT ALL ON TABLE "public"."course_sections" TO "authenticated";
+GRANT ALL ON TABLE "public"."course_sections" TO "service_role";
 
 
 

@@ -233,6 +233,12 @@ export function DashboardSidebar({
   // Estado para secciones colapsadas manualmente (override del auto-expand)
   const [manuallyCollapsed, setManuallyCollapsed] = useState<Set<string>>(new Set());
 
+  // Estado para controlar hover del sidebar
+  const [isHovered, setIsHovered] = useState(false);
+
+  // Estado visual del sidebar (para renderizado)
+  const visualCollapsed = isCollapsed && !isHovered;
+
   // Colapsar todos los acordeones
   const collapseAllSections = () => {
     const menuConfig = getMenuConfigByRole(user?.role);
@@ -348,12 +354,12 @@ export function DashboardSidebar({
         <Link
           href={item.path}
           onClick={handleMenuItemClick}
-          className={`flex items-center ${isCollapsed ? "justify-center" : "justify-between"} rounded-full ${item.indent && !isCollapsed ? "pl-11 pr-4" : "px-4"} py-2 text-sm font-medium transition relative ${
+          className={`flex items-center ${visualCollapsed ? "justify-center" : "justify-between"} rounded-full ${item.indent && !visualCollapsed ? "pl-11 pr-4" : "px-4"} py-2 text-sm font-medium transition relative ${
             active ? "bg-white/15 text-white" : "text-white/70 hover:bg-white/10"
           }`}
-          title={isCollapsed ? item.label : undefined}
+          title={visualCollapsed ? item.label : undefined}
         >
-          {isCollapsed ? (
+          {visualCollapsed ? (
             <>
               <Icon className="h-5 w-5" />
               {item.badge && (
@@ -388,22 +394,24 @@ export function DashboardSidebar({
       {/* Sidebar */}
       <aside
         ref={sidebarRef}
-        className={`hidden lg:flex bg-brand-primary text-white flex-col py-8 space-y-8 transition-all duration-300 sticky top-0 h-screen flex-shrink-0 relative z-40 ${
-          isCollapsed ? "w-[70px] px-3" : "w-[260px] px-6"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        className={`hidden lg:flex bg-brand-primary text-white flex-col py-8 space-y-8 transition-all duration-300 sticky top-0 h-screen flex-shrink-0 relative z-[60] ${
+          visualCollapsed ? "w-[70px] px-3" : "w-[260px] px-6"
         }`}
       >
         {/* Toggle Button */}
         <button
           onClick={onToggleCollapse}
-          className="absolute top-9 -right-4 bg-brand-primary rounded-full w-8 h-8 flex items-center justify-center hover:bg-brand-secondary z-50 shadow-lg transition-all duration-300"
-          aria-label={isCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
+          className="absolute top-9 -right-4 bg-brand-primary rounded-full w-8 h-8 flex items-center justify-center hover:bg-brand-secondary z-[60] shadow-lg transition-all duration-300"
+          aria-label={visualCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
         >
-          {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          {visualCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </button>
 
         {/* Logo */}
-        <div className={`${isCollapsed ? "flex justify-center" : "text-center"}`}>
-          {isCollapsed ? (
+        <div className={`${visualCollapsed ? "flex justify-center" : "text-center"}`}>
+          {visualCollapsed ? (
             <Package className="h-8 w-8" />
           ) : (
             <>
@@ -425,7 +433,7 @@ export function DashboardSidebar({
                 {sectionIndex > 0 && <div className="my-4 border-t border-white/10" />}
                 
                 {/* Sección con título = Acordeón */}
-                {hasTitle && !isCollapsed ? (
+                {hasTitle && !visualCollapsed ? (
                   <button
                     onClick={() => toggleSection(section.title!, section)}
                     className={`w-full flex items-center justify-between px-4 py-2 text-sm font-medium rounded-full transition ${
@@ -444,7 +452,7 @@ export function DashboardSidebar({
                       }`}
                     />
                   </button>
-                ) : hasTitle && isCollapsed ? (
+                ) : hasTitle && visualCollapsed ? (
                   // Modo colapsado: mostrar solo icono de la sección
                   <button
                     onClick={() => toggleSection(section.title!, section)}

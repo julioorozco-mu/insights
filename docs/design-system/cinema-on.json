@@ -1,0 +1,272 @@
+{
+  "design_profile": {
+    "name": "cinema-ON – Lesson Player Layout",
+    "description": "Video-lesson reading/player view with dark top navigation bar, wide central lesson canvas and a scrollable course-content panel on the right, using a purple accent color."
+  },
+  "foundations": {
+    "colors": {
+      "mode": "light",
+      "background": {
+        "app": "#F3F4F6",
+        "topbar": "#111118",
+        "canvas": "#FFFFFF",
+        "content_panel": "#FFFFFF",
+        "content_panel_alt": "#F9FAFB",
+        "tab_bar": "#FFFFFF",
+        "side_arrow": "#A435F0"
+      },
+      "text": {
+        "primary": "#111827",
+        "secondary": "#4B5563",
+        "muted": "#9CA3AF",
+        "on_dark": "#F9FAFB",
+        "on_accent": "#FFFFFF",
+        "link": "#A435F0"
+      },
+      "accent": {
+        "primary": "#A435F0",
+        "primary_soft": "#F3E8FF",
+        "border_subtle": "rgba(15,23,42,0.10)",
+        "border_strong": "rgba(15,23,42,0.18)",
+        "focus": "#A435F0"
+      },
+      "status": {
+        "success": "#22C55E",
+        "warning": "#F59E0B",
+        "danger": "#EF4444",
+        "info": "#0EA5E9"
+      }
+    },
+    "typography": {
+      "font_family": "system-ui, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif",
+      "scale": {
+        "lesson_title": { "size": 30, "weight": 700, "line_height": 1.25 },
+        "section_title": { "size": 18, "weight": 600, "line_height": 1.35 },
+        "body": { "size": 16, "weight": 400, "line_height": 1.6 },
+        "small": { "size": 13, "weight": 400, "line_height": 1.5 },
+        "meta": { "size": 12, "weight": 400, "line_height": 1.4 },
+        "tab_label": { "size": 14, "weight": 500 }
+      },
+      "styles": {
+        "breadcrumb": { "size": 13, "weight": 400 },
+        "link": { "size": 16, "weight": 400, "decoration": "underline" },
+        "badge": { "size": 12, "weight": 500, "uppercase": true, "letter_spacing": 0.06 }
+      }
+    },
+    "spacing": {
+      "unit": 4,
+      "page_padding": { "x": 32, "y": 24 },
+      "canvas_padding": { "x": 56, "y": 40 },
+      "right_panel_padding": { "x": 16, "y": 16 },
+      "tab_bar_padding": { "x": 32, "y": 12 },
+      "gaps": {
+        "between_sections": 24,
+        "between_paragraphs": 12,
+        "between_meta_items": 24,
+        "between_list_items": 6
+      }
+    },
+    "radius": {
+      "sm": 4,
+      "md": 8,
+      "lg": 12,
+      "pill": 999
+    },
+    "shadows": {
+      "panel": "0 4px 16px rgba(15,23,42,0.10)",
+      "floating": "0 8px 24px rgba(15,23,42,0.18)"
+    },
+    "iconography": {
+      "style": "solid/outlined mix, slightly rounded corners",
+      "size": { "sm": 14, "md": 18, "lg": 20 }
+    }
+  },
+  "layout": {
+    "grid_system": {
+      "columns": 12,
+      "max_width": 1600,
+      "gutter": 24
+    },
+    "page_structure": {
+      "topbar": {
+        "height": 64,
+        "background": "colors.background.topbar",
+        "content": {
+          "left": [
+            "platform_logo",
+            "course_title_truncated"
+          ],
+          "right": [
+            "rate_course_link",
+            "progress_dropdown",
+            "share_button",
+            "more_actions_button"
+          ]
+        }
+      },
+      "main_area": {
+        "background": "colors.background.app",
+        "columns": [
+          {
+            "id": "lesson_canvas",
+            "span": 8,
+            "min_width": 880,
+            "padding": "foundations.spacing.canvas_padding"
+          },
+          {
+            "id": "course_content_panel",
+            "span": 4,
+            "min_width": 320,
+            "padding": "foundations.spacing.right_panel_padding"
+          }
+        ]
+      },
+      "side_arrow_controls": {
+        "left": {
+          "position": "center_left_over_canvas",
+          "size": 40,
+          "shape": "rounded_rectangle",
+          "background": "colors.background.side_arrow",
+          "icon": "chevron_left_white"
+        },
+        "right": {
+          "position": "center_right_over_panel",
+          "size": 40,
+          "shape": "rounded_rectangle",
+          "background": "colors.background.side_arrow",
+          "icon": "chevron_right_white"
+        }
+      },
+      "lower_tabs_section": {
+        "placement": "below_lesson_canvas",
+        "background": "colors.background.tab_bar",
+        "border_top": "1px solid colors.accent.border_subtle",
+        "padding": "foundations.spacing.tab_bar_padding"
+      }
+    }
+  },
+  "components": {
+    "lesson_canvas": {
+      "header": {
+        "title_style": "typography.scale.lesson_title",
+        "margin_bottom": 16
+      },
+      "body_text": {
+        "paragraph_style": "typography.scale.body",
+        "paragraph_spacing": "foundations.spacing.gaps.between_paragraphs",
+        "link_style": {
+          "color": "colors.text.link",
+          "text_decoration": "underline"
+        }
+      }
+    },
+    "course_content_panel": {
+      "container": {
+        "background": "colors.background.content_panel",
+        "border_left": "1px solid colors.accent.border_subtle",
+        "box_shadow": "shadows.panel"
+      },
+      "header": {
+        "layout": "title_left + tools_right",
+        "title_style": "typography.scale.small",
+        "title_weight": 600,
+        "right_items": ["ai_assistant_toggle", "collapse_button"]
+      },
+      "section_header": {
+        "background": "colors.background.content_panel_alt",
+        "padding": { "x": 16, "y": 10 },
+        "title_style": "typography.scale.small",
+        "meta_style": "typography.scale.meta",
+        "border_bottom": "1px solid colors.accent.border_subtle"
+      },
+      "lesson_item": {
+        "layout": "checkbox_left + title + meta_below",
+        "padding": { "x": 16, "y": 8 },
+        "title_style": "typography.scale.small",
+        "meta_style": "typography.scale.meta",
+        "checkbox": {
+          "shape": "square",
+          "size": 16,
+          "border_radius": "radius.sm"
+        },
+        "states": {
+          "default": { "background": "transparent" },
+          "hover": { "background": "#F3F4F6" },
+          "active": {
+            "background": "colors.accent.primary",
+            "title_color": "colors.text.on_accent",
+            "checkbox_fill": "colors.text.on_accent"
+          }
+        }
+      }
+    },
+    "lower_tabs": {
+      "tabs_container": {
+        "border_bottom": "1px solid colors.accent.border_subtle"
+      },
+      "tab": {
+        "font": "typography.styles.tab_label",
+        "padding_x": 16,
+        "padding_y": 10,
+        "indicator_height": 2,
+        "indicator_color": "colors.accent.primary",
+        "states": {
+          "default": { "text_color": "colors.text.secondary" },
+          "active": { "text_color": "colors.text.primary" }
+        }
+      },
+      "tab_content": {
+        "padding_top": 24,
+        "padding_bottom": 24,
+        "background": "colors.background.canvas"
+      },
+      "stats_row": {
+        "layout": "inline_meta_items",
+        "item_style": "typography.scale.small",
+        "icon_color": "#FACC15"
+      }
+    }
+  },
+  "interaction": {
+    "hover": {
+      "buttons": {
+        "primary": { "brightness": 1.05, "shadow": "shadows.soft" },
+        "ghost": { "background": "#E5E7EB" }
+      },
+      "side_arrows": {
+        "scale": 1.05,
+        "shadow": "shadows.floating"
+      },
+      "content_panel_item": {
+        "background": "#F3F4F6"
+      }
+    },
+    "focus": {
+      "outline": "2px solid colors.accent.focus",
+      "outline_offset": 2,
+      "applies_to": ["buttons", "links", "interactive_list_items"]
+    },
+    "transitions": {
+      "duration_ms": 160,
+      "properties": ["background-color", "border-color", "box-shadow", "transform", "opacity"],
+      "easing": "ease-out"
+    },
+    "panel_toggle": {
+      "animation": "slide_horizontal",
+      "duration_ms": 220
+    }
+  },
+  "responsiveness": {
+    "breakpoints": {
+      "md": 768,
+      "lg": 1024,
+      "xl": 1366
+    },
+    "behavior": {
+      "lg_plus": "two-column layout (lesson canvas + course content panel) as defined.",
+      "md_to_lg": "right panel keeps fixed width; lesson canvas shrinks.",
+      "sm_to_md": "course content panel becomes collapsible drawer; main canvas occupies full width when panel is hidden.",
+      "xs": "single-column layout; course content panel appears as full-screen overlay opened by side arrow or icon."
+    }
+  }
+}

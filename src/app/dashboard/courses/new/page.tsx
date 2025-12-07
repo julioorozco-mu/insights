@@ -1,25 +1,52 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import React, { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createCourseSchema, CreateCourseInput } from "@/lib/validators/courseSchema";
-import { courseRepository } from "@/lib/repositories/courseRepository";
-import { lessonRepository } from "@/lib/repositories/lessonRepository";
-import { IconX, IconUpload, IconPlus, IconChevronDown, IconEye, IconGripVertical, IconCheck } from "@tabler/icons-react";
 import { useUploadFile } from "@/hooks/useUploadFile";
+import {
+  X,
+  Upload,
+  Plus,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  GripVertical,
+  Check,
+  MoreHorizontal,
+  Edit3,
+  RefreshCw,
+} from "lucide-react";
+
+// ============================================================================
+// TIPOS E INTERFACES
+// ============================================================================
+
+interface Section {
+  id: string;
+  title: string;
+  order: number;
+  isExpanded: boolean;
+  lessons: Lesson[];
+}
 
 interface Lesson {
   id: string;
   title: string;
   order: number;
+  sectionId?: string;
 }
+
+// ============================================================================
+// CONSTANTES - Design Tokens del JSON
+// ============================================================================
 
 const AVAILABLE_TAGS = [
   "Negocios",
-  "Economía", 
+  "Economía",
   "Éxito",
   "Objetivos",
   "Gestión",
@@ -27,7 +54,7 @@ const AVAILABLE_TAGS = [
   "Liderazgo",
   "Estrategia",
   "Finanzas",
-  "Marketing"
+  "Marketing",
 ];
 
 const UNIVERSITIES = [
@@ -36,7 +63,7 @@ const UNIVERSITIES = [
   "UNAM",
   "ITESM",
   "UAM",
-  "IPN"
+  "IPN",
 ];
 
 const SPECIALIZATIONS = [
@@ -45,20 +72,16 @@ const SPECIALIZATIONS = [
   "Ciencias de la Computación",
   "Administración",
   "Economía",
-  "Marketing"
+  "Marketing",
 ];
 
-const COURSE_LEVELS = [
-  "Principiante",
-  "Intermedio",
-  "Avanzado"
-];
+const COURSE_LEVELS = ["Principiante", "Intermedio", "Avanzado"];
 
-const PUBLISH_STATUSES = [
-  "Publicado",
-  "Borrador",
-  "Archivado"
-];
+const PUBLISH_STATUSES = ["Publicado", "Borrador", "Archivado"];
+
+// ============================================================================
+// COMPONENTES AUXILIARES
+// ============================================================================
 
 // Componente Snackbar
 function Snackbar({ message, isVisible, onClose }: { message: string; isVisible: boolean; onClose: () => void }) {
@@ -74,35 +97,9 @@ function Snackbar({ message, isVisible, onClose }: { message: string; isVisible:
   if (!isVisible) return null;
 
   return (
-    <div style={{
-      position: "fixed",
-      bottom: "24px",
-      right: "24px",
-      backgroundColor: "#111827",
-      color: "#F9FAFB",
-      padding: "12px 20px",
-      borderRadius: "10px",
-      boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)",
-      display: "flex",
-      alignItems: "center",
-      gap: "12px",
-      zIndex: 1000,
-      animation: "slideIn 0.3s ease-out"
-    }}>
-      <IconCheck size={20} />
-      <span style={{ fontSize: "14px", fontWeight: 500 }}>{message}</span>
-      <style jsx>{`
-        @keyframes slideIn {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-      `}</style>
+    <div className="fixed bottom-6 right-6 bg-brand-primary text-white px-5 py-3 rounded-lg shadow-card flex items-center gap-3 z-50 animate-in slide-in-from-right duration-300">
+      <Check size={20} />
+      <span className="text-sm font-medium">{message}</span>
     </div>
   );
 }
@@ -130,43 +127,14 @@ function NewSectionModal({
   };
 
   return (
-    <div style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: "rgba(0, 0, 0, 0.5)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 1000
-    }}>
-      <div style={{
-        backgroundColor: "#FFFFFF",
-        borderRadius: "16px",
-        padding: "24px",
-        width: "90%",
-        maxWidth: "500px",
-        boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
-      }}>
-        <h3 style={{
-          fontSize: "18px",
-          fontWeight: 600,
-          color: "#111827",
-          marginBottom: "16px"
-        }}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl p-6 w-[90%] max-w-[500px] shadow-elevated">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">
           Crear nueva sección
         </h3>
         
-        <div style={{ marginBottom: "20px" }}>
-          <label style={{
-            display: "block",
-            fontSize: "12px",
-            fontWeight: 500,
-            color: "#4B5563",
-            marginBottom: "8px"
-          }}>
+        <div className="mb-5">
+          <label className="block text-xs font-medium text-slate-500 mb-2">
             Nombre de la sección
           </label>
           <input
@@ -179,39 +147,16 @@ function NewSectionModal({
                 handleCreate();
               }
             }}
-            style={{
-              width: "100%",
-              height: "40px",
-              padding: "0 12px",
-              fontSize: "14px",
-              border: "1px solid rgba(15, 23, 42, 0.10)",
-              borderRadius: "10px",
-              outline: "none",
-              fontFamily: "inherit"
-            }}
+            className="w-full h-10 px-3 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent"
             autoFocus
           />
         </div>
 
-        <div style={{
-          display: "flex",
-          gap: "12px",
-          justifyContent: "flex-end"
-        }}>
+        <div className="flex gap-3 justify-end">
           <button
             type="button"
             onClick={onClose}
-            style={{
-              backgroundColor: "#F3F4F6",
-              border: "none",
-              color: "#111827",
-              padding: "10px 22px",
-              borderRadius: "999px",
-              fontSize: "14px",
-              fontWeight: 600,
-              cursor: "pointer",
-              height: "40px"
-            }}
+            className="h-10 px-6 bg-slate-100 hover:bg-slate-200 text-brand-primary rounded-full text-sm font-semibold transition-colors"
           >
             Cancelar
           </button>
@@ -219,18 +164,7 @@ function NewSectionModal({
             type="button"
             onClick={handleCreate}
             disabled={!sectionTitle.trim()}
-            style={{
-              backgroundColor: "#1A2170",
-              border: "none",
-              color: "#FFFFFF",
-              padding: "10px 22px",
-              borderRadius: "999px",
-              fontSize: "14px",
-              fontWeight: 600,
-              cursor: sectionTitle.trim() ? "pointer" : "not-allowed",
-              height: "40px",
-              opacity: sectionTitle.trim() ? 1 : 0.5
-            }}
+            className="h-10 px-6 bg-[#A855F7] hover:bg-[#9333EA] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-full text-sm font-semibold transition-colors"
           >
             Crear sección
           </button>
@@ -240,13 +174,15 @@ function NewSectionModal({
   );
 }
 
+// ============================================================================
+// COMPONENTE PRINCIPAL
+// ============================================================================
+
 export default function NewCoursePage() {
   const router = useRouter();
-  const params = useParams();
   const { user } = useAuth();
-  const courseId = params?.id as string | undefined;
-  const isEditing = !!courseId;
   
+  // Estados de UI
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
@@ -261,14 +197,15 @@ export default function NewCoursePage() {
   const [university, setUniversity] = useState<string>("Cualquier universidad");
   const [specialization, setSpecialization] = useState<string>("Negocios");
   const [courseLevel, setCourseLevel] = useState<string>("Principiante");
-  const [isPublished, setIsPublished] = useState<string>("Publicado");
+  const [isPublished, setIsPublished] = useState<string>("Borrador");
   const [isHidden, setIsHidden] = useState<boolean>(false);
   const [price, setPrice] = useState<string>("0.00");
   const [saleAmount, setSaleAmount] = useState<string>("0.00");
   const [salePercentage, setSalePercentage] = useState<number>(0);
   const [description, setDescription] = useState<string>("");
   const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [currentCourseId, setCurrentCourseId] = useState<string | null>(courseId || null);
+  const [currentCourseId, setCurrentCourseId] = useState<string | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   
   const { uploadFile, uploading: uploadingImage } = useUploadFile();
 
@@ -291,54 +228,6 @@ export default function NewCoursePage() {
   const courseTitle = watch("title", "");
   const watchedDescription = watch("description", "");
 
-  // Cargar curso existente si estamos editando
-  useEffect(() => {
-    if (isEditing && courseId) {
-      const loadCourse = async () => {
-        try {
-          const course = await courseRepository.findById(courseId);
-          if (course) {
-            setValue("title", course.title);
-            setValue("description", course.description || "");
-            setDescription(course.description || "");
-            setSelectedTags(course.tags || []);
-            setUniversity(course.university || "Cualquier universidad");
-            setSpecialization(course.specialization || "Negocios");
-            setCourseLevel(course.difficulty === "beginner" ? "Principiante" : course.difficulty === "intermediate" ? "Intermedio" : "Avanzado");
-            setIsPublished(course.isPublished ? "Publicado" : "Borrador");
-            setIsHidden(course.isHidden || false);
-            setPrice(course.price?.toFixed(2) || "0.00");
-            setSalePercentage(course.salePercentage || 0);
-            setCurrentCourseId(courseId);
-            
-          }
-        } catch (err) {
-          console.error("Error loading course:", err);
-        }
-      };
-      loadCourse();
-    }
-  }, [isEditing, courseId, setValue]);
-
-  // Cargar lecciones del curso
-  useEffect(() => {
-    if (currentCourseId) {
-      const loadLessons = async () => {
-        try {
-          const courseLessons = await lessonRepository.findByCourseId(currentCourseId);
-          setLessons(courseLessons.map(l => ({
-            id: l.id,
-            title: l.title,
-            order: l.order
-          })));
-        } catch (err) {
-          console.error("Error loading lessons:", err);
-        }
-      };
-      loadLessons();
-    }
-  }, [currentCourseId]);
-
   useEffect(() => {
     // Calcular precio final cuando cambia el descuento
     const priceNum = parseFloat(price) || 0;
@@ -347,9 +236,6 @@ export default function NewCoursePage() {
   }, [price, salePercentage]);
 
   useEffect(() => {
-    // Calcular caracteres restantes
-    const maxChars = 500;
-    const currentChars = watchedDescription?.length || 0;
     setDescription(watchedDescription || "");
   }, [watchedDescription]);
 
@@ -380,327 +266,130 @@ export default function NewCoursePage() {
     setSelectedTags(selectedTags.filter(t => t !== tag));
   };
 
-  const toggleLesson = (id: string) => {
-    // Toggle para expandir/colapsar lección
+  // Toggle para expandir/colapsar sección del acordeón
+  const toggleSection = (sectionId: string) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sectionId)) {
+        newSet.delete(sectionId);
+      } else {
+        newSet.add(sectionId);
+      }
+      return newSet;
+    });
   };
 
-  // Guardado automático del curso
-  const autoSaveCourse = async (): Promise<string | null> => {
+  const isSectionExpanded = (sectionId: string) => expandedSections.has(sectionId);
+
+  // Crear nuevo curso
+  const onSubmit = async (data: CreateCourseInput) => {
     try {
-      setSavingAuto(true);
+      setLoading(true);
       setError(null);
-      
-      const formData = watch();
-      
-      // Validar campos requeridos
-      if (!formData.title || formData.title.trim().length < 3) {
-        setError("El título del curso es requerido y debe tener al menos 3 caracteres");
-        return null;
-      }
-      
-      if (!formData.description || formData.description.trim().length < 10) {
-        setError("La descripción del curso es requerida y debe tener al menos 10 caracteres");
-        return null;
-      }
-      
+
       if (!user?.id) {
         setError("Debes estar autenticado para crear un curso");
-        return null;
+        return;
       }
-      
+
       // Subir imagen si existe
       let coverImageUrl: string | undefined = undefined;
       if (coverImageFile) {
         const uploadedUrl = await uploadFile(coverImageFile, 'covers');
         if (uploadedUrl) {
           coverImageUrl = uploadedUrl;
+          setCoverImageFile(null);
         }
       }
-      
+
       // Mapear nivel de curso
       const levelMap: Record<string, "beginner" | "intermediate" | "advanced"> = {
         "Principiante": "beginner",
         "Intermedio": "intermediate",
         "Avanzado": "advanced"
       };
-      
-      const courseData: CreateCourseInput = {
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-        coverImageUrl,
-        tags: selectedTags,
-        difficulty: levelMap[courseLevel] || "beginner",
-        price: parseFloat(price) || 0,
-        salePercentage: salePercentage,
-        isPublished: isPublished === "Publicado",
-        isHidden,
-        university: university !== "Cualquier universidad" ? university : undefined,
-        specialization,
-        speakerIds: [user.id],
-      };
 
-      let savedCourseId: string;
-      
-      if (currentCourseId) {
-        // Actualizar curso existente
-        await courseRepository.update(currentCourseId, courseData);
-        savedCourseId = currentCourseId;
-      } else {
-        // Crear nuevo curso
-        const course = await courseRepository.create(courseData);
-        savedCourseId = course.id;
-        setCurrentCourseId(savedCourseId);
-        // Actualizar URL sin recargar
-        window.history.replaceState({}, '', `/dashboard/courses/${savedCourseId}`);
-      }
-      
-      showSnackbarMessage("Curso guardado automáticamente");
-      return savedCourseId;
-    } catch (err: any) {
-      console.error("Error auto-saving course:", err);
-      
-      // Extraer mensaje de error más detallado
-      let errorMessage = "Error al guardar el curso automáticamente";
-      if (err?.message) {
-        errorMessage = err.message;
-      } else if (err?.details) {
-        errorMessage = err.details;
-      } else if (err?.hint) {
-        errorMessage = err.hint;
-      } else if (typeof err === 'string') {
-        errorMessage = err;
-      }
-      
-      setError(errorMessage);
-      return null;
-    } finally {
-      setSavingAuto(false);
-    }
-  };
-
-  const handleCreateSection = async (sectionTitle: string) => {
-    // Validar que el título tenga contenido
-    if (!sectionTitle || sectionTitle.trim().length === 0) {
-      setError("El nombre de la sección es requerido");
-      return;
-    }
-
-    // Primero guardar el curso automáticamente
-    const savedCourseId = await autoSaveCourse();
-    
-    if (!savedCourseId) {
-      // El error ya fue establecido en autoSaveCourse
-      return;
-    }
-
-    if (!user?.id) {
-      setError("Debes estar autenticado para crear una sección");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Crear la lección
-      const lesson = await lessonRepository.create({
-        courseId: savedCourseId,
-        title: sectionTitle.trim(),
-        order: lessons.length,
-        type: "video",
-        createdBy: user.id,
-      });
-
-      // Recargar lecciones
-      const courseLessons = await lessonRepository.findByCourseId(savedCourseId);
-      setLessons(courseLessons.map(l => ({
-        id: l.id,
-        title: l.title,
-        order: l.order
-      })));
-
-      // Redirigir a la página de edición de la lección
-      router.push(`/dashboard/lessons/${lesson.id}/edit`);
-    } catch (err: any) {
-      console.error("Error creating lesson:", err);
-      console.error("Full error object:", JSON.stringify(err, null, 2));
-      
-      let errorMessage = "Error al crear la sección";
-      if (err?.message) {
-        errorMessage = err.message;
-      } else if (err?.details) {
-        errorMessage = err.details;
-      } else if (err?.hint) {
-        errorMessage = err.hint;
-      } else if (err?.originalError?.message) {
-        errorMessage = err.originalError.message;
-      } else if (typeof err === 'string') {
-        errorMessage = err;
-      }
-      
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onSubmit = async (data: CreateCourseInput) => {
-    try {
-      setLoading(true);
-      setError(null);
-      console.log("[NewCourse] Iniciando guardado de curso...", data);
-      
-      // Validar datos mínimos
-      if (!data.title || data.title.trim().length < 3) {
-        setError("El título del curso es requerido y debe tener al menos 3 caracteres");
-        setLoading(false);
-        return;
-      }
-      
-      if (!data.description || data.description.trim().length < 10) {
-        setError("La descripción del curso es requerida y debe tener al menos 10 caracteres");
-        setLoading(false);
-        return;
-      }
-      
-      if (!user?.id) {
-        setError("Debes estar autenticado para crear un curso");
-        setLoading(false);
-        return;
-      }
-      
-      // Subir imagen si existe
-      let coverImageUrl: string | undefined = undefined;
-      if (coverImageFile) {
-        console.log("[NewCourse] Subiendo imagen...");
-        const uploadedUrl = await uploadFile(coverImageFile, 'covers');
-        if (!uploadedUrl) {
-          throw new Error("Error al subir la imagen de portada");
-        }
-        coverImageUrl = uploadedUrl;
-        console.log("[NewCourse] Imagen subida:", coverImageUrl);
-      }
-      
-      // Mapear nivel de curso
-      const levelMap: Record<string, "beginner" | "intermediate" | "advanced"> = {
-        "Principiante": "beginner",
-        "Intermedio": "intermediate",
-        "Avanzado": "advanced"
-      };
-      
       // Construir datos del curso
       const courseData: CreateCourseInput = {
         title: data.title.trim(),
         description: data.description.trim(),
-        coverImageUrl,
+        coverImageUrl: coverImageUrl || undefined,
         tags: selectedTags,
         difficulty: levelMap[courseLevel] || "beginner",
         price: parseFloat(price) || 0,
         salePercentage: salePercentage,
         isPublished: isPublished === "Publicado",
-        isHidden,
-        university: university !== "Cualquier universidad" ? university : undefined,
-        specialization,
-        speakerIds: [user.id],
+        isHidden: isHidden,
+        university: university,
+        specialization: specialization,
       };
-      
-      console.log("[NewCourse] Datos del curso a guardar:", courseData);
-      
-      let course;
-      if (currentCourseId) {
-        console.log("[NewCourse] Actualizando curso existente:", currentCourseId);
-        await courseRepository.update(currentCourseId, courseData);
-        course = await courseRepository.findById(currentCourseId);
-      } else {
-        console.log("[NewCourse] Creando nuevo curso...");
-        course = await courseRepository.create(courseData);
-        console.log("[NewCourse] Curso creado:", course.id);
+
+      // Crear curso via API
+      const res = await fetch("/api/admin/createCourse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(courseData),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Error al crear el curso");
       }
-      
-      if (course) {
-        console.log("[NewCourse] Redirigiendo a:", `/dashboard/courses/${course.id}`);
-      router.push(`/dashboard/courses/${course.id}`);
-      } else {
-        throw new Error("No se pudo crear o actualizar el curso");
+
+      const result = await res.json();
+      const newCourseId = result.course?.id;
+
+      if (newCourseId) {
+        setCurrentCourseId(newCourseId);
+        showSnackbarMessage("Curso creado exitosamente");
+        
+        // Redirigir a la página de edición
+        setTimeout(() => {
+          router.push(`/dashboard/courses/${newCourseId}/edit`);
+        }, 1500);
       }
-    } catch (err: any) {
-      console.error("[NewCourse] Error al crear curso:", err);
-      
-      let errorMessage = "Error al crear el curso";
-      if (err?.message) {
-        errorMessage = err.message;
-      } else if (err?.details) {
-        errorMessage = err.details;
-      } else if (err?.hint) {
-        errorMessage = err.hint;
-      } else if (typeof err === 'string') {
-        errorMessage = err;
-      }
-      
-      setError(errorMessage);
+
+    } catch (err) {
+      console.error("Error creating course:", err);
+      setError(err instanceof Error ? err.message : "Error al crear el curso");
     } finally {
       setLoading(false);
     }
   };
 
+  // Crear nueva sección (placeholder - se implementará cuando el curso exista)
+  const handleCreateSection = async (title: string) => {
+    if (!currentCourseId) {
+      showSnackbarMessage("Primero guarda el curso para agregar secciones");
+      return;
+    }
+    // TODO: Implementar creación de sección via API
+  };
+
+  // Calcular valores derivados
+  const remainingChars = 500 - (description?.length || 0);
   const finalPrice = (parseFloat(price) || 0) - (parseFloat(saleAmount) || 0);
-  const remainingChars = 500 - (description.length || 0);
   const displayTitle = courseTitle || "Nuevo curso";
 
   return (
-    <div style={{ 
-      backgroundColor: "#F3F4F8", 
-      minHeight: "100vh",
-      fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif"
-    }}>
+    <div className="min-h-screen bg-[#F3F4F8]">
       {/* Header Row */}
-      <div style={{
-        backgroundColor: "#FFFFFF",
-        padding: "12px 32px",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        borderBottom: "1px solid rgba(15, 23, 42, 0.10)"
-      }}>
+      <div className="bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center sticky top-0 z-40">
         <div>
-          <h1 style={{ 
-            fontSize: "28px", 
-            fontWeight: 700, 
-            color: "#111827",
-            margin: "8px 0 16px 0",
-            lineHeight: 1.25
-          }}>
+          <h1 className="text-xl font-bold text-brand-primary mb-1">
             {displayTitle}
           </h1>
-          <div style={{
-            fontSize: "12px",
-            color: "#9CA3AF",
-            display: "flex",
-            gap: "4px",
-            alignItems: "center"
-          }}>
-            <span>Mi aula</span>
+          <nav className="flex items-center gap-2 text-xs text-slate-400">
+            <span>Cursos</span>
             <span>/</span>
-            <span>Mis cursos</span>
-            <span>/</span>
-            <span style={{ color: "#4B5563" }}>{displayTitle}</span>
-          </div>
+            <span className="text-slate-600 font-medium">Nuevo curso</span>
+          </nav>
         </div>
-        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+        <div className="flex gap-3 items-center">
           <button
             type="button"
             onClick={() => router.back()}
-            style={{
-              backgroundColor: "#F3F4F6",
-              border: "none",
-              color: "#111827",
-              padding: "10px 22px",
-              borderRadius: "999px",
-              fontSize: "14px",
-              fontWeight: 600,
-              cursor: "pointer",
-              height: "40px"
-            }}
+            className="h-10 px-6 bg-slate-100 hover:bg-slate-200 text-brand-primary rounded-full text-sm font-semibold transition-colors"
           >
             Cancelar
           </button>
@@ -711,965 +400,430 @@ export default function NewCoursePage() {
               handleSubmit(onSubmit)();
             }}
             disabled={loading || uploadingImage || savingAuto}
-            style={{
-              backgroundColor: "#1A2170",
-              border: "none",
-              color: "#FFFFFF",
-              padding: "10px 22px",
-              borderRadius: "999px",
-              fontSize: "14px",
-              fontWeight: 600,
-              cursor: loading ? "not-allowed" : "pointer",
-              height: "40px",
-              opacity: loading ? 0.7 : 1
-            }}
+            className="h-10 px-6 bg-[#A855F7] hover:bg-[#9333EA] disabled:opacity-70 disabled:cursor-not-allowed text-white rounded-full text-sm font-semibold transition-colors"
           >
-            {loading ? "Guardando..." : "Guardar"}
+            {loading ? "Creando..." : "Crear curso"}
           </button>
         </div>
       </div>
 
-      {/* Content Area */}
-      <div style={{
-        padding: "24px 32px",
-        maxWidth: "1440px",
-        margin: "0 auto"
-      }}>
-      {error && (
-        <div style={{
-          backgroundColor: "#FEE2E2",
-          border: "1px solid #EF4444",
-          borderRadius: "10px",
-          padding: "12px 16px",
-          marginBottom: "24px",
-            color: "#991B1B",
-            fontSize: "14px"
-        }}>
-          {error}
-        </div>
-      )}
+      {/* Content Area - Two Column Layout */}
+      <div className="px-4 sm:px-6 lg:px-8 py-6 max-w-[1440px] mx-auto">
+        {/* Error Alert */}
+        {error && (
+          <div className="bg-red-50 border border-red-400 rounded-lg px-4 py-3 mb-6 text-red-800 text-sm">
+            {error}
+          </div>
+        )}
 
-      <div style={{
-        display: "grid",
-          gridTemplateColumns: "8fr 4fr",
-          gap: "24px"
-        }}>
-          {/* Editor Column */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-            <form id="course-form" onSubmit={handleSubmit(onSubmit, (errors) => {
-              console.error("Form validation errors:", errors);
-              const firstError = Object.values(errors)[0];
+        {/* Grid: 8/4 on desktop, stacked on mobile */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Editor Column (Primary - span 8) */}
+          <div className="lg:col-span-8 flex flex-col gap-6">
+            <form id="course-form" onSubmit={handleSubmit(onSubmit, (formErrors) => {
+              console.error("Form validation errors:", formErrors);
+              const firstError = Object.values(formErrors)[0];
               if (firstError?.message) {
                 setError(firstError.message);
               } else {
-                setError("Por favor, completa todos los campos requeridos correctamente");
+                setError("Por favor completa todos los campos requeridos correctamente");
               }
             })}>
               {/* Basic Info Card */}
-            <div style={{
-              backgroundColor: "#FFFFFF",
-              borderRadius: "16px",
-                padding: "20px 18px",
-                boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
-            }}>
-              <h2 style={{
-                  fontSize: "18px",
-                fontWeight: 600,
-                color: "#111827",
-                  marginBottom: "16px",
-                  lineHeight: 1.35
-              }}>
+              <div className="bg-white rounded-2xl p-5 shadow-card">
+                <h2 className="text-lg font-semibold text-brand-primary mb-4">
                   Información básica
-              </h2>
+                </h2>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+                <div className="flex flex-col gap-5">
                   {/* Name Field */}
                   <div>
-                <label style={{
-                  display: "block",
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  color: "#4B5563",
-                      marginBottom: "4px",
-                      lineHeight: 1.4
-                }}>
-                      NOMBRE
-              </label>
-              <input
-                type="text"
-                {...register("title")}
+                    <label className="block text-xs font-medium text-slate-500 mb-1 uppercase tracking-wide">
+                      Nombre
+                    </label>
+                    <input
+                      type="text"
+                      {...register("title")}
                       placeholder="Nombre del curso"
-                  style={{
-                    width: "100%",
-                        height: "40px",
-                        padding: "0 12px",
-                    fontSize: "14px",
-                        border: "1px solid rgba(15, 23, 42, 0.10)",
-                    borderRadius: "10px",
-                    outline: "none",
-                        fontFamily: "inherit"
-                  }}
-              />
-              {errors.title && (
-                  <p style={{ color: "#EF4444", fontSize: "12px", marginTop: "6px" }}>
-                    {errors.title.message}
-                  </p>
-              )}
-            </div>
+                      className="w-full h-10 px-3 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-all"
+                    />
+                    {errors.title && (
+                      <p className="text-red-500 text-xs mt-1.5">{errors.title.message}</p>
+                    )}
+                  </div>
 
                   {/* Description Field */}
                   <div>
-                <label style={{
-                  display: "block",
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  color: "#4B5563",
-                      marginBottom: "4px",
-                      lineHeight: 1.4
-                }}>
-                      DESCRIPCIÓN
-              </label>
-                <div style={{
-                      border: "1px solid rgba(15, 23, 42, 0.10)",
-                  borderRadius: "10px",
-                  overflow: "hidden"
-                }}>
-                      {/* Toolbar */}
-                  <div style={{
-                        backgroundColor: "#F9FAFB",
-                        height: "40px",
-                        borderBottom: "1px solid rgba(15, 23, 42, 0.10)",
-                    display: "flex",
-                        alignItems: "center",
-                        padding: "0 12px",
-                    gap: "6px"
-                  }}>
-                    <select style={{
-                      padding: "4px 8px",
-                      fontSize: "13px",
-                          border: "1px solid rgba(15, 23, 42, 0.10)",
-                      borderRadius: "6px",
-                          backgroundColor: "#FFFFFF",
-                          cursor: "pointer"
-                    }}>
+                    <label className="block text-xs font-medium text-slate-500 mb-1 uppercase tracking-wide">
+                      Descripción
+                    </label>
+                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                      {/* Rich Text Toolbar */}
+                      <div className="bg-slate-50 h-10 border-b border-slate-200 flex items-center px-3 gap-1.5">
+                        <select className="px-2 py-1 text-[13px] border border-slate-200 rounded-md bg-white cursor-pointer">
                           <option>Texto normal</option>
-                    </select>
-                  </div>
-              <textarea
-                {...register("description")}
+                        </select>
+                      </div>
+                      <textarea
+                        {...register("description")}
                         placeholder="Describe tu curso..."
-                    style={{
-                      width: "100%",
-                          minHeight: "120px",
-                          padding: "12px",
-                      fontSize: "14px",
-                      border: "none",
-                      outline: "none",
-                          fontFamily: "inherit",
-                          lineHeight: 1.55,
-                      resize: "vertical"
-                    }}
-                  />
-                </div>
-                    <div style={{
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      marginTop: "4px"
-                    }}>
-                <p style={{ 
-                        fontSize: "11px", 
-                  color: "#9CA3AF", 
-                        margin: 0
-                }}>
-                        {remainingChars} caracteres restantes
-                </p>
+                        className="w-full min-h-[120px] p-3 text-sm border-none outline-none resize-y leading-relaxed"
+                      />
                     </div>
-              {errors.description && (
-                  <p style={{ color: "#EF4444", fontSize: "12px", marginTop: "6px" }}>
-                    {errors.description.message}
-                  </p>
-              )}
-            </div>
+                    <div className="flex justify-end mt-1">
+                      <p className="text-[11px] text-slate-400">
+                        {remainingChars} caracteres restantes
+                      </p>
+                    </div>
+                    {errors.description && (
+                      <p className="text-red-500 text-xs mt-1.5">{errors.description.message}</p>
+                    )}
+                  </div>
 
                   {/* Cover Image Field */}
-              <div>
-                <label style={{
-                  display: "block",
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  color: "#4B5563",
-                      marginBottom: "4px",
-                      lineHeight: 1.4
-                }}>
-                      IMAGEN DE PORTADA
-              </label>
-              
-              {coverImagePreview ? (
-                  <div style={{ 
-                    position: "relative",
-                    borderRadius: "14px",
-                        overflow: "hidden",
-                        border: "1px solid rgba(15, 23, 42, 0.10)",
-                        marginTop: "10px"
-                  }}>
-                  <img 
-                    src={coverImagePreview} 
-                    alt="Vista previa" 
-                      style={{
-                        width: "100%",
-                            aspectRatio: "16/9",
-                            objectFit: "cover",
-                            display: "block"
-                      }}
-                  />
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1 uppercase tracking-wide">
+                      Imagen de portada
+                    </label>
+                    
+                    {coverImagePreview ? (
+                      <div className="relative rounded-xl overflow-hidden border border-slate-200 mt-2.5">
+                        <img 
+                          src={coverImagePreview} 
+                          alt="Preview" 
+                          className="w-full aspect-video object-cover block"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCoverImageFile(null);
+                            setCoverImagePreview(null);
+                          }}
+                          className="absolute top-3 right-3 bg-white/85 hover:bg-white text-[#A855F7] border-none rounded-full px-3 py-1.5 text-xs font-medium cursor-pointer flex items-center gap-1 transition-colors"
+                        >
+                          <RefreshCw size={12} />
+                          Clic para cambiar
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center w-full aspect-video border border-dashed border-slate-300 rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 mt-2.5 transition-colors">
+                        <Upload size={48} className="text-slate-400 mb-3" />
+                        <p className="text-sm text-slate-600 mb-1.5">
+                          <span className="font-semibold">Clic para subir</span> o arrastra y suelta
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          PNG, JPG o WEBP (máx. 5MB)
+                        </p>
+                        <input 
+                          type="file" 
+                          className="hidden"
+                          accept="image/*"
+                          onChange={handleImageChange}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Content Card - Curriculum Builder */}
+              <div className="bg-white rounded-2xl p-5 shadow-card mt-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg font-semibold text-brand-primary">
+                    Contenido
+                  </h2>
                   <button
                     type="button"
                     onClick={() => {
-                      setCoverImageFile(null);
-                      setCoverImagePreview(null);
+                      if (!currentCourseId) {
+                        showSnackbarMessage("Primero guarda el curso para agregar secciones");
+                        return;
+                      }
+                      setShowNewSectionModal(true);
                     }}
-                      style={{
-                        position: "absolute",
-                        top: "12px",
-                        right: "12px",
-                            backgroundColor: "rgba(255,255,255,0.85)",
-                            color: "#1A2170",
-                        border: "none",
-                            borderRadius: "999px",
-                            padding: "4px 8px",
-                            fontSize: "12px",
-                            fontWeight: 500,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                            gap: "4px"
-                      }}
-                    >
-                          Cambiar
+                    className="flex items-center gap-1.5 text-[#A855F7] hover:text-[#9333EA] text-sm font-medium px-3 py-1.5 rounded-full hover:bg-purple-50 transition-colors"
+                  >
+                    <Plus size={16} />
+                    Agregar sección
                   </button>
                 </div>
-              ) : (
-                  <label style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: "100%",
-                        aspectRatio: "16/9",
-                        border: "1px dashed rgba(15, 23, 42, 0.18)",
-                    borderRadius: "14px",
-                    cursor: "pointer",
-                        backgroundColor: "#F8FAFF",
-                        marginTop: "10px"
-                  }}>
-                    <IconUpload size={48} color="#9CA3AF" style={{ marginBottom: "12px" }} />
-                    <p style={{ fontSize: "14px", color: "#4B5563", marginBottom: "6px" }}>
-                      <span style={{ fontWeight: 600 }}>Click para subir</span> o arrastra y suelta
-                    </p>
-                    <p style={{ fontSize: "12px", color: "#9CA3AF" }}>
-                      PNG, JPG o WEBP (máx. 5MB)
-                    </p>
-                  <input 
-                    type="file" 
-                      style={{ display: "none" }}
-                    accept="image/*"
-                    onChange={handleImageChange}
-                  />
-                </label>
-              )}
+
+                {/* Empty State for New Course */}
+                <div className="text-center py-12 px-5">
+                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Plus size={24} className="text-slate-400" />
                   </div>
+                  <p className="text-sm text-slate-500 mb-2">Aún no hay secciones</p>
+                  <p className="text-xs text-slate-400">Guarda el curso primero para comenzar a agregar secciones.</p>
+                </div>
               </div>
-            </div>
+            </form>
+          </div>
 
-              {/* Content Card */}
-            <div style={{
-              backgroundColor: "#FFFFFF",
-              borderRadius: "16px",
-                padding: "20px 18px",
-                boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
-            }}>
-              <div style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                  marginBottom: "16px"
-              }}>
-                <h2 style={{
-                    fontSize: "18px",
-                  fontWeight: 600,
-                  color: "#111827",
-                    margin: 0,
-                    lineHeight: 1.35
-                }}>
-                    Contenido
-                </h2>
-                <button
-                  type="button"
-                    onClick={() => setShowNewSectionModal(true)}
-                  style={{
-                    backgroundColor: "transparent",
-                    border: "none",
-                      color: "#1A2170",
-                      fontSize: "14px",
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                      padding: "6px 12px",
-                    borderRadius: "999px"
-                  }}
-                >
-                  <IconPlus size={16} />
-                    Agregar nueva sección
-                </button>
-              </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  {lessons.length === 0 ? (
-                    <p style={{
-                      fontSize: "14px",
-                      color: "#9CA3AF",
-                      textAlign: "center",
-                      padding: "40px 20px"
-                    }}>
-                      No hay secciones aún. Haz clic en "Agregar nueva sección" para comenzar.
-                    </p>
-                  ) : (
-                    lessons.map((lesson) => (
-                      <div 
-                        key={lesson.id}
-                    style={{
-                          backgroundColor: "#F8FAFF",
-                          border: "1px solid rgba(15, 23, 42, 0.10)",
-                          borderRadius: "14px",
-                          padding: "14px",
-                          cursor: "pointer"
-                        }}
-                        onClick={() => router.push(`/dashboard/lessons/${lesson.id}/edit`)}
-                      >
-                        <div style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                          alignItems: "center"
-                        }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                            <IconGripVertical size={18} color="#9CA3AF" style={{ opacity: 0.6 }} />
-                        <span style={{
-                          fontSize: "14px",
-                              fontWeight: 400,
-                              color: "#111827",
-                              lineHeight: 1.55
-                        }}>
-                              {lesson.title}
-                        </span>
-                    </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <button
-                          type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                router.push(`/dashboard/lessons/${lesson.id}/edit`);
-                              }}
-                          style={{
-                            backgroundColor: "transparent",
-                            border: "none",
-                            color: "#4B5563",
-                                fontSize: "14px",
-                            cursor: "pointer",
-                                padding: "6px 12px",
-                                borderRadius: "999px",
-                                height: "32px"
-                          }}
-                        >
-                              Editar
-                        </button>
-                        <button
-                          type="button"
-                          style={{
-                            backgroundColor: "transparent",
-                            border: "none",
-                            color: "#9CA3AF",
-                            cursor: "pointer",
-                                padding: "4px 8px"
-                          }}
-                        >
-                          •••
-                        </button>
-                      </div>
-                    </div>
-                      </div>
-                    ))
-                    )}
-                    </div>
-            </div>
-          </form>
-        </div>
-
-          {/* Side Panel */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {/* Side Panel (Secondary - span 4) - Sticky */}
+          <div className="lg:col-span-4 flex flex-col gap-5 lg:sticky lg:top-6 lg:self-start">
             {/* Preview Card */}
-            <div style={{
-              backgroundColor: "#FFFFFF",
-              borderRadius: "16px",
-              padding: "16px 18px",
-              boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
-            }}>
-              <h3 style={{
-                fontSize: "15px",
-                fontWeight: 600,
-                color: "#111827",
-                marginBottom: "8px",
-                lineHeight: 1.35
-              }}>
-                Previsualizar curso
+            <div className="bg-white rounded-2xl p-4 shadow-card">
+              <h3 className="text-[15px] font-semibold text-brand-primary mb-2">
+                Vista previa del curso
               </h3>
-              <p style={{
-                fontSize: "12px",
-                color: "#9CA3AF",
-                marginBottom: "12px",
-                lineHeight: 1.45
-              }}>
-                Ver cómo otros verán tu curso
+              <p className="text-xs text-slate-400 mb-3 leading-relaxed">
+                Mira cómo verán tu curso los demás.
               </p>
-          <button
-            type="button"
-            style={{
-                  width: "100%",
-                  height: "36px",
-                  backgroundColor: "transparent",
-                  border: "1px solid rgba(15, 23, 42, 0.18)",
-                  borderRadius: "999px",
-                  color: "#111827",
-                  fontSize: "14px",
-              fontWeight: 500,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-                  gap: "8px"
-            }}
-          >
-            <IconEye size={18} />
-                Previsualizar
-          </button>
+              <button
+                type="button"
+                disabled={!currentCourseId}
+                className="w-full h-9 flex items-center justify-center gap-2 border border-slate-300 rounded-full text-brand-primary text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Eye size={18} />
+                Vista previa
+              </button>
             </div>
 
             {/* Status Card */}
-          <div style={{
-            backgroundColor: "#FFFFFF",
-            borderRadius: "16px",
-              padding: "16px 18px",
-              boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
-          }}>
-            <h3 style={{
-                fontSize: "15px",
-                fontWeight: 600,
-                color: "#111827",
-              marginBottom: "16px",
-                lineHeight: 1.35
-            }}>
+            <div className="bg-white rounded-2xl p-4 shadow-card">
+              <h3 className="text-[15px] font-semibold text-brand-primary mb-4">
                 Estado del curso
-            </h3>
-            
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              </h3>
+              
+              <div className="flex flex-col gap-4">
                 <div>
-              <label style={{
-                    fontSize: "12px",
-                color: "#9CA3AF",
-                marginBottom: "6px",
-                display: "block"
-              }}>
-                    Estado del producto
-                      </label>
-                      <select
-                value={isPublished}
-                onChange={(e) => setIsPublished(e.target.value)}
-                style={{
-                  width: "100%",
-                      height: "40px",
-                      padding: "0 12px",
-                      fontSize: "14px",
-                      border: "1px solid rgba(15, 23, 42, 0.10)",
-                  borderRadius: "10px",
-                  backgroundColor: "#FFFFFF",
-                      cursor: "pointer",
-                      fontFamily: "inherit"
-                    }}
+                  <label className="text-xs text-slate-400 mb-1.5 block">
+                    Estado de publicación
+                  </label>
+                  <select
+                    value={isPublished}
+                    onChange={(e) => setIsPublished(e.target.value)}
+                    className="w-full h-10 px-3 text-sm border border-slate-200 rounded-lg bg-white cursor-pointer focus:ring-2 focus:ring-purple-400 focus:border-transparent"
                   >
                     {PUBLISH_STATUSES.map(status => (
                       <option key={status}>{status}</option>
                     ))}
-                      </select>
-                    </div>
-
-            <label style={{
-              display: "flex",
-              alignItems: "center",
-                  gap: "12px",
-              cursor: "pointer",
-                  fontSize: "14px",
-              color: "#4B5563"
-            }}>
-              <input
-                type="checkbox"
-                checked={isHidden}
-                onChange={(e) => setIsHidden(e.target.checked)}
-                    style={{ 
-                      cursor: "pointer",
-                      width: "20px",
-                      height: "20px",
-                      accentColor: "#1A2170"
-                    }}
-                  />
-                  Ocultar este curso
-                  </label>
-              </div>
+                  </select>
                 </div>
 
+                <label className="flex items-center gap-3 cursor-pointer text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={isHidden}
+                    onChange={(e) => setIsHidden(e.target.checked)}
+                    className="w-5 h-5 cursor-pointer accent-[#A855F7] rounded"
+                  />
+                  Ocultar este curso
+                </label>
+              </div>
+            </div>
+
             {/* Level Card */}
-          <div style={{
-            backgroundColor: "#FFFFFF",
-            borderRadius: "16px",
-              padding: "16px 18px",
-              boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
-          }}>
-            <h3 style={{
-                fontSize: "15px",
-                fontWeight: 600,
-                color: "#111827",
-              marginBottom: "16px",
-                lineHeight: 1.35
-            }}>
+            <div className="bg-white rounded-2xl p-4 shadow-card">
+              <h3 className="text-[15px] font-semibold text-brand-primary mb-4">
                 Nivel del curso
-            </h3>
-            
-            <div>
-              <label style={{
-                  fontSize: "12px",
-                color: "#9CA3AF",
-                marginBottom: "6px",
-                display: "block"
-              }}>
+              </h3>
+              
+              <div>
+                <label className="text-xs text-slate-400 mb-1.5 block">
                   Nivel
-                      </label>
-              <select
-                value={courseLevel}
-                onChange={(e) => setCourseLevel(e.target.value)}
-                style={{
-                  width: "100%",
-                    height: "40px",
-                    padding: "0 12px",
-                    fontSize: "14px",
-                    border: "1px solid rgba(15, 23, 42, 0.10)",
-                  borderRadius: "10px",
-                  backgroundColor: "#FFFFFF",
-                    cursor: "pointer",
-                    fontFamily: "inherit"
-                  }}
+                </label>
+                <select
+                  value={courseLevel}
+                  onChange={(e) => setCourseLevel(e.target.value)}
+                  className="w-full h-10 px-3 text-sm border border-slate-200 rounded-lg bg-white cursor-pointer focus:ring-2 focus:ring-purple-400 focus:border-transparent"
                 >
                   {COURSE_LEVELS.map(level => (
                     <option key={level}>{level}</option>
                   ))}
-              </select>
-                    </div>
-          </div>
+                </select>
+              </div>
+            </div>
 
             {/* Organisations Card */}
-          <div style={{
-            backgroundColor: "#FFFFFF",
-            borderRadius: "16px",
-              padding: "16px 18px",
-              boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
-          }}>
-            <h3 style={{
-                fontSize: "15px",
-                fontWeight: 600,
-                color: "#111827",
-              marginBottom: "16px",
-                lineHeight: 1.35
-            }}>
-                Organizaciones
-            </h3>
-            
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div className="bg-white rounded-2xl p-4 shadow-card">
+              <h3 className="text-[15px] font-semibold text-brand-primary mb-4">
+                Organización
+              </h3>
+              
+              <div className="flex flex-col gap-4">
                 <div>
-              <label style={{
-                    fontSize: "12px",
-                color: "#9CA3AF",
-                marginBottom: "6px",
-                display: "block"
-              }}>
+                  <label className="text-xs text-slate-400 mb-1.5 block">
                     Universidad
-                      </label>
-                      <select
-                value={university}
-                onChange={(e) => setUniversity(e.target.value)}
-                style={{
-                  width: "100%",
-                      height: "40px",
-                      padding: "0 12px",
-                      fontSize: "14px",
-                      border: "1px solid rgba(15, 23, 42, 0.10)",
-                  borderRadius: "10px",
-                  backgroundColor: "#FFFFFF",
-                      cursor: "pointer",
-                      fontFamily: "inherit"
-                }}
-              >
-                {UNIVERSITIES.map(uni => (
-                  <option key={uni}>{uni}</option>
-                        ))}
-                      </select>
-                    </div>
+                  </label>
+                  <select
+                    value={university}
+                    onChange={(e) => setUniversity(e.target.value)}
+                    className="w-full h-10 px-3 text-sm border border-slate-200 rounded-lg bg-white cursor-pointer focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                  >
+                    {UNIVERSITIES.map(uni => (
+                      <option key={uni}>{uni}</option>
+                    ))}
+                  </select>
+                </div>
 
-            <div>
-              <label style={{
-                    fontSize: "12px",
-                color: "#9CA3AF",
-                marginBottom: "6px",
-                display: "block"
-              }}>
+                <div>
+                  <label className="text-xs text-slate-400 mb-1.5 block">
                     Especialización
-                      </label>
-                      <select
-                value={specialization}
-                onChange={(e) => setSpecialization(e.target.value)}
-                style={{
-                  width: "100%",
-                      height: "40px",
-                      padding: "0 12px",
-                      fontSize: "14px",
-                      border: "1px solid rgba(15, 23, 42, 0.10)",
-                  borderRadius: "10px",
-                  backgroundColor: "#FFFFFF",
-                      cursor: "pointer",
-                      fontFamily: "inherit"
-                }}
-              >
-                {SPECIALIZATIONS.map(spec => (
-                  <option key={spec}>{spec}</option>
-                ))}
-                      </select>
+                  </label>
+                  <select
+                    value={specialization}
+                    onChange={(e) => setSpecialization(e.target.value)}
+                    className="w-full h-10 px-3 text-sm border border-slate-200 rounded-lg bg-white cursor-pointer focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                  >
+                    {SPECIALIZATIONS.map(spec => (
+                      <option key={spec}>{spec}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Tags Input */}
+                <div>
+                  <label className="text-xs text-slate-400 mb-2 block">
+                    Etiquetas del curso <span className="text-slate-300">(hasta 10)</span>
+                  </label>
+                  
+                  {/* Selected Tags */}
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {selectedTags.map(tag => (
+                      <span
+                        key={tag}
+                        className="bg-black text-white px-2.5 py-1 rounded-full text-xs flex items-center gap-2"
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => removeTag(tag)}
+                          className="hover:text-red-300 transition-colors"
+                        >
+                          <X size={14} />
+                        </button>
+                      </span>
+                    ))}
                   </div>
 
-                {/* Tags */}
-                <div>
-                  <label style={{
-              fontSize: "12px",
-                    color: "#9CA3AF",
-                    marginBottom: "8px",
-                    display: "block"
-                  }}>
-                    Etiquetas del curso (hasta 10)
-                  </label>
-            
-            <div style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "8px",
-              marginBottom: "12px"
-            }}>
-              {selectedTags.map(tag => (
-                <span
-                  key={tag}
-                  style={{
-                          backgroundColor: "#000000",
-                          color: "#F9FAFB",
-                          padding: "4px 10px",
-                    borderRadius: "999px",
-                          fontSize: "12px",
-                    display: "flex",
-                    alignItems: "center",
-                          gap: "8px"
-                  }}
-                >
-                  {tag}
-                  <button
-                    type="button"
-                    onClick={() => removeTag(tag)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                            color: "#F9FAFB",
-                      cursor: "pointer",
-                      padding: 0,
-                      display: "flex",
-                            alignItems: "center",
-                            fontSize: "14px"
-                    }}
-                  >
-                    <IconX size={14} />
-                  </button>
-                    </span>
-              ))}
-              </div>
-
-            <div style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "6px"
-            }}>
-              {AVAILABLE_TAGS.filter(tag => !selectedTags.includes(tag)).map(tag => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => addTag(tag)}
-                  disabled={selectedTags.length >= 10}
-                  style={{
-                    backgroundColor: "#F3F4F6",
-                    border: "none",
-                    color: "#4B5563",
-                    padding: "6px 12px",
-                    borderRadius: "999px",
-                          fontSize: "12px",
-                    cursor: selectedTags.length >= 10 ? "not-allowed" : "pointer",
-                    opacity: selectedTags.length >= 10 ? 0.5 : 1
-                  }}
-                >
-                  + {tag}
-                </button>
-              ))}
+                  {/* Available Tags */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {AVAILABLE_TAGS.filter(tag => !selectedTags.includes(tag)).map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => addTag(tag)}
+                        disabled={selectedTags.length >= 10}
+                        className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-slate-600 px-3 py-1.5 rounded-full text-xs transition-colors"
+                      >
+                        + {tag}
+                      </button>
+                    ))}
                   </div>
                 </div>
-            </div>
+              </div>
             </div>
 
             {/* Pricing Card */}
-          <div style={{
-            backgroundColor: "#FFFFFF",
-            borderRadius: "16px",
-              padding: "16px 18px",
-              boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)"
-          }}>
-            <h3 style={{
-                fontSize: "15px",
-                fontWeight: 600,
-                color: "#111827",
-              marginBottom: "16px",
-                lineHeight: 1.35
-            }}>
+            <div className="bg-white rounded-2xl p-4 shadow-card">
+              <h3 className="text-[15px] font-semibold text-brand-primary mb-4">
                 Precios
-            </h3>
-            
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              </h3>
+              
+              <div className="flex flex-col gap-4">
+                {/* Price Field */}
                 <div>
-              <label style={{
-                    fontSize: "12px",
-                color: "#9CA3AF",
-                marginBottom: "6px",
-                display: "block"
-              }}>
+                  <label className="text-xs text-slate-400 mb-1.5 block">
                     Precio
-              </label>
-              <div style={{ position: "relative" }}>
-                <span style={{
-                  position: "absolute",
-                  left: "12px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                      fontSize: "14px",
-                  color: "#4B5563"
-                }}>
-                  $
-                </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  style={{
-                    width: "100%",
-                        height: "40px",
-                        padding: "0 12px 0 24px",
-                        fontSize: "14px",
-                        border: "1px solid rgba(15, 23, 42, 0.10)",
-                    borderRadius: "10px",
-                        outline: "none",
-                        textAlign: "right",
-                        fontFamily: "inherit"
-                  }}
-                />
-                <span style={{
-                  position: "absolute",
-                  right: "12px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  fontSize: "11px",
-                  color: "#9CA3AF"
-                }}>
-                  USD
-                </span>
-                </div>
-            </div>
-
-                <div>
-              <label style={{
-                    fontSize: "12px",
-                color: "#9CA3AF",
-                marginBottom: "6px",
-                display: "block"
-              }}>
-                    Monto de descuento
-                      </label>
-              <div style={{ position: "relative" }}>
-                <span style={{
-                  position: "absolute",
-                  left: "12px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                      fontSize: "14px",
-                  color: "#4B5563"
-                }}>
-                  $
-                </span>
-                      <input
-                  type="number"
-                  step="0.01"
-                  value={saleAmount}
-                  readOnly
-                  style={{
-                    width: "100%",
-                        height: "40px",
-                        padding: "0 12px 0 24px",
-                        fontSize: "14px",
-                        border: "1px solid rgba(15, 23, 42, 0.10)",
-                    borderRadius: "10px",
-                        backgroundColor: "#F8FAFF",
-                        outline: "none",
-                        textAlign: "right",
-                        fontFamily: "inherit"
-                  }}
-                />
-                <span style={{
-                  position: "absolute",
-                  right: "12px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  fontSize: "11px",
-                  color: "#9CA3AF"
-                }}>
-                  USD
-                </span>
-                    </div>
-            </div>
-
-                <div>
-              <div style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "8px"
-              }}>
-                <label style={{
-                      fontSize: "12px",
-                  color: "#9CA3AF"
-                }}>
-                      Descuento
-                      </label>
-                <span style={{
-                      fontSize: "14px",
-                  fontWeight: 600,
-                      color: "#1A2170"
-                }}>
-                  {salePercentage}%
-                </span>
-              </div>
-                      <input
-                type="range"
-                min="0"
-                max="100"
-                value={salePercentage}
-                onChange={(e) => setSalePercentage(parseInt(e.target.value))}
-                style={{
-                  width: "100%",
-                      height: "4px",
-                      accentColor: "#1A2170",
-                      cursor: "pointer"
-                }}
-              />
-              <div style={{
-                display: "flex",
-                justifyContent: "space-between",
-                    fontSize: "11px",
-                color: "#9CA3AF",
-                marginTop: "4px"
-              }}>
-                <span>0%</span>
-                <span>100%</span>
-                    </div>
-                  </div>
-
-            <div style={{
-              paddingTop: "16px",
-                  borderTop: "1px solid rgba(15, 23, 42, 0.10)"
-            }}>
-              <div style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center"
-              }}>
-                <span style={{
-                      fontSize: "12px",
-                  color: "#9CA3AF"
-                }}>
-                      Precio final después del descuento
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-600">
+                      $
                     </span>
-                <span style={{
-                  fontSize: "16px",
-                  fontWeight: 600,
-                  color: "#22C55E"
-                }}>
-                  ${finalPrice.toFixed(2)}
-                </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      className="w-full h-10 pl-6 pr-12 text-sm border border-slate-200 rounded-lg outline-none text-right focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
+                      USD
+                    </span>
+                  </div>
                 </div>
-            </div>
 
-                <div style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: "12px",
-                  marginTop: "8px"
-                }}>
-              <button
-                type="button"
+                {/* Sale Amount Field */}
+                <div>
+                  <label className="text-xs text-slate-400 mb-1.5 block">
+                    Monto de descuento
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-600">
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={saleAmount}
+                      readOnly
+                      className="w-full h-10 pl-6 pr-12 text-sm border border-slate-200 rounded-lg bg-slate-50 outline-none text-right"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
+                      USD
+                    </span>
+                  </div>
+                </div>
+
+                {/* Discount Slider */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-xs text-slate-400">
+                      Descuento
+                    </label>
+                    <span className="text-sm font-semibold text-[#A855F7]">
+                      {salePercentage}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={salePercentage}
+                    onChange={(e) => setSalePercentage(parseInt(e.target.value))}
+                    className="w-full h-1 accent-[#A855F7] cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[11px] text-slate-400 mt-1">
+                    <span>0%</span>
+                    <span>100%</span>
+                  </div>
+                </div>
+
+                {/* Final Price */}
+                <div className="pt-4 border-t border-slate-200">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-slate-400">
+                      Precio final con descuento
+                    </span>
+                    <span className="text-base font-semibold text-green-500">
+                      ${finalPrice.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 mt-2">
+                  <button
+                    type="button"
                     onClick={() => {
                       setSalePercentage(0);
                       setSaleAmount("0.00");
                     }}
-              style={{
-                      flex: 1,
-                      height: "36px",
-                      backgroundColor: "#F3F4F6",
-                border: "none",
-                borderRadius: "999px",
-                      color: "#111827",
-                      fontSize: "14px",
-                fontWeight: 500,
-                cursor: "pointer"
-              }}
-            >
-                    Reiniciar descuento
+                    className="flex-1 h-9 bg-slate-100 hover:bg-slate-200 rounded-full text-brand-primary text-sm font-medium transition-colors"
+                  >
+                    Reiniciar
                   </button>
                   <button
                     type="button"
-                    style={{
-                      flex: 1,
-                      height: "36px",
-                      backgroundColor: "#1A2170",
-                      border: "none",
-                      borderRadius: "999px",
-                      color: "#FFFFFF",
-                      fontSize: "14px",
-                      fontWeight: 500,
-                      cursor: "pointer"
-                    }}
+                    className="flex-1 h-9 bg-[#A855F7] hover:bg-[#9333EA] rounded-full text-white text-sm font-medium transition-colors"
                   >
                     Aplicar
-              </button>
+                  </button>
+                </div>
+              </div>
             </div>
-        </div>
-      </div>
           </div>
         </div>
       </div>

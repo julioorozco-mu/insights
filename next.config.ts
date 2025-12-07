@@ -23,7 +23,6 @@ const nextConfig: NextConfig = {
     // your project has type errors.
     ignoreBuildErrors: true,
   },
-  // Turbopack config para Next.js 16
   turbopack: {
     resolveAlias: {
       // Alias para xlsx en el cliente

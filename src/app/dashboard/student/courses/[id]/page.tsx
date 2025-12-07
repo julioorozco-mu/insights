@@ -978,7 +978,7 @@ export default function StudentCoursePage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       {speakers.map((speaker, idx) => (
                         <span 
-                          key={speaker.id} 
+                          key={speaker.id || idx} 
                           className="text-sm font-medium"
                           style={{ color: COLORS.text.primary }}
                         >
@@ -1232,12 +1232,15 @@ export default function StudentCoursePage() {
                               const hasAttachment = blockTypes.includes('attachment');
                               
                               return (
-                                <div 
-                                  key={subsection.id}
-                                  className="flex items-center gap-3 p-3 rounded-xl transition-all duration-200"
+                                <Link
+                                  href={`/student/courses/${params.id}/learn/lecture/${subsection.id}`}
+                                  key={`${lesson.id}-${subsection.id || subIdx}`}
+                                  className="flex items-center gap-3 p-3 rounded-xl transition-all duration-200 hover:opacity-80"
                                   style={{ 
                                     backgroundColor: isSubCompleted ? '#D1FAE5' : '#F9FAFB',
                                     border: `1px solid ${COLORS.accent.border}`,
+                                    display: 'flex',
+                                    cursor: 'pointer'
                                   }}
                                 >
                                   {/* Icono de estado */}
@@ -1274,7 +1277,7 @@ export default function StudentCoursePage() {
                                       <IconPaperclip size={16} style={{ color: COLORS.text.muted }} />
                                     )}
                                   </div>
-                                </div>
+                                </Link>
                               );
                             })}
                           </div>
@@ -1911,9 +1914,9 @@ export default function StudentCoursePage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {currentLessonResources.map((resource) => (
+                      {currentLessonResources.map((resource, idx) => (
                   <div 
-                    key={resource.id} 
+                          key={resource.id || idx} 
                     className="p-4 rounded-xl"
                     style={{ backgroundColor: '#F9FAFB' }}
                   >

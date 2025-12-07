@@ -11,6 +11,7 @@ interface CourseCardProps {
   rating: number;
   mentor: string;
   thumbnail: string;
+  priority?: boolean;
 }
 
 const levelStyles = {
@@ -25,7 +26,15 @@ export function CourseCard(props: CourseCardProps) {
   return (
     <article className="rounded-3xl bg-white p-4 shadow-card-soft transition hover:-translate-y-1 hover:shadow-card">
       <div className="relative mb-4 overflow-hidden rounded-2xl">
-        <Image src={props.thumbnail} alt={props.title} width={400} height={220} className="h-40 w-full object-cover" />
+        <Image
+          src={props.thumbnail}
+          alt={props.title}
+          width={400}
+          height={220}
+          className="h-40 w-full object-cover"
+          priority={props.priority}
+          loading={props.priority ? "eager" : undefined}
+        />
         <div className="absolute inset-x-4 top-4 flex items-center justify-between">
           <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", levelClass)}>{props.level}</span>
           <button className="rounded-2xl bg-white/90 p-2 shadow-card-soft">
