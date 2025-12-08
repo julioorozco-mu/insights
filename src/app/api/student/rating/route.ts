@@ -18,43 +18,60 @@ export async function GET(request: NextRequest) {
     const courseId = searchParams.get("courseId");
     const userId = searchParams.get("userId");
 
-    if (!courseId || !userId) {
+    if (!courseId) {
       return NextResponse.json(
-        { error: "courseId and userId are required" },
+        { error: "courseId is required" },
         { status: 400 }
       );
     }
 
-    // Fetch the user's review for this course
-    const { data: review, error } = await supabase
-      .from("course_reviews")
-      .select("id, course_id, student_id, rating, comment, created_at, updated_at")
-      .eq("course_id", courseId)
-      .eq("student_id", userId)
-      .maybeSingle();
+    // Si userId es "stats-only" o no es un UUID válido, solo devolver estadísticas del curso
+    const isStatsOnly = !userId || userId === "stats-only" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
 
-    if (error) {
-      console.error("[GET /api/student/rating] Error:", error);
-      return NextResponse.json(
-        { error: "Error fetching review" },
-        { status: 500 }
-      );
+    let review = null;
+
+    // Solo buscar la reseña del usuario si tenemos un userId válido
+    if (!isStatsOnly) {
+      const { data: reviewData, error } = await supabase
+        .from("course_reviews")
+        .select("id, course_id, student_id, rating, comment, created_at, updated_at")
+        .eq("course_id", courseId)
+        .eq("student_id", userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("[GET /api/student/rating] Error:", error);
+        // No retornar error 500, continuar con las estadísticas
+      } else {
+        review = reviewData;
+      }
     }
 
-    // Also fetch course rating stats
-    const { data: courseStats, error: statsError } = await supabase
-      .from("courses")
-      .select("average_rating, reviews_count")
-      .eq("id", courseId)
-      .single();
+    // Calcular estadísticas del curso desde course_reviews
+    const { data: reviews, error: statsError } = await supabase
+      .from("course_reviews")
+      .select("rating")
+      .eq("course_id", courseId);
 
     if (statsError) {
       console.error("[GET /api/student/rating] Stats error:", statsError);
     }
 
+    // Calcular promedio y conteo
+    const reviewsCount = reviews?.length || 0;
+    let averageRating = 0;
+    
+    if (reviewsCount > 0) {
+      const sum = reviews!.reduce((acc, r) => acc + (r.rating || 0), 0);
+      averageRating = sum / reviewsCount;
+    }
+
     return NextResponse.json({
       review: review || null,
-      courseStats: courseStats || { average_rating: 0, reviews_count: 0 },
+      courseStats: { 
+        average_rating: Math.round(averageRating * 10) / 10, // Redondear a 1 decimal
+        reviews_count: reviewsCount 
+      },
     });
   } catch (error) {
     console.error("[GET /api/student/rating] Unexpected error:", error);
@@ -125,17 +142,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch updated course stats (trigger should have updated them)
-    const { data: courseStats } = await supabase
-      .from("courses")
-      .select("average_rating, reviews_count")
-      .eq("id", courseId)
-      .single();
+    // Calcular estadísticas actualizadas desde course_reviews
+    const { data: allReviews } = await supabase
+      .from("course_reviews")
+      .select("rating")
+      .eq("course_id", courseId);
+
+    const reviewsCount = allReviews?.length || 0;
+    let averageRating = 0;
+    
+    if (reviewsCount > 0) {
+      const sum = allReviews!.reduce((acc, r) => acc + (r.rating || 0), 0);
+      averageRating = sum / reviewsCount;
+    }
 
     return NextResponse.json({
       success: true,
       review,
-      courseStats: courseStats || { average_rating: 0, reviews_count: 0 },
+      courseStats: { 
+        average_rating: Math.round(averageRating * 10) / 10,
+        reviews_count: reviewsCount 
+      },
     });
   } catch (error) {
     console.error("[POST /api/student/rating] Unexpected error:", error);
@@ -179,16 +206,26 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Fetch updated course stats
-    const { data: courseStats } = await supabase
-      .from("courses")
-      .select("average_rating, reviews_count")
-      .eq("id", courseId)
-      .single();
+    // Calcular estadísticas actualizadas desde course_reviews
+    const { data: allReviews } = await supabase
+      .from("course_reviews")
+      .select("rating")
+      .eq("course_id", courseId);
+
+    const reviewsCount = allReviews?.length || 0;
+    let averageRating = 0;
+    
+    if (reviewsCount > 0) {
+      const sum = allReviews!.reduce((acc, r) => acc + (r.rating || 0), 0);
+      averageRating = sum / reviewsCount;
+    }
 
     return NextResponse.json({
       success: true,
-      courseStats: courseStats || { average_rating: 0, reviews_count: 0 },
+      courseStats: { 
+        average_rating: Math.round(averageRating * 10) / 10,
+        reviews_count: reviewsCount 
+      },
     });
   } catch (error) {
     console.error("[DELETE /api/student/rating] Unexpected error:", error);

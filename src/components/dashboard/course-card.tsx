@@ -3,25 +3,26 @@ import { Bookmark, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface CourseCardProps {
-  level: "Beginner" | "Intermediate" | "Advanced";
+  level: "Principiante" | "Intermedio" | "Avanzado";
   title: string;
   description: string;
   students: number;
   lessons: number;
   rating: number;
+  reviewsCount?: number;
   mentor: string;
   thumbnail: string;
   priority?: boolean;
 }
 
-const levelStyles = {
-  Beginner: "bg-emerald-100 text-emerald-700",
-  Intermediate: "bg-amber-100 text-amber-700",
-  Advanced: "bg-rose-100 text-rose-700",
+const levelStyles: Record<string, string> = {
+  Principiante: "bg-emerald-100 text-emerald-700",
+  Intermedio: "bg-amber-100 text-amber-700",
+  Avanzado: "bg-rose-100 text-rose-700",
 };
 
 export function CourseCard(props: CourseCardProps) {
-  const levelClass = levelStyles[props.level];
+  const levelClass = levelStyles[props.level] || "bg-slate-100 text-slate-700";
 
   return (
     <article className="rounded-3xl bg-white p-4 shadow-card-soft transition hover:-translate-y-1 hover:shadow-card">
@@ -52,14 +53,21 @@ export function CourseCard(props: CourseCardProps) {
             <span className="h-2 w-2 rounded-full bg-brand-secondary" /> {props.lessons} lecciones
           </span>
         </div>
-        <h3 className="text-lg font-semibold text-slate-900">{props.title}</h3>
-        <p className="text-sm text-slate-500">{props.description}</p>
+        <h3 className="text-lg font-semibold text-slate-900 line-clamp-2">{props.title}</h3>
+        <p className="text-sm text-slate-500 line-clamp-2">{props.description}</p>
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span className="text-brand-primary font-semibold">{props.mentor}</span>
-          <span className="flex items-center gap-1">
-            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-            <span className="font-semibold text-slate-900">{props.rating.toFixed(1)}</span>
-          </span>
+          {props.rating > 0 ? (
+            <span className="flex items-center gap-1">
+              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+              <span className="font-semibold text-slate-900">{props.rating.toFixed(1)}</span>
+              {props.reviewsCount !== undefined && props.reviewsCount > 0 && (
+                <span className="text-slate-400">({props.reviewsCount})</span>
+              )}
+            </span>
+          ) : (
+            <span className="text-xs text-slate-400 italic">Sin calificaciones</span>
+          )}
         </div>
       </div>
     </article>

@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { courseRepository } from "@/lib/repositories/courseRepository";
 import { lessonRepository } from "@/lib/repositories/lessonRepository";
 import { Loader } from "@/components/common/Loader";
-import { IconBook, IconPlayerPlay, IconClock, IconUsers } from "@tabler/icons-react";
+import { IconBook, IconPlayerPlay, IconClock, IconUsers, IconStar, IconStarFilled } from "@tabler/icons-react";
 
 // Función para extraer texto plano de HTML (para previews)
 function stripHtml(html: string): string {
@@ -39,10 +39,66 @@ interface Enrollment {
   enrolledAt: any;
 }
 
+interface CourseRating {
+  averageRating: number;
+  reviewsCount: number;
+}
+
 export default function EnrolledCoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
+  const [courseRatings, setCourseRatings] = useState<Map<string, CourseRating>>(new Map());
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+
+  // Función para obtener el rating de un curso
+  const fetchCourseRating = async (courseId: string): Promise<CourseRating> => {
+    try {
+      const response = await fetch(`/api/student/rating?courseId=${courseId}`);
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          averageRating: data.courseStats?.average_rating || 0,
+          reviewsCount: data.courseStats?.reviews_count || 0,
+        };
+      }
+    } catch (error) {
+      console.error(`Error fetching rating for course ${courseId}:`, error);
+    }
+    return { averageRating: 0, reviewsCount: 0 };
+  };
+
+  // Función para renderizar las estrellas
+  const renderStars = (rating: number) => {
+    const stars = [];
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 >= 0.5;
+
+    for (let i = 0; i < 5; i++) {
+      if (i < fullStars) {
+        stars.push(
+          <IconStarFilled key={i} size={14} className="text-yellow-500" />
+        );
+      } else if (i === fullStars && hasHalfStar) {
+        stars.push(
+          <div key={i} className="relative">
+            <IconStar size={14} className="text-yellow-500" />
+            <div className="absolute inset-0 overflow-hidden w-1/2">
+              <IconStarFilled size={14} className="text-yellow-500" />
+            </div>
+          </div>
+        );
+      } else {
+        stars.push(
+          <IconStar key={i} size={14} className="text-yellow-500" />
+        );
+      }
+    }
+    return stars;
+  };
+
+  const getCourseRating = (courseId: string): CourseRating => {
+    return courseRatings.get(courseId) || { averageRating: 0, reviewsCount: 0 };
+  };
 
   useEffect(() => {
     const loadEnrolledCourses = async () => {
@@ -91,6 +147,16 @@ export default function EnrolledCoursesPage() {
         );
 
         setCourses(coursesData);
+
+        // Cargar ratings de todos los cursos
+        const ratingsMap = new Map<string, CourseRating>();
+        await Promise.all(
+          coursesData.map(async (course) => {
+            const rating = await fetchCourseRating(course.id);
+            ratingsMap.set(course.id, rating);
+          })
+        );
+        setCourseRatings(ratingsMap);
       } catch (error) {
         console.error("Error loading enrolled courses:", error);
       } finally {
@@ -153,6 +219,25 @@ export default function EnrolledCoursesPage() {
                     {stripHtml(course.description)}
                   </p>
                 )}
+                
+                {/* Rating del curso */}
+                {(() => {
+                  const rating = getCourseRating(course.id);
+                  return (
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex items-center gap-0.5">
+                        {renderStars(rating.averageRating)}
+                      </div>
+                      <span className="text-sm font-medium">
+                        {rating.averageRating > 0 ? rating.averageRating.toFixed(1) : '—'}
+                      </span>
+                      <span className="text-xs text-base-content/60">
+                        ({rating.reviewsCount} {rating.reviewsCount === 1 ? 'reseña' : 'reseñas'})
+                      </span>
+                    </div>
+                  );
+                })()}
+
                 <div className="flex items-center gap-2 text-sm text-base-content/60 mt-2">
                   {course.speakerName && (
                     <div className="flex items-center gap-1">
