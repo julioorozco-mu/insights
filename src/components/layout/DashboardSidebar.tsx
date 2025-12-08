@@ -22,6 +22,8 @@ import {
   Award,
   TrendingUp,
   ClipboardCheck,
+  ClipboardList,
+  FileCheck,
   PlusCircle,
   FileText,
   Bookmark,
@@ -109,7 +111,8 @@ const teacherMenuConfig: RoleMenuConfig = {
       items: [
         { path: "/dashboard/my-courses", label: "Mis Cursos", icon: BookOpen, indent: true },
         { path: "/dashboard/calendar", label: "Calendario", icon: CalendarDays, indent: true },
-        { path: "/dashboard/surveys", label: "Evaluaciones", icon: ClipboardCheck, indent: true },
+        { path: "/dashboard/surveys", label: "Cuestionarios", icon: ClipboardList, indent: true },
+        { path: "/dashboard/tests", label: "Evaluaciones", icon: FileCheck, indent: true },
         { path: "/dashboard/reports", label: "Reportes", icon: BarChart3, indent: true },
         { path: "/dashboard/courses/new", label: "Crear / Editar", icon: PlusCircle, indent: true },
         { path: "/dashboard/my-resources", label: "Mis Recursos", icon: FolderOpen, indent: true },
@@ -157,7 +160,8 @@ const adminMenuConfig: RoleMenuConfig = {
     },
     {
       items: [
-        { path: "/dashboard/surveys", label: "Evaluaciones", icon: ClipboardCheck },
+        { path: "/dashboard/surveys", label: "Cuestionarios", icon: ClipboardList },
+        { path: "/dashboard/tests", label: "Evaluaciones", icon: FileCheck },
         { path: "/dashboard/reports", label: "Reportes", icon: BarChart3 },
         { path: "/dashboard/payments", label: "Pagos", icon: CreditCard },
         { path: "/dashboard/logs", label: "Logs del Sistema", icon: FileText },
