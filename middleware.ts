@@ -12,7 +12,7 @@
  * - Rutas no existentes: Redirige a /dashboard si está logueado, a /auth/login si no
  */
 
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 // Rutas que requieren autenticación (rutas privadas)
@@ -59,37 +59,34 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value;
+        getAll() {
+          return request.cookies.getAll();
         },
-        set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({ name, value, ...options });
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({
-            request: { headers: request.headers },
+            request,
           });
-          response.cookies.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieOptions) {
-          request.cookies.set({ name, value: '', ...options });
-          response = NextResponse.next({
-            request: { headers: request.headers },
-          });
-          response.cookies.set({ name, value: '', ...options });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
         },
       },
     }
   );
 
-  // Obtener sesión actual - usar getUser para validación más robusta
-  // getSession() solo lee de la cookie local, getUser() valida con el servidor
-  const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
+  // Obtener sesión actual
+  // IMPORTANTE: Usar getSession() primero para refrescar tokens si es necesario
+  // Esto es crítico para que las cookies se sincronicen correctamente
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
   
-  // Log para debugging (remover en producción)
-  if (userError && userError.message !== 'Auth session missing!') {
-    console.warn('[Middleware] Error obteniendo usuario:', userError.message);
+  // Log para debugging
+  if (sessionError) {
+    console.warn('[Middleware] Error obteniendo sesión:', sessionError.message);
   }
 
-  const isAuthenticated = !!authUser;
+  const authUser = session?.user ?? null;
+  const isAuthenticated = !!session;
   const isProtectedRoute = matchesRoute(pathname, PROTECTED_ROUTES);
   const isAuthOnlyRoute = matchesRoute(pathname, AUTH_ONLY_ROUTES);
   const isPublicRoute = matchesRoute(pathname, PUBLIC_ROUTES);
