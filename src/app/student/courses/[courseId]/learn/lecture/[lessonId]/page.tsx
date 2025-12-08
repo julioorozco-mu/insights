@@ -14,6 +14,7 @@ import {
   IconShare,
   IconDotsVertical,
   IconStar,
+  IconStarFilled,
   IconMessageCircle,
   IconNote,
   IconVideo,
@@ -26,6 +27,9 @@ import {
   IconThumbUp,
   IconLoader2,
   IconPaperclip,
+  IconHeart,
+  IconHeartFilled,
+  IconGift,
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -470,6 +474,14 @@ export default function LessonPlayerPage() {
   const [userRating, setUserRating] = useState<number | null>(null);
   const [loadingRating, setLoadingRating] = useState(false);
   
+  // More options dropdown state
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
+  const moreOptionsRef = useRef<HTMLDivElement>(null);
+  
+  // Favorite state
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [loadingFavorite, setLoadingFavorite] = useState(false);
+  
   // Subsection State (para navegación dentro de una lección)
   // Inicializa con el valor del query parameter si existe
   const [activeSubsectionIndex, setActiveSubsectionIndex] = useState(initialSubsectionIndex);
@@ -754,6 +766,44 @@ export default function LessonPlayerPage() {
     fetchUserRating();
   }, [user, courseId]);
 
+  // Fetch favorite status
+  useEffect(() => {
+    const fetchFavoriteStatus = async () => {
+      if (!user || !courseId) return;
+      
+      try {
+        const response = await fetch(
+          `/api/student/favorites?courseId=${courseId}&userId=${user.id}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setIsFavorite(data.isFavorite);
+        }
+      } catch (error) {
+        console.error('[fetchFavoriteStatus] Error:', error);
+      }
+    };
+
+    fetchFavoriteStatus();
+  }, [user, courseId]);
+
+  // Close more options dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (moreOptionsRef.current && !moreOptionsRef.current.contains(event.target as Node)) {
+        setMoreOptionsOpen(false);
+      }
+    };
+
+    if (moreOptionsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [moreOptionsOpen]);
+
   // Fetch resources when lesson changes
   useEffect(() => {
     const fetchResources = async () => {
@@ -926,6 +976,40 @@ export default function LessonPlayerPage() {
       }
     } catch (error) {
       console.error("Error deleting note:", error);
+    }
+  };
+
+  // Favorite Handler
+  const handleToggleFavorite = async () => {
+    if (!user || !courseId || loadingFavorite) return;
+    
+    setLoadingFavorite(true);
+    try {
+      if (isFavorite) {
+        // Remove from favorites
+        const response = await fetch(
+          `/api/student/favorites?courseId=${courseId}&userId=${user.id}`,
+          { method: 'DELETE' }
+        );
+        if (response.ok) {
+          setIsFavorite(false);
+        }
+      } else {
+        // Add to favorites
+        const response = await fetch('/api/student/favorites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ courseId, userId: user.id }),
+        });
+        if (response.ok) {
+          setIsFavorite(true);
+        }
+      }
+    } catch (error) {
+      console.error('[handleToggleFavorite] Error:', error);
+    } finally {
+      setLoadingFavorite(false);
+      setMoreOptionsOpen(false);
     }
   };
 
@@ -1160,9 +1244,62 @@ export default function LessonPlayerPage() {
             <IconShare size={18} />
           </button>
           
-          <button className="p-2 rounded hover:bg-white/10 transition-colors">
-            <IconDotsVertical size={18} />
-          </button>
+          {/* More Options Dropdown */}
+          <div className="relative" ref={moreOptionsRef}>
+            <button 
+              onClick={() => setMoreOptionsOpen(!moreOptionsOpen)}
+              className="p-2 rounded hover:bg-white/10 transition-colors"
+            >
+              <IconDotsVertical size={18} />
+            </button>
+            
+            {/* Dropdown Menu */}
+            {moreOptionsOpen && (
+              <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                {/* Arrow */}
+                <div className="absolute -top-2 right-3 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-white"></div>
+                
+                {/* Marcar como favorito */}
+                <button
+                  onClick={handleToggleFavorite}
+                  disabled={loadingFavorite}
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left disabled:opacity-50"
+                >
+                  {loadingFavorite ? (
+                    <IconLoader2 size={20} className="text-purple-500 animate-spin" />
+                  ) : isFavorite ? (
+                    <IconHeartFilled size={20} className="text-red-500" />
+                  ) : (
+                    <IconHeart size={20} className="text-gray-600" />
+                  )}
+                  <span className={cn(
+                    "text-sm font-medium",
+                    isFavorite ? "text-red-600" : "text-gray-700"
+                  )}>
+                    {isFavorite ? "Quitar de favoritos" : "Marcar como favorito"}
+                  </span>
+                </button>
+                
+                {/* Separator */}
+                <div className="my-1 border-t border-gray-100"></div>
+                
+                {/* Regalar esta Microcredencial */}
+                <button
+                  onClick={() => {
+                    setMoreOptionsOpen(false);
+                    // TODO: Implementar funcionalidad de regalo
+                    alert('Próximamente: Podrás regalar esta microcredencial a un amigo.');
+                  }}
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left"
+                >
+                  <IconGift size={20} className="text-purple-500" />
+                  <span className="text-sm font-medium text-gray-700">
+                    Regalar esta Microcredencial
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
