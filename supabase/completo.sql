@@ -360,6 +360,64 @@ $$;
 ALTER FUNCTION "public"."handle_user_role_jwt"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."set_course_review_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    -- Always use server time for updated_at
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."set_course_review_updated_at"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_course_rating_stats"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    target_course_id uuid;
+    new_avg numeric(3,2);
+    new_count integer;
+BEGIN
+    -- Determine which course_id to update
+    IF TG_OP = 'DELETE' THEN
+        target_course_id := OLD.course_id;
+    ELSE
+        target_course_id := NEW.course_id;
+    END IF;
+
+    -- Calculate new stats
+    SELECT 
+        COALESCE(ROUND(AVG(rating)::numeric, 2), 0),
+        COUNT(*)::integer
+    INTO new_avg, new_count
+    FROM "public"."course_reviews"
+    WHERE course_id = target_course_id;
+
+    -- Update the courses table
+    UPDATE "public"."courses"
+    SET 
+        average_rating = new_avg,
+        reviews_count = new_count,
+        updated_at = NOW()
+    WHERE id = target_course_id;
+
+    -- Return appropriate row
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    ELSE
+        RETURN NEW;
+    END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_course_rating_stats"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -466,6 +524,33 @@ COMMENT ON TABLE "public"."course_accreditations" IS 'Registro de acreditaciones
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."course_reviews" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "course_id" "uuid" NOT NULL,
+    "student_id" "uuid" NOT NULL,
+    "rating" integer NOT NULL,
+    "comment" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "course_reviews_rating_check" CHECK ((("rating" >= 1) AND ("rating" <= 5)))
+);
+
+
+ALTER TABLE "public"."course_reviews" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."course_reviews" IS 'Calificaciones y reseñas de cursos por estudiantes';
+
+
+
+COMMENT ON COLUMN "public"."course_reviews"."rating" IS 'Calificación de 1 a 5 estrellas';
+
+
+
+COMMENT ON COLUMN "public"."course_reviews"."comment" IS 'Reseña opcional del estudiante';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."course_sections" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "course_id" "uuid" NOT NULL,
@@ -539,7 +624,9 @@ CREATE TABLE IF NOT EXISTS "public"."courses" (
     "is_published" boolean DEFAULT false,
     "is_hidden" boolean DEFAULT false,
     "university" "text",
-    "specialization" "text"
+    "specialization" "text",
+    "average_rating" numeric(3,2) DEFAULT 0,
+    "reviews_count" integer DEFAULT 0
 );
 
 
@@ -571,6 +658,14 @@ COMMENT ON COLUMN "public"."courses"."university" IS 'Universidad asociada al cu
 
 
 COMMENT ON COLUMN "public"."courses"."specialization" IS 'Especialización o programa del curso';
+
+
+
+COMMENT ON COLUMN "public"."courses"."average_rating" IS 'Promedio de calificaciones cacheado (1.00-5.00)';
+
+
+
+COMMENT ON COLUMN "public"."courses"."reviews_count" IS 'Cantidad total de reseñas cacheado';
 
 
 
@@ -1294,6 +1389,16 @@ ALTER TABLE ONLY "public"."course_accreditations"
 
 
 
+ALTER TABLE ONLY "public"."course_reviews"
+    ADD CONSTRAINT "course_reviews_course_student_unique" UNIQUE ("course_id", "student_id");
+
+
+
+ALTER TABLE ONLY "public"."course_reviews"
+    ADD CONSTRAINT "course_reviews_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."course_sections"
     ADD CONSTRAINT "course_sections_pkey" PRIMARY KEY ("id");
 
@@ -1542,6 +1647,22 @@ CREATE INDEX "idx_course_accreditations_student_id" ON "public"."course_accredit
 
 
 
+CREATE INDEX "idx_course_reviews_course_id" ON "public"."course_reviews" USING "btree" ("course_id");
+
+
+
+CREATE INDEX "idx_course_reviews_created_at" ON "public"."course_reviews" USING "btree" ("created_at" DESC);
+
+
+
+CREATE INDEX "idx_course_reviews_rating" ON "public"."course_reviews" USING "btree" ("rating");
+
+
+
+CREATE INDEX "idx_course_reviews_student_id" ON "public"."course_reviews" USING "btree" ("student_id");
+
+
+
 CREATE INDEX "idx_course_sections_course_id" ON "public"."course_sections" USING "btree" ("course_id");
 
 
@@ -1555,6 +1676,10 @@ CREATE INDEX "idx_course_tests_course_id" ON "public"."course_tests" USING "btre
 
 
 CREATE INDEX "idx_course_tests_test_id" ON "public"."course_tests" USING "btree" ("test_id");
+
+
+
+CREATE INDEX "idx_courses_average_rating" ON "public"."courses" USING "btree" ("average_rating" DESC NULLS LAST);
 
 
 
@@ -1850,6 +1975,14 @@ CREATE OR REPLACE TRIGGER "update_course_accreditations_updated_at" BEFORE UPDAT
 
 
 
+CREATE OR REPLACE TRIGGER "update_course_rating_stats_trigger" AFTER INSERT OR DELETE OR UPDATE ON "public"."course_reviews" FOR EACH ROW EXECUTE FUNCTION "public"."update_course_rating_stats"();
+
+
+
+CREATE OR REPLACE TRIGGER "update_course_reviews_updated_at" BEFORE INSERT OR UPDATE ON "public"."course_reviews" FOR EACH ROW EXECUTE FUNCTION "public"."set_course_review_updated_at"();
+
+
+
 CREATE OR REPLACE TRIGGER "update_course_sections_updated_at" BEFORE UPDATE ON "public"."course_sections" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
 
 
@@ -1983,6 +2116,16 @@ ALTER TABLE ONLY "public"."course_accreditations"
 
 ALTER TABLE ONLY "public"."course_accreditations"
     ADD CONSTRAINT "course_accreditations_test_attempt_id_fkey" FOREIGN KEY ("test_attempt_id") REFERENCES "public"."test_attempts"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."course_reviews"
+    ADD CONSTRAINT "course_reviews_course_id_fkey" FOREIGN KEY ("course_id") REFERENCES "public"."courses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."course_reviews"
+    ADD CONSTRAINT "course_reviews_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
 
 
 
@@ -2492,6 +2635,27 @@ CREATE POLICY "course_accreditations_student_own" ON "public"."course_accreditat
 
 
 
+ALTER TABLE "public"."course_reviews" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "course_reviews_delete_own_or_admin" ON "public"."course_reviews" FOR DELETE USING ((("auth"."uid"() = "student_id") OR (EXISTS ( SELECT 1
+   FROM "public"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role"])))))));
+
+
+
+CREATE POLICY "course_reviews_insert_own" ON "public"."course_reviews" FOR INSERT WITH CHECK (("auth"."uid"() = "student_id"));
+
+
+
+CREATE POLICY "course_reviews_select_public" ON "public"."course_reviews" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "course_reviews_update_own" ON "public"."course_reviews" FOR UPDATE USING (("auth"."uid"() = "student_id")) WITH CHECK (("auth"."uid"() = "student_id"));
+
+
+
 ALTER TABLE "public"."course_sections" ENABLE ROW LEVEL SECURITY;
 
 
@@ -2992,6 +3156,18 @@ GRANT ALL ON FUNCTION "public"."handle_user_role_jwt"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."set_course_review_updated_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."set_course_review_updated_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_course_review_updated_at"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_course_rating_stats"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_course_rating_stats"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_course_rating_stats"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
@@ -3034,6 +3210,12 @@ GRANT ALL ON TABLE "public"."certificates" TO "service_role";
 GRANT ALL ON TABLE "public"."course_accreditations" TO "anon";
 GRANT ALL ON TABLE "public"."course_accreditations" TO "authenticated";
 GRANT ALL ON TABLE "public"."course_accreditations" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."course_reviews" TO "anon";
+GRANT ALL ON TABLE "public"."course_reviews" TO "authenticated";
+GRANT ALL ON TABLE "public"."course_reviews" TO "service_role";
 
 
 
