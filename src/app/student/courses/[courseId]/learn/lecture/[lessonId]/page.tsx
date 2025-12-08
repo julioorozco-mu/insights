@@ -704,6 +704,66 @@ export default function LessonPlayerPage() {
     fetchProgress();
   }, [user, courseId, currentLessonId, router]);
 
+  // ===== SYNC COMPLETED LESSONS =====
+  // Este efecto verifica si hay lecciones con todas las subsecciones completadas
+  // pero que no están marcadas como completadas en la BD, y las sincroniza
+  useEffect(() => {
+    const syncCompletedLessons = async () => {
+      if (!user || !courseId || lessons.length === 0) return;
+      if (Object.keys(completedSubsectionsByLesson).length === 0) return;
+      
+      // Verificar cada lección
+      for (const lesson of lessons) {
+        // Si ya está completada en la BD, saltar
+        if (dbCompletedLessons.includes(lesson.id)) continue;
+        
+        // Parsear subsecciones
+        let subsectionsCount = 1;
+        try {
+          if (lesson.content) {
+            const parsed = JSON.parse(lesson.content);
+            if (parsed.subsections && Array.isArray(parsed.subsections)) {
+              subsectionsCount = parsed.subsections.length;
+            }
+          }
+        } catch {
+          // Si falla, asumir 1 subsección
+        }
+        
+        // Verificar si todas las subsecciones están completadas
+        const highestCompletedIndex = completedSubsectionsByLesson[lesson.id] ?? -1;
+        if (highestCompletedIndex >= subsectionsCount - 1) {
+          // Todas las subsecciones completadas, marcar lección como completada
+          console.log(`[SyncCompletedLessons] Sincronizando lección "${lesson.title}" como completada`);
+          try {
+            const response = await fetch('/api/student/progress', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                courseId,
+                userId: user.id,
+                lessonId: lesson.id,
+                subsectionIndex: subsectionsCount - 1, // Última subsección
+                isCompleted: true,
+                totalSubsections: subsectionsCount,
+              }),
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              setDbProgress(data.progress || 0);
+              setDbCompletedLessons(data.completedLessons || []);
+            }
+          } catch (error) {
+            console.error('[SyncCompletedLessons] Error:', error);
+          }
+        }
+      }
+    };
+    
+    syncCompletedLessons();
+  }, [user, courseId, lessons, completedSubsectionsByLesson, dbCompletedLessons]);
+
   // Set subsection index when lesson changes or from URL query parameter
   useEffect(() => {
     // Si hay un query parameter de subsección y no lo hemos aplicado aún
