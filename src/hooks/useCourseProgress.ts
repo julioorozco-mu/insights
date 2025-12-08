@@ -110,4 +110,3 @@ export function useCourseProgress(
 }
 
 export default useCourseProgress;
-

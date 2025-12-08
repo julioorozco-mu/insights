@@ -68,12 +68,14 @@ export function useStudentCourseRating(
   userId: string | undefined | null
 ): UseStudentCourseRatingResult {
   const [data, setData] = useState<StudentCourseRatingData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchRating = useCallback(async () => {
     if (!courseId || !userId) {
       setData(null);
+      setError(null);
+      setLoading(false);
       return;
     }
 

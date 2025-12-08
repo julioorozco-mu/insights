@@ -66,12 +66,14 @@ export function useCourseRatingStats(
     averageRating: 0,
     reviewsCount: 0,
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
     if (!courseId) {
       setData({ averageRating: 0, reviewsCount: 0 });
+      setError(null);
+      setLoading(false);
       return;
     }
 
