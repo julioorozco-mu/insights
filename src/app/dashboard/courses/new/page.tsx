@@ -20,6 +20,8 @@ import {
   Edit3,
   RefreshCw,
 } from "lucide-react";
+import SortableSectionList, { CourseSection } from "@/components/course/SortableSectionList";
+import RichTextEditor from "@/components/ui/RichTextEditor";
 
 // ============================================================================
 // TIPOS E INTERFACES
@@ -457,24 +459,12 @@ export default function NewCoursePage() {
                     <label className="block text-xs font-medium text-slate-500 mb-1 uppercase tracking-wide">
                       Descripción
                     </label>
-                    <div className="border border-slate-200 rounded-lg overflow-hidden">
-                      {/* Rich Text Toolbar */}
-                      <div className="bg-slate-50 h-10 border-b border-slate-200 flex items-center px-3 gap-1.5">
-                        <select className="px-2 py-1 text-[13px] border border-slate-200 rounded-md bg-white cursor-pointer">
-                          <option>Texto normal</option>
-                        </select>
-                      </div>
-                      <textarea
-                        {...register("description")}
-                        placeholder="Describe tu curso..."
-                        className="w-full min-h-[120px] p-3 text-sm border-none outline-none resize-y leading-relaxed"
-                      />
-                    </div>
-                    <div className="flex justify-end mt-1">
-                      <p className="text-[11px] text-slate-400">
-                        {remainingChars} caracteres restantes
-                      </p>
-                    </div>
+                    <RichTextEditor
+                      value={description}
+                      onChange={(html: string) => setValue("description", html)}
+                      placeholder="Describe tu curso..."
+                      maxLength={500}
+                    />
                     {errors.description && (
                       <p className="text-red-500 text-xs mt-1.5">{errors.description.message}</p>
                     )}

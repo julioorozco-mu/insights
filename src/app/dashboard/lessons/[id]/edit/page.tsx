@@ -67,6 +67,7 @@ import {
   IconColumnInsertRight,
   IconFileTypePdf,
   IconFileTypeDoc,
+  IconPencil,
 } from "@tabler/icons-react";
 
 // Design System Colors - Color primario #1A2170
@@ -303,7 +304,7 @@ function SortableBlock({
         {block.type === "heading" && (
           <input
             type="text"
-            value={block.content}
+            value={block.content || ""}
             onChange={(e) => onUpdate(e.target.value)}
             style={{
               width: "100%",
@@ -325,7 +326,7 @@ function SortableBlock({
 
         {block.type === "text" && (
           <textarea
-            value={block.content}
+            value={block.content || ""}
             onChange={(e) => onUpdate(e.target.value)}
             style={{
               width: "100%",
@@ -610,7 +611,7 @@ function SortableBlock({
               <li key={i}>
                 <input
                   type="text"
-                  value={item}
+                  value={item || ""}
                   onChange={(e) => {
                     const newItems = [...(block.data?.items || [])];
                     newItems[i] = e.target.value;
@@ -686,7 +687,7 @@ function SortableBlock({
                       <td key={colIdx} style={{ border: `1px solid ${COLORS.accent.borderSubtle}`, padding: 8 }}>
                         <input
                           type="text"
-                          value={cell}
+                          value={cell || ""}
                           onChange={(e) => {
                             const newCells = [...block.data.cells];
                             newCells[rowIdx][colIdx] = e.target.value;
@@ -760,6 +761,7 @@ export default function EditLessonPage() {
   const { user } = useAuth();
   const lessonId = params.id as string;
   const tabParam = searchParams.get("tab"); // ID de subsección a activar
+  const actionParam = searchParams.get("action"); // Acción a ejecutar (ej: "add")
   
   // Estados principales
   const [loading, setLoading] = useState(true);
@@ -843,6 +845,7 @@ export default function EditLessonPage() {
   const [history, setHistory] = useState<Subsection[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const maxHistoryLength = 50;
+  const [dataLoadedFromDB, setDataLoadedFromDB] = useState(false);
   
   // File refs
   const videoFileRef = useRef<HTMLInputElement>(null);
@@ -916,19 +919,39 @@ export default function EditLessonPage() {
               // Convertir las subsecciones guardadas al formato esperado
               const loadedSubsections: Subsection[] = contentData.subsections.map((sub: any, idx: number) => ({
                 id: sub.id || `${Date.now()}-${idx}`,
-                title: sub.title || "Nueva subsección",
+                title: sub.title || "Nueva lección",
                 blocks: sub.blocks || [],
               }));
               
               console.log("[EditLesson] Loaded subsections:", loadedSubsections);
               
               if (loadedSubsections.length > 0) {
-                setSubsections(loadedSubsections);
-                // Si hay un parámetro tab en la URL, activar esa subsección
-                const targetSubsection = tabParam 
-                  ? loadedSubsections.find(s => s.id === tabParam)
-                  : null;
-                setActiveSubsection(targetSubsection?.id || loadedSubsections[0].id);
+                // Si hay action=add, agregar nueva subsección a las cargadas
+                if (actionParam === "add") {
+                  const newId = Date.now().toString();
+                  const newSubsection: Subsection = {
+                    id: newId,
+                    title: `Nueva lección`,
+                    blocks: [
+                      { id: `${newId}-b1`, type: "heading", content: `Nueva lección` },
+                      { id: `${newId}-b2`, type: "text", content: "Escribe el contenido aquí..." },
+                    ],
+                  };
+                  const finalSubs = [...loadedSubsections, newSubsection];
+                  setSubsections(finalSubs);
+                  setActiveSubsection(newId);
+                  setDataLoadedFromDB(true);
+                  // Limpiar el parámetro action de la URL
+                  window.history.replaceState(null, '', `/dashboard/lessons/${lessonId}/edit`);
+                } else {
+                  setSubsections(loadedSubsections);
+                  setDataLoadedFromDB(true);
+                  // Si hay un parámetro tab en la URL, activar esa subsección
+                  const targetSubsection = tabParam 
+                    ? loadedSubsections.find(s => s.id === tabParam)
+                    : null;
+                  setActiveSubsection(targetSubsection?.id || loadedSubsections[0].id);
+                }
               }
             }
           } catch (parseError) {
@@ -937,6 +960,22 @@ export default function EditLessonPage() {
           }
         } else {
           console.log("[EditLesson] No content found, using default subsections");
+          // Si hay action=add y no hay contenido, crear subsección inicial
+          if (actionParam === "add") {
+            const newId = Date.now().toString();
+            const newSubsection: Subsection = {
+              id: newId,
+              title: `Nueva lección`,
+              blocks: [
+                { id: `${newId}-b1`, type: "heading", content: `Nueva lección` },
+                { id: `${newId}-b2`, type: "text", content: "Escribe el contenido aquí..." },
+              ],
+            };
+            setSubsections(prev => [...prev, newSubsection]);
+            setActiveSubsection(newId);
+            window.history.replaceState(null, '', `/dashboard/lessons/${lessonId}/edit`);
+          }
+          setDataLoadedFromDB(true);
         }
         
         setLoading(false);
@@ -947,7 +986,8 @@ export default function EditLessonPage() {
     };
     
     loadLesson();
-  }, [lessonId, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lessonId]);
   
   // Cargar quizzes disponibles
   const loadQuizzes = async () => {
@@ -1022,13 +1062,20 @@ export default function EditLessonPage() {
     }
   };
   
+  // Ref para evitar guardar en historial durante undo/redo
+  const isUndoRedoAction = useRef(false);
+  
   // Función para guardar en historial (para undo/redo)
   const saveToHistory = useCallback((newSubsections: Subsection[]) => {
+    // No guardar si estamos en medio de un undo/redo
+    if (isUndoRedoAction.current) return;
+    
     setHistory(prev => {
       const newHistory = prev.slice(0, historyIndex + 1);
       newHistory.push(JSON.parse(JSON.stringify(newSubsections)));
       if (newHistory.length > maxHistoryLength) {
         newHistory.shift();
+        return newHistory;
       }
       return newHistory;
     });
@@ -1037,27 +1084,65 @@ export default function EditLessonPage() {
   
   // Undo
   const handleUndo = useCallback(() => {
+    console.log('[Undo] historyIndex:', historyIndex, 'history.length:', history.length);
+    console.log('[Undo] history states:', history.map((h, i) => `[${i}]: ${h.length} subs, first: ${h[0]?.title}`));
     if (historyIndex > 0) {
-      setHistoryIndex(prev => prev - 1);
-      setSubsections(JSON.parse(JSON.stringify(history[historyIndex - 1])));
+      isUndoRedoAction.current = true;
+      const newIndex = historyIndex - 1;
+      console.log('[Undo] Going to index:', newIndex, 'state:', history[newIndex]?.[0]?.title);
+      setHistoryIndex(newIndex);
+      setSubsections(JSON.parse(JSON.stringify(history[newIndex])));
+      // Reset flag después de que React procese el cambio
+      setTimeout(() => { isUndoRedoAction.current = false; }, 0);
     }
   }, [history, historyIndex]);
   
   // Redo
   const handleRedo = useCallback(() => {
     if (historyIndex < history.length - 1) {
-      setHistoryIndex(prev => prev + 1);
-      setSubsections(JSON.parse(JSON.stringify(history[historyIndex + 1])));
+      isUndoRedoAction.current = true;
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      setSubsections(JSON.parse(JSON.stringify(history[newIndex])));
+      // Reset flag después de que React procese el cambio
+      setTimeout(() => { isUndoRedoAction.current = false; }, 0);
     }
   }, [history, historyIndex]);
   
-  // Inicializar historial solo una vez
+  // Inicializar historial cuando se cargan las subsecciones de la BD
+  const historyInitialized = useRef(false);
   useEffect(() => {
-    if (history.length === 0 && subsections.length > 0) {
+    if (!historyInitialized.current && dataLoadedFromDB && subsections.length > 0) {
+      console.log('[History] Initializing with DB data:', subsections.length, 'subsections');
       setHistory([JSON.parse(JSON.stringify(subsections))]);
       setHistoryIndex(0);
+      historyInitialized.current = true;
     }
-  }, []);
+  }, [subsections, dataLoadedFromDB]);
+  
+  // Atajos de teclado para Undo/Redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignorar si el usuario está escribiendo en un input o textarea
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+      
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          handleUndo();
+        } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
+          e.preventDefault();
+          handleRedo();
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
   
   // Obtener subsección activa
   const currentSubsection = subsections.find(s => s.id === activeSubsection);
@@ -1094,11 +1179,15 @@ export default function EditLessonPage() {
       const newIndex = currentSubsection.blocks.findIndex(b => b.id === over.id);
       
       if (oldIndex !== -1 && newIndex !== -1) {
-        setSubsections(subs => subs.map(s => 
-          s.id === activeSubsection
-            ? { ...s, blocks: arrayMove(s.blocks, oldIndex, newIndex) }
-            : s
-        ));
+        setSubsections(subs => {
+          const newSubs = subs.map(s => 
+            s.id === activeSubsection
+              ? { ...s, blocks: arrayMove(s.blocks, oldIndex, newIndex) }
+              : s
+          );
+          saveToHistory(newSubs);
+          return newSubs;
+        });
       }
     }
   };
@@ -1216,27 +1305,35 @@ export default function EditLessonPage() {
   
   // Actualizar bloque - Solo actualiza el contenido del bloque, NO sincroniza con lessonTitle
   const updateBlockContent = (blockId: string, content: string, data?: any) => {
-    setSubsections(subs => subs.map(s => {
-      // Verificar si el bloque es el primer heading de la subsección
-      const blockIndex = s.blocks.findIndex(b => b.id === blockId);
-      const block = s.blocks[blockIndex];
-      const isFirstHeading = blockIndex === 0 && block?.type === "heading";
-      
-      return {
-        ...s,
-        // Si es el primer heading, sincronizar con el título de la subsección (tab)
-        title: isFirstHeading ? content : s.title,
-        blocks: s.blocks.map(b => b.id === blockId ? { ...b, content, data: data !== undefined ? data : b.data } : b)
-      };
-    }));
+    setSubsections(subs => {
+      const newSubs = subs.map(s => {
+        // Verificar si el bloque es el primer heading de la subsección
+        const blockIndex = s.blocks.findIndex(b => b.id === blockId);
+        const block = s.blocks[blockIndex];
+        const isFirstHeading = blockIndex === 0 && block?.type === "heading";
+        
+        return {
+          ...s,
+          // Si es el primer heading, sincronizar con el título de la subsección (tab)
+          title: isFirstHeading ? content : s.title,
+          blocks: s.blocks.map(b => b.id === blockId ? { ...b, content, data: data !== undefined ? data : b.data } : b)
+        };
+      });
+      saveToHistory(newSubs);
+      return newSubs;
+    });
   };
   
   // Eliminar bloque
   const deleteBlock = (blockId: string) => {
-    setSubsections(subs => subs.map(s => ({
-      ...s,
-      blocks: s.blocks.filter(b => b.id !== blockId)
-    })));
+    setSubsections(subs => {
+      const newSubs = subs.map(s => ({
+        ...s,
+        blocks: s.blocks.filter(b => b.id !== blockId)
+      }));
+      saveToHistory(newSubs);
+      return newSubs;
+    });
     setSelectedBlockId(null);
   };
   
@@ -1245,13 +1342,15 @@ export default function EditLessonPage() {
     const newId = Date.now().toString();
     const newSubsection: Subsection = {
       id: newId,
-      title: `Subsección ${subsections.length + 1}`,
+      title: `Lección ${subsections.length + 1}`,
       blocks: [
-        { id: `${newId}-b1`, type: "heading", content: `Subsección ${subsections.length + 1}` },
+        { id: `${newId}-b1`, type: "heading", content: `Lección ${subsections.length + 1}` },
         { id: `${newId}-b2`, type: "text", content: "Escribe el contenido aquí..." },
       ],
     };
-    setSubsections([...subsections, newSubsection]);
+    const newSubs = [...subsections, newSubsection];
+    setSubsections(newSubs);
+    saveToHistory(newSubs);
     setActiveSubsection(newId);
   };
   
@@ -1499,22 +1598,27 @@ export default function EditLessonPage() {
       </button>
 
             <div>
-            <input
-              type="text"
-                value={lessonTitle}
-                onChange={(e) => setLessonTitle(e.target.value)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: COLORS.text.onDark,
-                  fontSize: 15,
-                  fontWeight: 500,
-                  outline: "none",
-                  width: "100%",
-                  minWidth: 300,
-                }}
-                placeholder="Título de la lección"
-              />
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="text"
+                  value={lessonTitle || ""}
+                  onChange={(e) => setLessonTitle(e.target.value)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: COLORS.text.onDark,
+                    fontSize: 15,
+                    fontWeight: 500,
+                    outline: "none",
+                    width: "auto",
+                    minWidth: 100,
+                    maxWidth: 300,
+                  }}
+                  size={lessonTitle.length || 10}
+                  placeholder="Título de la lección"
+                />
+                <IconPencil size={12} style={{ color: "rgba(249,250,251,0.5)", flexShrink: 0 }} />
+              </div>
               <p style={{
                 fontSize: 11,
                 color: "rgba(249,250,251,0.7)",
@@ -1599,7 +1703,7 @@ export default function EditLessonPage() {
             }}
           >
             <IconPlus size={16} />
-            Agregar subsección
+            Agregar lección
           </button>
           
           <div style={{ width: 1, height: 24, backgroundColor: COLORS.accent.borderSubtle, margin: "0 8px" }} />
@@ -2190,7 +2294,7 @@ export default function EditLessonPage() {
               </label>
               <input
                 type="url"
-                  value={videoUrl}
+                  value={videoUrl || ""}
                   onChange={(e) => setVideoUrl(e.target.value)}
                   placeholder="https://www.youtube.com/watch?v=..."
                   style={{
@@ -2232,7 +2336,7 @@ export default function EditLessonPage() {
               </label>
               <input
                 type="url"
-                  value={videoUrl}
+                  value={videoUrl || ""}
                   onChange={(e) => setVideoUrl(e.target.value)}
                   placeholder="https://vimeo.com/... o cualquier URL de video"
                   style={{
@@ -2513,7 +2617,7 @@ export default function EditLessonPage() {
             </div>
             {attachmentTab === "upload" ? (
               <>
-                <input ref={imageFileRef} type="file" accept="image/*" onChange={async (e) => {
+                <input key="file-input" ref={imageFileRef} type="file" accept="image/*" onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (file) {
                     setUploadingImage(true);
@@ -2534,7 +2638,7 @@ export default function EditLessonPage() {
               </>
             ) : (
               <>
-                <input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://ejemplo.com/imagen.jpg" style={{ width: "100%", height: 44, borderRadius: 10, border: `1px solid ${COLORS.accent.borderSubtle}`, padding: "0 12px", marginBottom: 16 }} />
+                <input key="url-input" type="url" value={imageUrl || ""} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://ejemplo.com/imagen.jpg" style={{ width: "100%", height: 44, borderRadius: 10, border: `1px solid ${COLORS.accent.borderSubtle}`, padding: "0 12px", marginBottom: 16 }} />
                 <button onClick={() => { if (editingBlockId && imageUrl) { updateBlockContent(editingBlockId, imageUrl); setShowImageModal(false); setImageUrl(""); } }} disabled={!imageUrl} style={{ width: "100%", height: 44, borderRadius: 10, backgroundColor: COLORS.accent.primary, color: "white", border: "none", cursor: imageUrl ? "pointer" : "not-allowed", opacity: imageUrl ? 1 : 0.5 }}>Agregar imagen</button>
               </>
             )}
@@ -2553,11 +2657,11 @@ export default function EditLessonPage() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
               <div>
                 <label style={{ fontSize: 12, color: COLORS.text.secondary, marginBottom: 8, display: "block" }}>Filas (máx. 100)</label>
-                <input type="number" min={1} max={100} value={tableRows} onChange={(e) => setTableRows(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))} style={{ width: "100%", height: 44, borderRadius: 10, border: `1px solid ${COLORS.accent.borderSubtle}`, padding: "0 12px" }} />
+                <input type="number" min={1} max={100} value={tableRows || 3} onChange={(e) => setTableRows(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))} style={{ width: "100%", height: 44, borderRadius: 10, border: `1px solid ${COLORS.accent.borderSubtle}`, padding: "0 12px" }} />
                         </div>
               <div>
                 <label style={{ fontSize: 12, color: COLORS.text.secondary, marginBottom: 8, display: "block" }}>Columnas (máx. 10)</label>
-                <input type="number" min={1} max={10} value={tableCols} onChange={(e) => setTableCols(Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))} style={{ width: "100%", height: 44, borderRadius: 10, border: `1px solid ${COLORS.accent.borderSubtle}`, padding: "0 12px" }} />
+                <input type="number" min={1} max={10} value={tableCols || 3} onChange={(e) => setTableCols(Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))} style={{ width: "100%", height: 44, borderRadius: 10, border: `1px solid ${COLORS.accent.borderSubtle}`, padding: "0 12px" }} />
                       </div>
                     </div>
             <div style={{ marginBottom: 20, padding: 16, backgroundColor: "#F9FAFB", borderRadius: 8 }}>
@@ -2720,7 +2824,12 @@ export default function EditLessonPage() {
                   const file = e.target.files?.[0];
                   if (file) {
                     try {
-                      const filePath = `lessons/attachments/${Date.now()}_${file.name}`;
+                      // Sanitizar nombre de archivo: remover acentos, espacios y caracteres especiales
+                      const sanitizedName = file.name
+                        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remover acentos
+                        .replace(/[^a-zA-Z0-9._-]/g, '_') // Reemplazar caracteres especiales con _
+                        .replace(/_+/g, '_'); // Evitar múltiples guiones bajos
+                      const filePath = `lessons/attachments/${Date.now()}_${sanitizedName}`;
                       await supabaseClient.storage.from("attachments").upload(filePath, file);
                       const { data } = supabaseClient.storage.from("attachments").getPublicUrl(filePath);
                       if (editingBlockId) updateBlockContent(editingBlockId, data.publicUrl, { fileName: file.name, fileSize: file.size, fileType: file.type });
@@ -2750,7 +2859,7 @@ export default function EditLessonPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                 <div style={{ width: 32, height: 32, borderRadius: "50%", backgroundColor: COLORS.accent.primarySoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</div>
-                <div><p style={{ fontWeight: 500 }}>Agrega subsecciones</p><p style={{ fontSize: 13, color: COLORS.text.muted }}>Divide tu lección en partes organizadas usando el botón "Agregar subsección"</p></div>
+                <div><p style={{ fontWeight: 500 }}>Agrega lecciones</p><p style={{ fontSize: 13, color: COLORS.text.muted }}>Divide tu sección en partes organizadas usando el botón "Agregar lección"</p></div>
               </div>
               <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                 <div style={{ width: 32, height: 32, borderRadius: "50%", backgroundColor: COLORS.accent.primarySoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>2</div>

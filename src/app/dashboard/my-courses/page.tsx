@@ -9,6 +9,20 @@ import { Loader } from "@/components/common/Loader";
 import { formatDate } from "@/utils/formatDate";
 import { IconBook, IconUsers, IconClock, IconPlus } from "@tabler/icons-react";
 
+// Función para extraer texto plano de HTML (para previews)
+function stripHtml(html: string): string {
+  if (!html) return "";
+  // Reemplazar tags de bloque y saltos de línea por espacios
+  let text = html
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text;
+}
+
 export default function MyCoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,7 +146,7 @@ export default function MyCoursesPage() {
               <div className="card-body">
                 <h2 className="card-title">{course.title}</h2>
                 <p className="text-sm text-base-content/70 line-clamp-2">
-                  {course.description}
+                  {stripHtml(course.description || "")}
                 </p>
                 
                 <div className="flex items-center gap-2 mt-2">

@@ -242,6 +242,52 @@ CREATE TYPE "public"."survey_type" AS ENUM (
 ALTER TYPE "public"."survey_type" OWNER TO "postgres";
 
 
+CREATE TYPE "public"."test_attempt_status" AS ENUM (
+    'in_progress',
+    'completed',
+    'abandoned',
+    'timed_out'
+);
+
+
+ALTER TYPE "public"."test_attempt_status" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."test_question_type" AS ENUM (
+    'multiple_choice',
+    'multiple_answer',
+    'true_false',
+    'open_ended',
+    'poll',
+    'reorder',
+    'match',
+    'drag_drop',
+    'sequencing'
+);
+
+
+ALTER TYPE "public"."test_question_type" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."test_status" AS ENUM (
+    'draft',
+    'published',
+    'archived'
+);
+
+
+ALTER TYPE "public"."test_status" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."test_time_mode" AS ENUM (
+    'unlimited',
+    'timed'
+);
+
+
+ALTER TYPE "public"."test_time_mode" OWNER TO "postgres";
+
+
 CREATE TYPE "public"."user_role" AS ENUM (
     'student',
     'teacher',
@@ -399,6 +445,27 @@ COMMENT ON TABLE "public"."certificates" IS 'Certificados emitidos a estudiantes
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."course_accreditations" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "student_id" "uuid" NOT NULL,
+    "course_id" "uuid" NOT NULL,
+    "test_attempt_id" "uuid",
+    "final_score" numeric(5,2),
+    "accredited_at" timestamp with time zone DEFAULT "now"(),
+    "certificate_issued" boolean DEFAULT false,
+    "certificate_id" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."course_accreditations" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."course_accreditations" IS 'Registro de acreditaciones de microcredenciales';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."course_sections" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "course_id" "uuid" NOT NULL,
@@ -415,6 +482,27 @@ ALTER TABLE "public"."course_sections" OWNER TO "postgres";
 
 
 COMMENT ON TABLE "public"."course_sections" IS 'Secciones de cursos para agrupar lecciones (ej: Week 1, Module A)';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."course_tests" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "test_id" "uuid" NOT NULL,
+    "course_id" "uuid" NOT NULL,
+    "is_required" boolean DEFAULT true,
+    "require_all_sections" boolean DEFAULT true,
+    "available_from" timestamp with time zone,
+    "available_until" timestamp with time zone,
+    "created_by" "uuid" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."course_tests" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."course_tests" IS 'Vincula evaluaciones de acreditación a cursos/microcredenciales';
 
 
 
@@ -571,6 +659,86 @@ ALTER TABLE "public"."lesson_attendance" OWNER TO "postgres";
 
 
 COMMENT ON TABLE "public"."lesson_attendance" IS 'Registro de asistencia a lecciones en vivo';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."lesson_notes" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "student_id" "uuid" NOT NULL,
+    "lesson_id" "uuid" NOT NULL,
+    "course_id" "uuid" NOT NULL,
+    "content" "text" NOT NULL,
+    "video_timestamp" integer DEFAULT 0,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."lesson_notes" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."lesson_notes" IS 'Notas personales de estudiantes para cada lección';
+
+
+
+COMMENT ON COLUMN "public"."lesson_notes"."video_timestamp" IS 'Timestamp del video en segundos donde se creó la nota';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."lesson_question_answers" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "question_id" "uuid" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "user_role" "public"."user_role" NOT NULL,
+    "answer_text" "text" NOT NULL,
+    "is_instructor_answer" boolean DEFAULT false,
+    "is_accepted" boolean DEFAULT false,
+    "upvotes" integer DEFAULT 0,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."lesson_question_answers" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."lesson_question_answers" IS 'Respuestas a las preguntas de lecciones';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."lesson_question_upvotes" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "question_id" "uuid" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."lesson_question_upvotes" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."lesson_questions" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "lesson_id" "uuid" NOT NULL,
+    "course_id" "uuid" NOT NULL,
+    "student_id" "uuid" NOT NULL,
+    "question_text" "text" NOT NULL,
+    "video_timestamp" integer DEFAULT 0,
+    "is_resolved" boolean DEFAULT false,
+    "upvotes" integer DEFAULT 0,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."lesson_questions" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."lesson_questions" IS 'Preguntas de estudiantes sobre el contenido de las lecciones';
+
+
+
+COMMENT ON COLUMN "public"."lesson_questions"."video_timestamp" IS 'Timestamp del video donde surgió la pregunta';
 
 
 
@@ -928,6 +1096,112 @@ COMMENT ON TABLE "public"."teachers" IS 'Perfil extendido para maestros/instruct
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."test_answers" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "attempt_id" "uuid" NOT NULL,
+    "question_id" "uuid" NOT NULL,
+    "student_id" "uuid" NOT NULL,
+    "answer" "jsonb",
+    "is_correct" boolean,
+    "points_earned" numeric(5,2) DEFAULT 0,
+    "time_spent_seconds" integer,
+    "answered_at" timestamp with time zone DEFAULT "now"(),
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."test_answers" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."test_answers" IS 'Respuestas de estudiantes a preguntas de evaluación';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."test_attempts" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "course_test_id" "uuid" NOT NULL,
+    "test_id" "uuid" NOT NULL,
+    "course_id" "uuid" NOT NULL,
+    "student_id" "uuid" NOT NULL,
+    "attempt_number" integer DEFAULT 1 NOT NULL,
+    "status" "public"."test_attempt_status" DEFAULT 'in_progress'::"public"."test_attempt_status" NOT NULL,
+    "score" numeric(5,2),
+    "max_score" numeric(5,2),
+    "percentage" numeric(5,2),
+    "passed" boolean,
+    "accredited" boolean DEFAULT false,
+    "start_time" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "end_time" timestamp with time zone,
+    "time_spent_seconds" integer,
+    "ip_address" character varying(45),
+    "user_agent" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."test_attempts" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."test_attempts" IS 'Intentos de evaluaciones de acreditación por estudiantes';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."test_questions" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "test_id" "uuid" NOT NULL,
+    "question_type" "public"."test_question_type" NOT NULL,
+    "question_text" "text" NOT NULL,
+    "question_media_url" "text",
+    "options" "jsonb" DEFAULT '[]'::"jsonb",
+    "correct_answer" "jsonb",
+    "explanation" "text",
+    "points" numeric(5,2) DEFAULT 1,
+    "time_limit_seconds" integer,
+    "order" integer DEFAULT 0 NOT NULL,
+    "is_required" boolean DEFAULT true,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."test_questions" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."test_questions" IS 'Preguntas de las evaluaciones de acreditación';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."tests" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "title" character varying(255) NOT NULL,
+    "description" "text",
+    "instructions" "text",
+    "cover_image_url" "text",
+    "status" "public"."test_status" DEFAULT 'draft'::"public"."test_status" NOT NULL,
+    "time_mode" "public"."test_time_mode" DEFAULT 'unlimited'::"public"."test_time_mode" NOT NULL,
+    "time_limit_minutes" integer,
+    "passing_score" numeric(5,2) DEFAULT 60,
+    "max_attempts" integer DEFAULT 1,
+    "shuffle_questions" boolean DEFAULT false,
+    "shuffle_options" boolean DEFAULT false,
+    "show_results_immediately" boolean DEFAULT true,
+    "show_correct_answers" boolean DEFAULT true,
+    "allow_review" boolean DEFAULT true,
+    "created_by" "uuid" NOT NULL,
+    "is_active" boolean DEFAULT true,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."tests" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."tests" IS 'Evaluaciones de acreditación - Exámenes finales de microcredenciales';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."users" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "email" character varying(255) NOT NULL,
@@ -1000,8 +1274,28 @@ ALTER TABLE ONLY "public"."certificates"
 
 
 
+ALTER TABLE ONLY "public"."course_accreditations"
+    ADD CONSTRAINT "course_accreditations_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."course_accreditations"
+    ADD CONSTRAINT "course_accreditations_unique" UNIQUE ("student_id", "course_id");
+
+
+
 ALTER TABLE ONLY "public"."course_sections"
     ADD CONSTRAINT "course_sections_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."course_tests"
+    ADD CONSTRAINT "course_tests_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."course_tests"
+    ADD CONSTRAINT "course_tests_unique" UNIQUE ("test_id", "course_id");
 
 
 
@@ -1037,6 +1331,31 @@ ALTER TABLE ONLY "public"."lesson_attendance"
 
 ALTER TABLE ONLY "public"."lesson_attendance"
     ADD CONSTRAINT "lesson_attendance_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."lesson_notes"
+    ADD CONSTRAINT "lesson_notes_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."lesson_question_answers"
+    ADD CONSTRAINT "lesson_question_answers_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."lesson_question_upvotes"
+    ADD CONSTRAINT "lesson_question_upvotes_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."lesson_question_upvotes"
+    ADD CONSTRAINT "lesson_question_upvotes_unique" UNIQUE ("question_id", "user_id");
+
+
+
+ALTER TABLE ONLY "public"."lesson_questions"
+    ADD CONSTRAINT "lesson_questions_pkey" PRIMARY KEY ("id");
 
 
 
@@ -1145,6 +1464,26 @@ ALTER TABLE ONLY "public"."teachers"
 
 
 
+ALTER TABLE ONLY "public"."test_answers"
+    ADD CONSTRAINT "test_answers_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."test_attempts"
+    ADD CONSTRAINT "test_attempts_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."test_questions"
+    ADD CONSTRAINT "test_questions_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."tests"
+    ADD CONSTRAINT "tests_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."users"
     ADD CONSTRAINT "users_email_key" UNIQUE ("email");
 
@@ -1185,11 +1524,27 @@ CREATE INDEX "idx_certificates_student" ON "public"."certificates" USING "btree"
 
 
 
+CREATE INDEX "idx_course_accreditations_course_id" ON "public"."course_accreditations" USING "btree" ("course_id");
+
+
+
+CREATE INDEX "idx_course_accreditations_student_id" ON "public"."course_accreditations" USING "btree" ("student_id");
+
+
+
 CREATE INDEX "idx_course_sections_course_id" ON "public"."course_sections" USING "btree" ("course_id");
 
 
 
 CREATE INDEX "idx_course_sections_order" ON "public"."course_sections" USING "btree" ("course_id", "order");
+
+
+
+CREATE INDEX "idx_course_tests_course_id" ON "public"."course_tests" USING "btree" ("course_id");
+
+
+
+CREATE INDEX "idx_course_tests_test_id" ON "public"."course_tests" USING "btree" ("test_id");
 
 
 
@@ -1242,6 +1597,46 @@ CREATE INDEX "idx_lesson_attendance_lesson" ON "public"."lesson_attendance" USIN
 
 
 CREATE INDEX "idx_lesson_attendance_student" ON "public"."lesson_attendance" USING "btree" ("student_id");
+
+
+
+CREATE INDEX "idx_lesson_notes_course_id" ON "public"."lesson_notes" USING "btree" ("course_id");
+
+
+
+CREATE INDEX "idx_lesson_notes_lesson_id" ON "public"."lesson_notes" USING "btree" ("lesson_id");
+
+
+
+CREATE INDEX "idx_lesson_notes_student_id" ON "public"."lesson_notes" USING "btree" ("student_id");
+
+
+
+CREATE INDEX "idx_lesson_notes_student_lesson" ON "public"."lesson_notes" USING "btree" ("student_id", "lesson_id");
+
+
+
+CREATE INDEX "idx_lesson_question_answers_question_id" ON "public"."lesson_question_answers" USING "btree" ("question_id");
+
+
+
+CREATE INDEX "idx_lesson_question_answers_user_id" ON "public"."lesson_question_answers" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_lesson_questions_course_id" ON "public"."lesson_questions" USING "btree" ("course_id");
+
+
+
+CREATE INDEX "idx_lesson_questions_is_resolved" ON "public"."lesson_questions" USING "btree" ("is_resolved");
+
+
+
+CREATE INDEX "idx_lesson_questions_lesson_id" ON "public"."lesson_questions" USING "btree" ("lesson_id");
+
+
+
+CREATE INDEX "idx_lesson_questions_student_id" ON "public"."lesson_questions" USING "btree" ("student_id");
 
 
 
@@ -1345,6 +1740,54 @@ CREATE INDEX "idx_teachers_user_id" ON "public"."teachers" USING "btree" ("user_
 
 
 
+CREATE INDEX "idx_test_answers_attempt_id" ON "public"."test_answers" USING "btree" ("attempt_id");
+
+
+
+CREATE INDEX "idx_test_answers_question_id" ON "public"."test_answers" USING "btree" ("question_id");
+
+
+
+CREATE INDEX "idx_test_answers_student_id" ON "public"."test_answers" USING "btree" ("student_id");
+
+
+
+CREATE INDEX "idx_test_attempts_course_id" ON "public"."test_attempts" USING "btree" ("course_id");
+
+
+
+CREATE INDEX "idx_test_attempts_course_test_id" ON "public"."test_attempts" USING "btree" ("course_test_id");
+
+
+
+CREATE INDEX "idx_test_attempts_status" ON "public"."test_attempts" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_test_attempts_student_id" ON "public"."test_attempts" USING "btree" ("student_id");
+
+
+
+CREATE INDEX "idx_test_questions_order" ON "public"."test_questions" USING "btree" ("test_id", "order");
+
+
+
+CREATE INDEX "idx_test_questions_test_id" ON "public"."test_questions" USING "btree" ("test_id");
+
+
+
+CREATE INDEX "idx_tests_created_by" ON "public"."tests" USING "btree" ("created_by");
+
+
+
+CREATE INDEX "idx_tests_is_active" ON "public"."tests" USING "btree" ("is_active");
+
+
+
+CREATE INDEX "idx_tests_status" ON "public"."tests" USING "btree" ("status");
+
+
+
 CREATE INDEX "idx_users_email" ON "public"."users" USING "btree" ("email");
 
 
@@ -1365,6 +1808,18 @@ CREATE INDEX "idx_video_recordings_lesson" ON "public"."video_recordings" USING 
 
 
 
+CREATE OR REPLACE TRIGGER "lesson_notes_updated_at" BEFORE UPDATE ON "public"."lesson_notes" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "lesson_question_answers_updated_at" BEFORE UPDATE ON "public"."lesson_question_answers" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "lesson_questions_updated_at" BEFORE UPDATE ON "public"."lesson_questions" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
 CREATE OR REPLACE TRIGGER "on_user_role_change" AFTER INSERT OR UPDATE OF "role" ON "public"."users" FOR EACH ROW EXECUTE FUNCTION "public"."handle_user_role_jwt"();
 
 
@@ -1373,7 +1828,15 @@ CREATE OR REPLACE TRIGGER "update_certificate_templates_updated_at" BEFORE UPDAT
 
 
 
+CREATE OR REPLACE TRIGGER "update_course_accreditations_updated_at" BEFORE UPDATE ON "public"."course_accreditations" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
 CREATE OR REPLACE TRIGGER "update_course_sections_updated_at" BEFORE UPDATE ON "public"."course_sections" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "update_course_tests_updated_at" BEFORE UPDATE ON "public"."course_tests" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
 
 
 
@@ -1429,6 +1892,18 @@ CREATE OR REPLACE TRIGGER "update_teachers_updated_at" BEFORE UPDATE ON "public"
 
 
 
+CREATE OR REPLACE TRIGGER "update_test_attempts_updated_at" BEFORE UPDATE ON "public"."test_attempts" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "update_test_questions_updated_at" BEFORE UPDATE ON "public"."test_questions" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "update_tests_updated_at" BEFORE UPDATE ON "public"."tests" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
 CREATE OR REPLACE TRIGGER "update_users_updated_at" BEFORE UPDATE ON "public"."users" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
 
 
@@ -1473,8 +1948,43 @@ ALTER TABLE ONLY "public"."certificates"
 
 
 
+ALTER TABLE ONLY "public"."course_accreditations"
+    ADD CONSTRAINT "course_accreditations_certificate_id_fkey" FOREIGN KEY ("certificate_id") REFERENCES "public"."certificates"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."course_accreditations"
+    ADD CONSTRAINT "course_accreditations_course_id_fkey" FOREIGN KEY ("course_id") REFERENCES "public"."courses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."course_accreditations"
+    ADD CONSTRAINT "course_accreditations_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."course_accreditations"
+    ADD CONSTRAINT "course_accreditations_test_attempt_id_fkey" FOREIGN KEY ("test_attempt_id") REFERENCES "public"."test_attempts"("id") ON DELETE SET NULL;
+
+
+
 ALTER TABLE ONLY "public"."course_sections"
     ADD CONSTRAINT "course_sections_course_id_fkey" FOREIGN KEY ("course_id") REFERENCES "public"."courses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."course_tests"
+    ADD CONSTRAINT "course_tests_course_id_fkey" FOREIGN KEY ("course_id") REFERENCES "public"."courses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."course_tests"
+    ADD CONSTRAINT "course_tests_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."course_tests"
+    ADD CONSTRAINT "course_tests_test_id_fkey" FOREIGN KEY ("test_id") REFERENCES "public"."tests"("id") ON DELETE CASCADE;
 
 
 
@@ -1515,6 +2025,56 @@ ALTER TABLE ONLY "public"."lesson_attendance"
 
 ALTER TABLE ONLY "public"."lesson_attendance"
     ADD CONSTRAINT "lesson_attendance_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "public"."students"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."lesson_notes"
+    ADD CONSTRAINT "lesson_notes_course_id_fkey" FOREIGN KEY ("course_id") REFERENCES "public"."courses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."lesson_notes"
+    ADD CONSTRAINT "lesson_notes_lesson_id_fkey" FOREIGN KEY ("lesson_id") REFERENCES "public"."lessons"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."lesson_notes"
+    ADD CONSTRAINT "lesson_notes_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "public"."students"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."lesson_question_answers"
+    ADD CONSTRAINT "lesson_question_answers_question_id_fkey" FOREIGN KEY ("question_id") REFERENCES "public"."lesson_questions"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."lesson_question_answers"
+    ADD CONSTRAINT "lesson_question_answers_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."lesson_question_upvotes"
+    ADD CONSTRAINT "lesson_question_upvotes_question_id_fkey" FOREIGN KEY ("question_id") REFERENCES "public"."lesson_questions"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."lesson_question_upvotes"
+    ADD CONSTRAINT "lesson_question_upvotes_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."lesson_questions"
+    ADD CONSTRAINT "lesson_questions_course_id_fkey" FOREIGN KEY ("course_id") REFERENCES "public"."courses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."lesson_questions"
+    ADD CONSTRAINT "lesson_questions_lesson_id_fkey" FOREIGN KEY ("lesson_id") REFERENCES "public"."lessons"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."lesson_questions"
+    ADD CONSTRAINT "lesson_questions_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "public"."students"("id") ON DELETE CASCADE;
 
 
 
@@ -1675,6 +2235,51 @@ ALTER TABLE ONLY "public"."teacher_resources"
 
 ALTER TABLE ONLY "public"."teachers"
     ADD CONSTRAINT "teachers_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."test_answers"
+    ADD CONSTRAINT "test_answers_attempt_id_fkey" FOREIGN KEY ("attempt_id") REFERENCES "public"."test_attempts"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."test_answers"
+    ADD CONSTRAINT "test_answers_question_id_fkey" FOREIGN KEY ("question_id") REFERENCES "public"."test_questions"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."test_answers"
+    ADD CONSTRAINT "test_answers_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."test_attempts"
+    ADD CONSTRAINT "test_attempts_course_id_fkey" FOREIGN KEY ("course_id") REFERENCES "public"."courses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."test_attempts"
+    ADD CONSTRAINT "test_attempts_course_test_id_fkey" FOREIGN KEY ("course_test_id") REFERENCES "public"."course_tests"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."test_attempts"
+    ADD CONSTRAINT "test_attempts_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."test_attempts"
+    ADD CONSTRAINT "test_attempts_test_id_fkey" FOREIGN KEY ("test_id") REFERENCES "public"."tests"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."test_questions"
+    ADD CONSTRAINT "test_questions_test_id_fkey" FOREIGN KEY ("test_id") REFERENCES "public"."tests"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."tests"
+    ADD CONSTRAINT "tests_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE CASCADE;
 
 
 
@@ -1851,6 +2456,19 @@ ALTER TABLE "public"."certificate_templates" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."certificates" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."course_accreditations" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "course_accreditations_admin_manage" ON "public"."course_accreditations" USING ((EXISTS ( SELECT 1
+   FROM "public"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role", 'teacher'::"public"."user_role"]))))));
+
+
+
+CREATE POLICY "course_accreditations_student_own" ON "public"."course_accreditations" FOR SELECT USING (("student_id" = "auth"."uid"()));
+
+
+
 ALTER TABLE "public"."course_sections" ENABLE ROW LEVEL SECURITY;
 
 
@@ -1882,6 +2500,21 @@ CREATE POLICY "course_sections_select_published" ON "public"."course_sections" F
 
 
 
+ALTER TABLE "public"."course_tests" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "course_tests_manage" ON "public"."course_tests" USING ((("created_by" = "auth"."uid"()) OR (EXISTS ( SELECT 1
+   FROM "public"."courses" "c"
+  WHERE (("c"."id" = "course_tests"."course_id") AND ("auth"."uid"() = ANY ("c"."teacher_ids"))))) OR (EXISTS ( SELECT 1
+   FROM "public"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role"])))))));
+
+
+
+CREATE POLICY "course_tests_view" ON "public"."course_tests" FOR SELECT USING (true);
+
+
+
 ALTER TABLE "public"."courses" ENABLE ROW LEVEL SECURITY;
 
 
@@ -1892,6 +2525,92 @@ ALTER TABLE "public"."form_templates" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."lesson_attendance" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."lesson_notes" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "lesson_notes_delete_own" ON "public"."lesson_notes" FOR DELETE USING (("student_id" IN ( SELECT "students"."id"
+   FROM "public"."students"
+  WHERE ("students"."user_id" = "auth"."uid"()))));
+
+
+
+CREATE POLICY "lesson_notes_insert_own" ON "public"."lesson_notes" FOR INSERT WITH CHECK (("student_id" IN ( SELECT "students"."id"
+   FROM "public"."students"
+  WHERE ("students"."user_id" = "auth"."uid"()))));
+
+
+
+CREATE POLICY "lesson_notes_select_own" ON "public"."lesson_notes" FOR SELECT USING (("student_id" IN ( SELECT "students"."id"
+   FROM "public"."students"
+  WHERE ("students"."user_id" = "auth"."uid"()))));
+
+
+
+CREATE POLICY "lesson_notes_update_own" ON "public"."lesson_notes" FOR UPDATE USING (("student_id" IN ( SELECT "students"."id"
+   FROM "public"."students"
+  WHERE ("students"."user_id" = "auth"."uid"()))));
+
+
+
+ALTER TABLE "public"."lesson_question_answers" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "lesson_question_answers_delete_own" ON "public"."lesson_question_answers" FOR DELETE USING (("user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "lesson_question_answers_insert_authenticated" ON "public"."lesson_question_answers" FOR INSERT WITH CHECK (("user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "lesson_question_answers_select_all" ON "public"."lesson_question_answers" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "lesson_question_answers_update_own" ON "public"."lesson_question_answers" FOR UPDATE USING (("user_id" = "auth"."uid"()));
+
+
+
+ALTER TABLE "public"."lesson_question_upvotes" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "lesson_question_upvotes_delete_own" ON "public"."lesson_question_upvotes" FOR DELETE USING (("user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "lesson_question_upvotes_insert_authenticated" ON "public"."lesson_question_upvotes" FOR INSERT WITH CHECK (("user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "lesson_question_upvotes_select_all" ON "public"."lesson_question_upvotes" FOR SELECT USING (true);
+
+
+
+ALTER TABLE "public"."lesson_questions" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "lesson_questions_delete_own" ON "public"."lesson_questions" FOR DELETE USING (("student_id" IN ( SELECT "students"."id"
+   FROM "public"."students"
+  WHERE ("students"."user_id" = "auth"."uid"()))));
+
+
+
+CREATE POLICY "lesson_questions_insert_authenticated" ON "public"."lesson_questions" FOR INSERT WITH CHECK (("student_id" IN ( SELECT "students"."id"
+   FROM "public"."students"
+  WHERE ("students"."user_id" = "auth"."uid"()))));
+
+
+
+CREATE POLICY "lesson_questions_select_all" ON "public"."lesson_questions" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "lesson_questions_update_own" ON "public"."lesson_questions" FOR UPDATE USING (("student_id" IN ( SELECT "students"."id"
+   FROM "public"."students"
+  WHERE ("students"."user_id" = "auth"."uid"()))));
+
 
 
 ALTER TABLE "public"."lessons" ENABLE ROW LEVEL SECURITY;
@@ -1975,6 +2694,64 @@ CREATE POLICY "teachers_public_read" ON "public"."teachers" FOR SELECT USING (tr
 
 
 CREATE POLICY "teachers_update_own_profile" ON "public"."teachers" FOR UPDATE TO "authenticated" USING (("user_id" = "auth"."uid"())) WITH CHECK (("user_id" = "auth"."uid"()));
+
+
+
+ALTER TABLE "public"."test_answers" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "test_answers_admin_view" ON "public"."test_answers" FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM "public"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role", 'teacher'::"public"."user_role"]))))));
+
+
+
+CREATE POLICY "test_answers_student_own" ON "public"."test_answers" USING (("student_id" = "auth"."uid"())) WITH CHECK (("student_id" = "auth"."uid"()));
+
+
+
+ALTER TABLE "public"."test_attempts" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "test_attempts_admin_view" ON "public"."test_attempts" FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM "public"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role", 'teacher'::"public"."user_role"]))))));
+
+
+
+CREATE POLICY "test_attempts_student_own" ON "public"."test_attempts" USING (("student_id" = "auth"."uid"())) WITH CHECK (("student_id" = "auth"."uid"()));
+
+
+
+ALTER TABLE "public"."test_questions" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "test_questions_manage" ON "public"."test_questions" USING ((EXISTS ( SELECT 1
+   FROM "public"."tests" "t"
+  WHERE (("t"."id" = "test_questions"."test_id") AND (("t"."created_by" = "auth"."uid"()) OR (EXISTS ( SELECT 1
+           FROM "public"."users"
+          WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role"]))))))))));
+
+
+
+CREATE POLICY "test_questions_view" ON "public"."test_questions" FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM "public"."tests" "t"
+  WHERE (("t"."id" = "test_questions"."test_id") AND ("t"."status" = 'published'::"public"."test_status") AND ("t"."is_active" = true)))));
+
+
+
+ALTER TABLE "public"."tests" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "tests_admin_teacher_manage" ON "public"."tests" USING ((("created_by" = "auth"."uid"()) OR (EXISTS ( SELECT 1
+   FROM "public"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role"]))))))) WITH CHECK ((("created_by" = "auth"."uid"()) OR (EXISTS ( SELECT 1
+   FROM "public"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role"])))))));
+
+
+
+CREATE POLICY "tests_view_published" ON "public"."tests" FOR SELECT USING ((("status" = 'published'::"public"."test_status") AND ("is_active" = true)));
 
 
 
@@ -2231,9 +3008,21 @@ GRANT ALL ON TABLE "public"."certificates" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."course_accreditations" TO "anon";
+GRANT ALL ON TABLE "public"."course_accreditations" TO "authenticated";
+GRANT ALL ON TABLE "public"."course_accreditations" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."course_sections" TO "anon";
 GRANT ALL ON TABLE "public"."course_sections" TO "authenticated";
 GRANT ALL ON TABLE "public"."course_sections" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."course_tests" TO "anon";
+GRANT ALL ON TABLE "public"."course_tests" TO "authenticated";
+GRANT ALL ON TABLE "public"."course_tests" TO "service_role";
 
 
 
@@ -2270,6 +3059,30 @@ GRANT ALL ON TABLE "public"."form_templates" TO "service_role";
 GRANT ALL ON TABLE "public"."lesson_attendance" TO "anon";
 GRANT ALL ON TABLE "public"."lesson_attendance" TO "authenticated";
 GRANT ALL ON TABLE "public"."lesson_attendance" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."lesson_notes" TO "anon";
+GRANT ALL ON TABLE "public"."lesson_notes" TO "authenticated";
+GRANT ALL ON TABLE "public"."lesson_notes" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."lesson_question_answers" TO "anon";
+GRANT ALL ON TABLE "public"."lesson_question_answers" TO "authenticated";
+GRANT ALL ON TABLE "public"."lesson_question_answers" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."lesson_question_upvotes" TO "anon";
+GRANT ALL ON TABLE "public"."lesson_question_upvotes" TO "authenticated";
+GRANT ALL ON TABLE "public"."lesson_question_upvotes" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."lesson_questions" TO "anon";
+GRANT ALL ON TABLE "public"."lesson_questions" TO "authenticated";
+GRANT ALL ON TABLE "public"."lesson_questions" TO "service_role";
 
 
 
@@ -2366,6 +3179,30 @@ GRANT ALL ON TABLE "public"."teacher_resources" TO "service_role";
 GRANT ALL ON TABLE "public"."teachers" TO "anon";
 GRANT ALL ON TABLE "public"."teachers" TO "authenticated";
 GRANT ALL ON TABLE "public"."teachers" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."test_answers" TO "anon";
+GRANT ALL ON TABLE "public"."test_answers" TO "authenticated";
+GRANT ALL ON TABLE "public"."test_answers" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."test_attempts" TO "anon";
+GRANT ALL ON TABLE "public"."test_attempts" TO "authenticated";
+GRANT ALL ON TABLE "public"."test_attempts" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."test_questions" TO "anon";
+GRANT ALL ON TABLE "public"."test_questions" TO "authenticated";
+GRANT ALL ON TABLE "public"."test_questions" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."tests" TO "anon";
+GRANT ALL ON TABLE "public"."tests" TO "authenticated";
+GRANT ALL ON TABLE "public"."tests" TO "service_role";
 
 
 

@@ -764,7 +764,7 @@ export default function NewLessonPage() {
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [lessonTitle, setLessonTitle] = useState("Nueva Lección");
-  const [lessonSubtitle, setLessonSubtitle] = useState("Agrega y personaliza las subsecciones.");
+  const [lessonSubtitle, setLessonSubtitle] = useState("Agrega y personaliza las lecciones.");
   const [courseName, setCourseName] = useState("");
   
   // Subsecciones
@@ -1170,9 +1170,9 @@ export default function NewLessonPage() {
     const newId = Date.now().toString();
     const newSubsection: Subsection = {
       id: newId,
-      title: `Subsección ${subsections.length + 1}`,
+      title: `Lección ${subsections.length + 1}`,
       blocks: [
-        { id: `${newId}-b1`, type: "heading", content: `Subsección ${subsections.length + 1}` },
+        { id: `${newId}-b1`, type: "heading", content: `Lección ${subsections.length + 1}` },
         { id: `${newId}-b2`, type: "text", content: "Escribe el contenido aquí..." },
       ],
     };
@@ -1499,7 +1499,7 @@ export default function NewLessonPage() {
             }}
           >
             <IconPlus size={16} />
-            Agregar subsección
+            Agregar lección
           </button>
           
           <div style={{ width: 1, height: 24, backgroundColor: COLORS.accent.borderSubtle, margin: "0 8px" }} />
@@ -2620,7 +2620,12 @@ export default function NewLessonPage() {
                   const file = e.target.files?.[0];
                   if (file) {
                     try {
-                      const filePath = `lessons/attachments/${Date.now()}_${file.name}`;
+                      // Sanitizar nombre de archivo: remover acentos, espacios y caracteres especiales
+                      const sanitizedName = file.name
+                        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remover acentos
+                        .replace(/[^a-zA-Z0-9._-]/g, '_') // Reemplazar caracteres especiales con _
+                        .replace(/_+/g, '_'); // Evitar múltiples guiones bajos
+                      const filePath = `lessons/attachments/${Date.now()}_${sanitizedName}`;
                       await supabaseClient.storage.from("attachments").upload(filePath, file);
                       const { data } = supabaseClient.storage.from("attachments").getPublicUrl(filePath);
                       if (editingBlockId) updateBlockContent(editingBlockId, data.publicUrl, { fileName: file.name, fileSize: file.size, fileType: file.type });
@@ -2650,7 +2655,7 @@ export default function NewLessonPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                 <div style={{ width: 32, height: 32, borderRadius: "50%", backgroundColor: COLORS.accent.primarySoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</div>
-                <div><p style={{ fontWeight: 500 }}>Agrega subsecciones</p><p style={{ fontSize: 13, color: COLORS.text.muted }}>Divide tu lección en partes organizadas usando el botón "Agregar subsección"</p></div>
+                <div><p style={{ fontWeight: 500 }}>Agrega lecciones</p><p style={{ fontSize: 13, color: COLORS.text.muted }}>Divide tu sección en partes organizadas usando el botón "Agregar lección"</p></div>
               </div>
               <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                 <div style={{ width: 32, height: 32, borderRadius: "50%", backgroundColor: COLORS.accent.primarySoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>2</div>

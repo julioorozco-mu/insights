@@ -36,6 +36,13 @@ export const TABLES = {
   SITE_CONFIG: "site_config",
   SCHEDULED_EMAILS: "scheduled_emails",
   CERTIFICATE_DOWNLOADS: "certificate_downloads",
+  // Lesson Player (Cinema Mode)
+  LESSON_NOTES: "lesson_notes",
+  LESSON_QUESTIONS: "lesson_questions",
+  LESSON_QUESTION_ANSWERS: "lesson_question_answers",
+  LESSON_QUESTION_UPVOTES: "lesson_question_upvotes",
+  // Secciones de cursos
+  COURSE_SECTIONS: "course_sections",
 } as const;
 
 // Alias para compatibilidad (deprecado - usar TABLES)
