@@ -467,6 +467,8 @@ export default function LessonPlayerPage() {
   
   // Rating modal state
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
+  const [userRating, setUserRating] = useState<number | null>(null);
+  const [loadingRating, setLoadingRating] = useState(false);
   
   // Subsection State (para navegación dentro de una lección)
   // Inicializa con el valor del query parameter si existe
@@ -726,6 +728,32 @@ export default function LessonPlayerPage() {
     };
   }, [progressTooltipOpen]);
 
+  // Fetch user's course rating
+  useEffect(() => {
+    const fetchUserRating = async () => {
+      if (!user || !courseId) return;
+      
+      setLoadingRating(true);
+      try {
+        const response = await fetch(
+          `/api/student/rating?courseId=${courseId}&userId=${user.id}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          if (data.review) {
+            setUserRating(data.review.rating);
+          }
+        }
+      } catch (error) {
+        console.error('[fetchUserRating] Error:', error);
+      } finally {
+        setLoadingRating(false);
+      }
+    };
+
+    fetchUserRating();
+  }, [user, courseId]);
+
   // Fetch resources when lesson changes
   useEffect(() => {
     const fetchResources = async () => {
@@ -977,18 +1005,29 @@ export default function LessonPlayerPage() {
         className="flex items-center justify-between px-4 md:px-6 sticky top-0 z-50 shrink-0"
         style={{ height: TOKENS.spacing.topbarHeight, backgroundColor: TOKENS.colors.topbar }}
       >
-        <div className="flex items-center gap-4 overflow-hidden">
+        <div className="flex items-center gap-2 overflow-hidden">
+          {/* Logo - Navega al dashboard del estudiante */}
           <button 
-            onClick={() => router.push(`/student/courses/${courseId}`)} 
-            className="text-white hover:text-gray-300 transition-colors"
+            onClick={() => router.push('/dashboard/student')} 
+            className="text-white hover:text-gray-300 transition-colors shrink-0"
+            title="Ir al dashboard"
           >
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center text-white font-bold text-xs">MU</div>
-              <div className="h-6 w-[1px] bg-gray-700 mx-2 hidden sm:block"></div>
-              <span className="text-gray-300 text-sm font-medium truncate max-w-[150px] md:max-w-md hidden sm:block">
-                {courseInfo?.title ? `Microcredencial - ${courseInfo.title}` : "Volver al curso"}
-              </span>
+            <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center text-white font-bold text-xs hover:bg-purple-500 transition-colors">
+              MU
             </div>
+          </button>
+          
+          <div className="h-6 w-[1px] bg-gray-700 mx-2 hidden sm:block shrink-0"></div>
+          
+          {/* Título del curso - Navega a la página del curso */}
+          <button 
+            onClick={() => router.push(`/dashboard/student/courses/${courseId}`)} 
+            className="text-gray-300 hover:text-white transition-colors hidden sm:block"
+            title="Ver detalles del curso"
+          >
+            <span className="text-sm font-medium truncate max-w-[150px] md:max-w-md block">
+              {courseInfo?.title ? `Microcredencial - ${courseInfo.title}` : "Volver al curso"}
+            </span>
           </button>
         </div>
 
@@ -997,10 +1036,34 @@ export default function LessonPlayerPage() {
           <div className="hidden md:flex items-center gap-2 text-sm text-gray-300">
             <button 
               onClick={() => setIsRatingModalOpen(true)}
-              className="flex items-center gap-1 text-yellow-400 cursor-pointer hover:text-yellow-300 transition-colors"
+              className="flex items-center gap-1.5 text-yellow-400 cursor-pointer hover:text-yellow-300 transition-colors group"
+              title={userRating ? "Editar calificación" : "Calificar este curso"}
             >
-              <IconStar size={16} fill="currentColor" />
-              <span className="font-medium">Calificar</span>
+              {loadingRating ? (
+                <IconLoader2 size={16} className="animate-spin" />
+              ) : userRating ? (
+                <>
+                  {/* Mostrar estrellas llenas según la calificación */}
+                  <div className="flex items-center gap-0.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <IconStar
+                        key={star}
+                        size={14}
+                        className={star <= userRating ? "fill-yellow-400" : "fill-transparent stroke-yellow-400/50"}
+                        strokeWidth={1.5}
+                      />
+                    ))}
+                  </div>
+                  <span className="font-medium text-yellow-400/90 group-hover:text-yellow-300">
+                    Tu calificación
+                  </span>
+                </>
+              ) : (
+                <>
+                  <IconStar size={16} fill="currentColor" />
+                  <span className="font-medium">Calificar</span>
+                </>
+              )}
             </button>
             <div className="h-4 w-[1px] bg-gray-700 mx-2"></div>
             {/* Progress Circle with Tooltip (hover + click to pin) */}
@@ -1780,12 +1843,10 @@ export default function LessonPlayerPage() {
           userId={user.id}
           courseName={courseInfo?.title}
           onRatingSubmitted={(review) => {
-            console.log("Rating submitted:", review);
-            // Optionally show a toast notification here
+            setUserRating(review.rating);
           }}
           onRatingDeleted={() => {
-            console.log("Rating deleted");
-            // Optionally show a toast notification here
+            setUserRating(null);
           }}
         />
       )}

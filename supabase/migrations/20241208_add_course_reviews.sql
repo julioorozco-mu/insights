@@ -92,24 +92,40 @@ CREATE TRIGGER "update_course_rating_stats_trigger"
     FOR EACH ROW
     EXECUTE FUNCTION "public"."update_course_rating_stats"();
 
--- 6. Create updated_at trigger for course_reviews
-CREATE OR REPLACE TRIGGER "update_course_reviews_updated_at"
-    BEFORE UPDATE ON "public"."course_reviews"
+-- 6. Create function to set updated_at on INSERT and UPDATE
+-- This ensures consistent server-time timestamps for both operations
+CREATE OR REPLACE FUNCTION "public"."set_course_review_updated_at"()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Always use server time for updated_at
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+-- Create trigger for both INSERT and UPDATE to ensure consistent timestamps
+DROP TRIGGER IF EXISTS "update_course_reviews_updated_at" ON "public"."course_reviews";
+CREATE TRIGGER "update_course_reviews_updated_at"
+    BEFORE INSERT OR UPDATE ON "public"."course_reviews"
     FOR EACH ROW
-    EXECUTE FUNCTION "public"."update_updated_at_column"();
+    EXECUTE FUNCTION "public"."set_course_review_updated_at"();
 
 -- 7. Enable Row Level Security
 ALTER TABLE "public"."course_reviews" ENABLE ROW LEVEL SECURITY;
 
--- 8. RLS Policies
+-- 8. RLS Policies (DROP IF EXISTS to make migration idempotent)
 
 -- SELECT: Anyone can view reviews (public)
+DROP POLICY IF EXISTS "course_reviews_select_public" ON "public"."course_reviews";
 CREATE POLICY "course_reviews_select_public" 
     ON "public"."course_reviews" 
     FOR SELECT 
     USING (true);
 
 -- INSERT: Only authenticated students can create their own reviews
+DROP POLICY IF EXISTS "course_reviews_insert_own" ON "public"."course_reviews";
 CREATE POLICY "course_reviews_insert_own" 
     ON "public"."course_reviews" 
     FOR INSERT 
@@ -118,6 +134,7 @@ CREATE POLICY "course_reviews_insert_own"
     );
 
 -- UPDATE: Only the student who created the review can update it
+DROP POLICY IF EXISTS "course_reviews_update_own" ON "public"."course_reviews";
 CREATE POLICY "course_reviews_update_own" 
     ON "public"."course_reviews" 
     FOR UPDATE 
@@ -125,6 +142,7 @@ CREATE POLICY "course_reviews_update_own"
     WITH CHECK ("auth"."uid"() = student_id);
 
 -- DELETE: Only the student who created the review OR admins can delete
+DROP POLICY IF EXISTS "course_reviews_delete_own_or_admin" ON "public"."course_reviews";
 CREATE POLICY "course_reviews_delete_own_or_admin" 
     ON "public"."course_reviews" 
     FOR DELETE 
