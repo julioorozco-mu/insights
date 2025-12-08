@@ -30,6 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import CourseRatingModal from "@/components/course/CourseRatingModal";
 
 // ===== TYPES =====
 interface Lesson {
@@ -463,6 +464,9 @@ export default function LessonPlayerPage() {
   // Progress tooltip state (click to pin)
   const [progressTooltipOpen, setProgressTooltipOpen] = useState(false);
   const progressTooltipRef = useRef<HTMLDivElement>(null);
+  
+  // Rating modal state
+  const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
   
   // Subsection State (para navegación dentro de una lección)
   // Inicializa con el valor del query parameter si existe
@@ -991,10 +995,13 @@ export default function LessonPlayerPage() {
         <div className="flex items-center gap-2 md:gap-4 text-white">
           {/* Progress Indicator */}
           <div className="hidden md:flex items-center gap-2 text-sm text-gray-300">
-            <div className="flex items-center gap-1 text-yellow-400 cursor-pointer hover:text-yellow-300">
+            <button 
+              onClick={() => setIsRatingModalOpen(true)}
+              className="flex items-center gap-1 text-yellow-400 cursor-pointer hover:text-yellow-300 transition-colors"
+            >
               <IconStar size={16} fill="currentColor" />
               <span className="font-medium">Calificar</span>
-            </div>
+            </button>
             <div className="h-4 w-[1px] bg-gray-700 mx-2"></div>
             {/* Progress Circle with Tooltip (hover + click to pin) */}
             <div className="relative group" ref={progressTooltipRef}>
@@ -1763,6 +1770,25 @@ export default function LessonPlayerPage() {
           </button>
         )}
       </main>
+
+      {/* Course Rating Modal */}
+      {user && (
+        <CourseRatingModal
+          isOpen={isRatingModalOpen}
+          onClose={() => setIsRatingModalOpen(false)}
+          courseId={courseId}
+          userId={user.id}
+          courseName={courseInfo?.title}
+          onRatingSubmitted={(review) => {
+            console.log("Rating submitted:", review);
+            // Optionally show a toast notification here
+          }}
+          onRatingDeleted={() => {
+            console.log("Rating deleted");
+            // Optionally show a toast notification here
+          }}
+        />
+      )}
     </div>
   );
 }

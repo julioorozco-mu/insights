@@ -980,11 +980,21 @@ CREATE TABLE IF NOT EXISTS "public"."student_enrollments" (
     "completed_lessons" "uuid"[] DEFAULT '{}'::"uuid"[],
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
+    "last_accessed_lesson_id" "uuid",
+    "subsection_progress" "jsonb" DEFAULT '{}'::"jsonb",
     CONSTRAINT "student_enrollments_progress_check" CHECK ((("progress" >= 0) AND ("progress" <= 100)))
 );
 
 
 ALTER TABLE "public"."student_enrollments" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."student_enrollments"."last_accessed_lesson_id" IS 'UUID of the last lesson the student accessed - used for "resume course" functionality';
+
+
+
+COMMENT ON COLUMN "public"."student_enrollments"."subsection_progress" IS 'JSONB map of lesson_id -> highest_completed_subsection_index for granular progress tracking';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."students" (
@@ -1704,7 +1714,15 @@ CREATE INDEX "idx_student_enrollments_course" ON "public"."student_enrollments" 
 
 
 
+CREATE INDEX "idx_student_enrollments_last_accessed" ON "public"."student_enrollments" USING "btree" ("last_accessed_lesson_id");
+
+
+
 CREATE INDEX "idx_student_enrollments_student" ON "public"."student_enrollments" USING "btree" ("student_id");
+
+
+
+CREATE INDEX "idx_student_enrollments_subsection_progress" ON "public"."student_enrollments" USING "gin" ("subsection_progress");
 
 
 
@@ -2185,6 +2203,11 @@ ALTER TABLE ONLY "public"."student_answers"
 
 ALTER TABLE ONLY "public"."student_enrollments"
     ADD CONSTRAINT "student_enrollments_course_id_fkey" FOREIGN KEY ("course_id") REFERENCES "public"."courses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."student_enrollments"
+    ADD CONSTRAINT "student_enrollments_last_accessed_lesson_id_fkey" FOREIGN KEY ("last_accessed_lesson_id") REFERENCES "public"."lessons"("id") ON DELETE SET NULL;
 
 
 
