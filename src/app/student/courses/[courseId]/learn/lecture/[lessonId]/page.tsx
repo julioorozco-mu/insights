@@ -460,6 +460,10 @@ export default function LessonPlayerPage() {
   // Video simulation state (para timestamp de notas)
   const [currentVideoTime, setCurrentVideoTime] = useState(0);
   
+  // Progress tooltip state (click to pin)
+  const [progressTooltipOpen, setProgressTooltipOpen] = useState(false);
+  const progressTooltipRef = useRef<HTMLDivElement>(null);
+  
   // Subsection State (para navegación dentro de una lección)
   // Inicializa con el valor del query parameter si existe
   const [activeSubsectionIndex, setActiveSubsectionIndex] = useState(initialSubsectionIndex);
@@ -700,6 +704,23 @@ export default function LessonPlayerPage() {
       initialSubsectionAppliedRef.current = false;
     }
   }, [currentLessonId, searchParams]);
+
+  // Close progress tooltip when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (progressTooltipRef.current && !progressTooltipRef.current.contains(event.target as Node)) {
+        setProgressTooltipOpen(false);
+      }
+    };
+
+    if (progressTooltipOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [progressTooltipOpen]);
 
   // Fetch resources when lesson changes
   useEffect(() => {
@@ -975,32 +996,92 @@ export default function LessonPlayerPage() {
               <span className="font-medium">Calificar</span>
             </div>
             <div className="h-4 w-[1px] bg-gray-700 mx-2"></div>
-            <div className="flex items-center cursor-pointer hover:text-white">
-              {/* Circle Progress Chart con porcentaje dentro */}
-              <div className="relative w-14 h-14 flex items-center justify-center">
-                <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                  {/* Background circle */}
-                  <circle 
-                    cx="18" cy="18" r="15.9155"
-                    fill="none" 
-                    stroke="#374151"
-                    strokeWidth="3"
-                  />
-                  {/* Progress circle */}
-                  <circle 
-                    cx="18" cy="18" r="15.9155"
-                    fill="none" 
-                    stroke="#A855F7"
-                    strokeWidth="3"
-                    strokeDasharray={`${visualProgress}, 100`}
-                    strokeLinecap="round"
-                    style={{ transition: 'stroke-dasharray 0.3s ease' }}
-                  />
-                </svg>
-                {/* Percentage text inside circle */}
-                <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">
-                  {visualProgress}%
-                </span>
+            {/* Progress Circle with Tooltip (hover + click to pin) */}
+            <div className="relative group" ref={progressTooltipRef}>
+              <div 
+                className="flex items-center cursor-pointer hover:text-white"
+                onClick={() => setProgressTooltipOpen(!progressTooltipOpen)}
+              >
+                {/* Circle Progress Chart con porcentaje dentro */}
+                <div className="relative w-14 h-14 flex items-center justify-center">
+                  <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                    {/* Background circle */}
+                    <circle 
+                      cx="18" cy="18" r="15.9155"
+                      fill="none" 
+                      stroke="#374151"
+                      strokeWidth="3"
+                    />
+                    {/* Progress circle */}
+                    <circle 
+                      cx="18" cy="18" r="15.9155"
+                      fill="none" 
+                      stroke="#A855F7"
+                      strokeWidth="3"
+                      strokeDasharray={`${visualProgress}, 100`}
+                      strokeLinecap="round"
+                      style={{ transition: 'stroke-dasharray 0.3s ease' }}
+                    />
+                  </svg>
+                  {/* Percentage text inside circle */}
+                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">
+                    {visualProgress}%
+                  </span>
+                </div>
+              </div>
+              
+              {/* Tooltip - appears on hover OR when pinned (clicked) */}
+              <div className={cn(
+                "absolute top-full right-0 mt-2 w-64 transition-all duration-200 z-50",
+                progressTooltipOpen 
+                  ? "opacity-100 visible" 
+                  : "opacity-0 invisible group-hover:opacity-100 group-hover:visible"
+              )}>
+                {/* Arrow */}
+                <div className="absolute -top-2 right-6 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-white"></div>
+                {/* Tooltip content */}
+                <div className="bg-white rounded-lg shadow-xl p-4">
+                  {/* Close button when pinned */}
+                  {progressTooltipOpen && (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setProgressTooltipOpen(false);
+                      }}
+                      className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
+                    >
+                      <IconX size={14} />
+                    </button>
+                  )}
+                  <p className="text-gray-900 font-bold text-base mb-1 pr-6">
+                    {(() => {
+                      // Calcular total de subsecciones completadas y totales
+                      let totalSubs = 0;
+                      let completedSubs = 0;
+                      sortedLessons.forEach(lesson => {
+                        let subs: Subsection[] = [];
+                        try {
+                          if (lesson.content) {
+                            const parsed = JSON.parse(lesson.content);
+                            subs = parsed.subsections || [];
+                          }
+                        } catch {}
+                        const count = subs.length || 1;
+                        totalSubs += count;
+                        if (dbCompletedLessons.includes(lesson.id)) {
+                          completedSubs += count;
+                        } else {
+                          const idx = completedSubsectionsByLesson[lesson.id] ?? -1;
+                          if (idx >= 0) completedSubs += Math.min(idx + 1, count);
+                        }
+                      });
+                      return `${completedSubs} de ${totalSubs} completados.`;
+                    })()}
+                  </p>
+                  <p className="text-gray-500 text-sm">
+                    Acaba los niveles para obtener una insignia.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
