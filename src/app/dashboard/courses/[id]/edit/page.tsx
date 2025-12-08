@@ -14,8 +14,41 @@ import {
   Eye,
   Check,
   RefreshCw,
+  ClipboardCheck,
+  FileText,
+  Trash2,
+  ExternalLink,
 } from "lucide-react";
 import SortableSectionList, { CourseSection } from "@/components/course/SortableSectionList";
+
+// Interfaz para tests disponibles
+interface AvailableTest {
+  id: string;
+  title: string;
+  description?: string;
+  status: string;
+  questionsCount: number;
+  passingScore: number;
+  timeMode: string;
+  timeLimitMinutes?: number;
+}
+
+// Interfaz para test vinculado al curso
+interface LinkedCourseTest {
+  id: string;
+  testId: string;
+  courseId: string;
+  isRequired: boolean;
+  test?: {
+    id: string;
+    title: string;
+    description?: string;
+    status: string;
+    timeMode?: string;
+    timeLimitMinutes?: number;
+    passingScore?: number;
+  };
+}
 
 // ============================================================================
 // TIPOS E INTERFACES
@@ -244,6 +277,13 @@ export default function EditCoursePage() {
   const [currentCourseId, setCurrentCourseId] = useState<string | null>(courseId || null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   
+  // Estados para evaluación de acreditación
+  const [availableTests, setAvailableTests] = useState<AvailableTest[]>([]);
+  const [linkedCourseTest, setLinkedCourseTest] = useState<LinkedCourseTest | null>(null);
+  const [selectedTestId, setSelectedTestId] = useState<string>("");
+  const [loadingTests, setLoadingTests] = useState(false);
+  const [linkingTest, setLinkingTest] = useState(false);
+  
   const { uploadFile, uploading: uploadingImage } = useUploadFile();
 
   const {
@@ -348,6 +388,40 @@ export default function EditCoursePage() {
       };
       loadLessons();
     }
+  }, [currentCourseId]);
+
+  // Cargar tests disponibles y test vinculado
+  useEffect(() => {
+    const loadTests = async () => {
+      if (!currentCourseId) return;
+      
+      setLoadingTests(true);
+      try {
+        // Cargar tests disponibles (publicados)
+        const testsRes = await fetch('/api/admin/tests?status=published');
+        if (testsRes.ok) {
+          const testsData = await testsRes.json();
+          setAvailableTests(testsData.tests || []);
+        }
+
+        // Cargar test vinculado a este curso
+        const linkedRes = await fetch(`/api/admin/course-tests?courseId=${currentCourseId}`);
+        if (linkedRes.ok) {
+          const linkedData = await linkedRes.json();
+          const courseTests = linkedData.courseTests || [];
+          if (courseTests.length > 0) {
+            setLinkedCourseTest(courseTests[0]);
+            setSelectedTestId(courseTests[0].testId);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading tests:", err);
+      } finally {
+        setLoadingTests(false);
+      }
+    };
+
+    loadTests();
   }, [currentCourseId]);
 
   useEffect(() => {
@@ -752,6 +826,72 @@ export default function EditCoursePage() {
     }
   };
 
+  // Vincular test al curso
+  const handleLinkTest = async () => {
+    if (!selectedTestId || !currentCourseId || !user?.id) return;
+    
+    setLinkingTest(true);
+    try {
+      // Si ya hay un test vinculado, primero desvincularlo
+      if (linkedCourseTest) {
+        await fetch(`/api/admin/course-tests?id=${linkedCourseTest.id}`, {
+          method: 'DELETE',
+        });
+      }
+
+      // Vincular el nuevo test
+      const res = await fetch('/api/admin/course-tests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testId: selectedTestId,
+          courseId: currentCourseId,
+          createdBy: user.id,
+          isRequired: true,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setLinkedCourseTest(data.courseTest);
+        showSnackbarMessage("Evaluación de acreditación vinculada");
+      } else {
+        const errorData = await res.json();
+        setError(errorData.error || "Error al vincular la evaluación");
+      }
+    } catch (err) {
+      console.error("Error linking test:", err);
+      setError("Error al vincular la evaluación");
+    } finally {
+      setLinkingTest(false);
+    }
+  };
+
+  // Desvincular test del curso
+  const handleUnlinkTest = async () => {
+    if (!linkedCourseTest) return;
+    
+    setLinkingTest(true);
+    try {
+      const res = await fetch(`/api/admin/course-tests?id=${linkedCourseTest.id}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        setLinkedCourseTest(null);
+        setSelectedTestId("");
+        showSnackbarMessage("Evaluación de acreditación desvinculada");
+      } else {
+        setError("Error al desvincular la evaluación");
+      }
+    } catch (err) {
+      console.error("Error unlinking test:", err);
+      setError("Error al desvincular la evaluación");
+    } finally {
+      setLinkingTest(false);
+    }
+  };
+
   const finalPrice = (parseFloat(price) || 0) - (parseFloat(saleAmount) || 0);
   const remainingChars = 500 - (description.length || 0);
   const displayTitle = courseTitle || "Nuevo curso";
@@ -1021,6 +1161,160 @@ export default function EditCoursePage() {
                   Ocultar este curso
                 </label>
               </div>
+            </div>
+
+            {/* Evaluación de Acreditación Card */}
+            <div className="bg-white rounded-2xl p-4 shadow-card border-2 border-[#1A2170]/10">
+              <div className="flex items-center gap-2 mb-4">
+                <ClipboardCheck size={20} className="text-[#1A2170]" />
+                <h3 className="text-[15px] font-semibold text-brand-primary">
+                  Evaluación de Acreditación
+                </h3>
+              </div>
+              
+              <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                Selecciona la evaluación final que los estudiantes deben aprobar para acreditar esta microcredencial. Solo se puede presentar después de completar todos los niveles.
+              </p>
+
+              {loadingTests ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="w-5 h-5 border-2 border-slate-200 border-t-[#1A2170] rounded-full animate-spin"></div>
+                </div>
+              ) : linkedCourseTest ? (
+                // Mostrar evaluación vinculada
+                <div className="bg-[#1A2170]/5 rounded-xl p-4 border border-[#1A2170]/20">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <FileText size={18} className="text-[#1A2170]" />
+                      <span className="font-medium text-[#1A2170] text-sm">
+                        {linkedCourseTest.test?.title || "Evaluación vinculada"}
+                      </span>
+                    </div>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                      linkedCourseTest.test?.status === 'published' 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {linkedCourseTest.test?.status === 'published' ? 'Publicada' : 'Borrador'}
+                    </span>
+                  </div>
+
+                  {linkedCourseTest.test?.description && (
+                    <p className="text-xs text-slate-600 mb-3 line-clamp-2">
+                      {linkedCourseTest.test.description}
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2 mb-4 text-xs">
+                    <div className="bg-white rounded-lg p-2">
+                      <span className="text-slate-400 block">Calificación mínima</span>
+                      <span className="font-semibold text-slate-700">{linkedCourseTest.test?.passingScore || 60}%</span>
+                    </div>
+                    <div className="bg-white rounded-lg p-2">
+                      <span className="text-slate-400 block">Tiempo</span>
+                      <span className="font-semibold text-slate-700">
+                        {linkedCourseTest.test?.timeMode === 'timed' 
+                          ? `${linkedCourseTest.test.timeLimitMinutes} min` 
+                          : 'Sin límite'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/dashboard/tests/${linkedCourseTest.testId}/edit`)}
+                      className="flex-1 h-8 flex items-center justify-center gap-1.5 bg-white border border-slate-200 rounded-lg text-slate-600 text-xs font-medium hover:bg-slate-50 transition-colors"
+                    >
+                      <ExternalLink size={14} />
+                      Ver evaluación
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleUnlinkTest}
+                      disabled={linkingTest}
+                      className="h-8 px-3 flex items-center justify-center gap-1.5 bg-red-50 border border-red-200 rounded-lg text-red-600 text-xs font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 size={14} />
+                      Desvincular
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                // Selector de evaluación
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1.5 block">
+                      Seleccionar evaluación
+                    </label>
+                    <select
+                      value={selectedTestId}
+                      onChange={(e) => setSelectedTestId(e.target.value)}
+                      className="w-full h-10 px-3 text-sm border border-slate-200 rounded-lg bg-white cursor-pointer focus:ring-2 focus:ring-[#1A2170]/40 focus:border-transparent"
+                    >
+                      <option value="">-- Selecciona una evaluación --</option>
+                      {availableTests.map(test => (
+                        <option key={test.id} value={test.id}>
+                          {test.title} ({test.questionsCount} preguntas)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedTestId && (
+                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                      {(() => {
+                        const selectedTest = availableTests.find(t => t.id === selectedTestId);
+                        if (!selectedTest) return null;
+                        return (
+                          <>
+                            <p className="text-xs text-slate-600 mb-2 line-clamp-2">
+                              {selectedTest.description || "Sin descripción"}
+                            </p>
+                            <div className="flex gap-4 text-xs text-slate-500">
+                              <span>📋 {selectedTest.questionsCount} preguntas</span>
+                              <span>✓ {selectedTest.passingScore}% mínimo</span>
+                              <span>⏱ {selectedTest.timeMode === 'timed' ? `${selectedTest.timeLimitMinutes} min` : 'Sin límite'}</span>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleLinkTest}
+                    disabled={!selectedTestId || linkingTest}
+                    className="h-10 w-full flex items-center justify-center gap-2 bg-[#1A2170] hover:bg-[#1A2170]/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    {linkingTest ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        Vinculando...
+                      </>
+                    ) : (
+                      <>
+                        <ClipboardCheck size={16} />
+                        Vincular evaluación
+                      </>
+                    )}
+                  </button>
+
+                  {availableTests.length === 0 && (
+                    <div className="text-center py-3">
+                      <p className="text-xs text-slate-400 mb-2">No hay evaluaciones publicadas</p>
+                      <button
+                        type="button"
+                        onClick={() => router.push('/dashboard/tests/create')}
+                        className="text-xs text-[#1A2170] hover:underline font-medium"
+                      >
+                        + Crear nueva evaluación
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Level Card */}
