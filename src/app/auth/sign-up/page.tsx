@@ -16,23 +16,25 @@ export default function SignUpPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [authTimeout, setAuthTimeout] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   
   // Redirigir usuarios ya logueados al dashboard (respaldo del middleware)
   useEffect(() => {
-    if (!authLoading && (user || session)) {
-      router.replace("/dashboard");
+    if (!authLoading && (user || session) && !isRedirecting) {
+      setIsRedirecting(true);
+      window.location.href = "/dashboard";
     }
-  }, [authLoading, user, session, router]);
+  }, [authLoading, user, session, isRedirecting]);
 
   // Timeout de seguridad: si después de 3 segundos sigue cargando, mostrar la página
   useEffect(() => {
     const timeout = setTimeout(() => {
-      if (authLoading) {
+      if (authLoading && !isRedirecting) {
         setAuthTimeout(true);
       }
     }, 3000);
     return () => clearTimeout(timeout);
-  }, [authLoading]);
+  }, [authLoading, isRedirecting]);
 
   const [age, setAge] = useState<number | null>(null);
   const [selectedState, setSelectedState] = useState("");
@@ -121,25 +123,30 @@ export default function SignUpPage() {
   // Mostrar loader mientras se verifica la autenticación o si el usuario está logueado
   // PERO: si pasa el timeout y no hay session/user, mostrar la página
   const isAuthenticated = !!(user || session);
-  const shouldShowLoader = isAuthenticated || (authLoading && !authTimeout);
+  const shouldShowLoader = isRedirecting || isAuthenticated || (authLoading && !authTimeout);
   
   if (shouldShowLoader) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="loading loading-spinner loading-lg text-primary"></div>
+        {isRedirecting && (
+          <p className="text-base-content/60 mt-4 absolute bottom-1/3">Redirigiendo...</p>
+        )}
       </div>
     );
   }
 
   const onSubmit = async (data: CreateUserInput) => {
+    if (loading || isRedirecting) return;
+    
     try {
       setLoading(true);
       setError(null);
       await signUp(data);
-      router.push("/dashboard");
+      setIsRedirecting(true);
+      window.location.href = "/dashboard";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al crear la cuenta");
-    } finally {
       setLoading(false);
     }
   };

@@ -35,23 +35,26 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [authTimeout, setAuthTimeout] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   
   // Redirigir usuarios ya logueados al dashboard (respaldo del middleware)
   useEffect(() => {
-    if (!authLoading && (user || session)) {
-      router.replace("/dashboard");
+    if (!authLoading && (user || session) && !isRedirecting) {
+      setIsRedirecting(true);
+      // Usar window.location para forzar navegación completa en producción
+      window.location.href = "/dashboard";
     }
-  }, [authLoading, user, session, router]);
+  }, [authLoading, user, session, isRedirecting]);
   
   // Timeout de seguridad: si después de 3 segundos sigue cargando, mostrar la página
   useEffect(() => {
     const timeout = setTimeout(() => {
-      if (authLoading) {
+      if (authLoading && !isRedirecting) {
         setAuthTimeout(true);
       }
     }, 3000);
     return () => clearTimeout(timeout);
-  }, [authLoading]);
+  }, [authLoading, isRedirecting]);
   
   // Verificar rate limit cuando el componente monta
   useEffect(() => {
@@ -69,7 +72,7 @@ export default function LoginPage() {
 
   const onSubmit = useCallback(async (data: LoginInput) => {
     // Prevenir doble submit
-    if (loading) return;
+    if (loading || isRedirecting) return;
     
     try {
       setLoading(true);
@@ -78,27 +81,34 @@ export default function LoginPage() {
       // signIn ahora retorna el usuario con su rol
       const authenticatedUser = await signIn(data.email, data.password);
       
+      // Marcar que estamos redirigiendo ANTES de navegar
+      setIsRedirecting(true);
+      
       // Redirección condicional basada en el rol
+      // Usar window.location para forzar navegación completa en producción
       const redirectPath = getRedirectByRole(authenticatedUser.role);
-      router.push(redirectPath);
+      window.location.href = redirectPath;
       
     } catch (err) {
       // El error ya viene formateado del hook
       setError(err instanceof Error ? err.message : "Error al iniciar sesión");
-    } finally {
       setLoading(false);
     }
-  }, [loading, signIn, router]);
+    // No hacer setLoading(false) en éxito porque estamos redirigiendo
+  }, [loading, isRedirecting, signIn]);
   
-  // Mostrar loader mientras se verifica la autenticación o si el usuario está logueado
-  // PERO: si pasa el timeout y no hay session/user, mostrar la página
+  // Mostrar loader mientras se verifica la autenticación, si el usuario está logueado, o si estamos redirigiendo
+  // PERO: si pasa el timeout y no hay session/user y no estamos redirigiendo, mostrar la página
   const isAuthenticated = !!(user || session);
-  const shouldShowLoader = isAuthenticated || (authLoading && !authTimeout);
+  const shouldShowLoader = isRedirecting || isAuthenticated || (authLoading && !authTimeout);
   
   if (shouldShowLoader) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-base-200">
         <div className="loading loading-spinner loading-lg text-primary"></div>
+        {isRedirecting && (
+          <p className="text-base-content/60 mt-4 absolute bottom-1/3">Redirigiendo...</p>
+        )}
       </div>
     );
   }

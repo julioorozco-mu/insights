@@ -463,7 +463,6 @@ export default function NewCoursePage() {
                       value={description}
                       onChange={(html: string) => setValue("description", html)}
                       placeholder="Describe tu curso..."
-                      maxLength={500}
                     />
                     {errors.description && (
                       <p className="text-red-500 text-xs mt-1.5">{errors.description.message}</p>

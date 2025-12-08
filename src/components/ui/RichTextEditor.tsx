@@ -27,7 +27,6 @@ interface RichTextEditorProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
-  maxLength?: number;
   className?: string;
 }
 
@@ -35,7 +34,6 @@ export default function RichTextEditor({
   value,
   onChange,
   placeholder = "Escribe aquí...",
-  maxLength = 500,
   className = "",
 }: RichTextEditorProps) {
   const [linkUrl, setLinkUrl] = useState("");
@@ -143,7 +141,6 @@ export default function RichTextEditor({
   }
 
   const charCount = editor.storage.characterCount?.characters?.() || editor.getText().length;
-  const remainingChars = maxLength - charCount;
 
   return (
     <div className={`border border-slate-200 rounded-lg overflow-hidden ${className}`}>
@@ -445,10 +442,10 @@ export default function RichTextEditor({
       {/* Editor Content */}
       <EditorContent editor={editor} className="min-h-[120px]" />
 
-      {/* Character Count */}
+      {/* Character Count (solo informativo, sin límite) */}
       <div className="flex justify-end px-3 py-1.5 border-t border-slate-100">
-        <p className={`text-[11px] ${remainingChars < 50 ? "text-orange-500" : "text-slate-400"}`}>
-          {remainingChars} caracteres restantes
+        <p className="text-[11px] text-slate-400">
+          {charCount} caracteres
         </p>
       </div>
 

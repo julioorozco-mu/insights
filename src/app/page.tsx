@@ -32,26 +32,29 @@ export default function HomePage() {
   const { courses: bannerCourses, loading: bannerLoading } = useHomepageBanner();
   // Timeout de seguridad para evitar spinner infinito
   const [authTimeout, setAuthTimeout] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   
   // Redirigir usuarios logueados al dashboard (respaldo del middleware)
   // Usar session además de user para detectar más rápido
   useEffect(() => {
-    if (!authLoading && (user || session)) {
-      router.replace("/dashboard");
+    if (!authLoading && (user || session) && !isRedirecting) {
+      setIsRedirecting(true);
+      // Usar window.location para forzar navegación completa en producción
+      window.location.href = "/dashboard";
     }
-  }, [authLoading, user, session, router]);
+  }, [authLoading, user, session, isRedirecting]);
 
   // Timeout de seguridad: si después de 3 segundos sigue cargando, mostrar la página
   useEffect(() => {
     const timeout = setTimeout(() => {
-      if (authLoading) {
+      if (authLoading && !isRedirecting) {
         console.warn('[HomePage] Auth loading timeout - mostrando página pública');
         setAuthTimeout(true);
       }
     }, 3000);
     
     return () => clearTimeout(timeout);
-  }, [authLoading]);
+  }, [authLoading, isRedirecting]);
 
   // Log cuando cambia el tooltip
   useEffect(() => {
@@ -169,16 +172,22 @@ export default function HomePage() {
   });
 
   const onSubmit = async (data: LoginInput) => {
+    if (loading || isRedirecting) return;
+    
     try {
       setLoading(true);
       setError(null);
       await signIn(data.email, data.password);
-      router.push("/dashboard");
+      
+      // Marcar que estamos redirigiendo ANTES de navegar
+      setIsRedirecting(true);
+      // Usar window.location para forzar navegación completa en producción
+      window.location.href = "/dashboard";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al iniciar sesión");
-    } finally {
       setLoading(false);
     }
+    // No hacer setLoading(false) en éxito porque estamos redirigiendo
   };
 
   const totalSlides = bannerCourses.length;
