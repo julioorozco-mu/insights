@@ -1,49 +1,133 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import {
   IconChevronLeft,
   IconChevronRight,
+  IconChevronDown,
   IconPlayerPlay,
   IconCheck,
-  IconMenu2,
   IconX,
   IconShare,
   IconDotsVertical,
   IconStar,
   IconMessageCircle,
   IconNote,
-  IconFileText,
   IconVideo,
-  IconCheckbox
+  IconFile,
+  IconDownload,
+  IconClock,
+  IconSend,
+  IconTrash,
+  IconEdit,
+  IconThumbUp,
+  IconLoader2,
+  IconPaperclip,
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
+import { formatDistanceToNow } from "date-fns";
+import { es } from "date-fns/locale";
 
 // ===== TYPES =====
 interface Lesson {
   id: string;
   title: string;
   description?: string;
-  content?: string; // JSON string with subsections
+  type: string;
+  content?: string; // JSON string con subsecciones
+  videoUrl?: string;
   durationMinutes?: number;
   order: number;
+  sectionId?: string;
+  subsections?: Subsection[]; // Parsed subsections
+}
+
+interface Section {
+  id: string;
+  title: string;
+  description?: string;
+  order: number;
+  isExpanded?: boolean;
+}
+
+interface ContentBlock {
+  id: string;
+  type: 'heading' | 'text' | 'image' | 'video' | 'attachment' | 'list' | 'table';
+  content: string;
+  data?: {
+    fileName?: string;
+    fileSize?: number;
+    fileType?: string;
+    videoType?: 'youtube' | 'vimeo' | 'url';
+    items?: string[];
+    rows?: number;
+    cols?: number;
+    cells?: string[][];
+  };
 }
 
 interface Subsection {
   id: string;
   title: string;
-  blocks: any[]; // simplified for now
+  blocks?: ContentBlock[];
 }
 
-interface ParsedContent {
-  subsections: Subsection[];
+interface Resource {
+  id: string;
+  fileName: string;
+  fileType: string;
+  url: string;
+  sizeKb?: number;
+  category: string;
 }
 
-// ===== TOKENS FROM cinema-on.json =====
+interface Note {
+  id: string;
+  content: string;
+  video_timestamp: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface QuestionAuthor {
+  id: string;
+  name: string;
+  avatarUrl?: string;
+  role?: string;
+}
+
+interface Answer {
+  id: string;
+  answerText: string;
+  isInstructorAnswer: boolean;
+  isAccepted: boolean;
+  upvotes: number;
+  createdAt: string;
+  author: QuestionAuthor | null;
+}
+
+interface Question {
+  id: string;
+  questionText: string;
+  videoTimestamp: number;
+  isResolved: boolean;
+  upvotes: number;
+  createdAt: string;
+  author: QuestionAuthor | null;
+  answers: Answer[];
+  answersCount: number;
+}
+
+interface CourseInfo {
+  id: string;
+  title: string;
+  teacherIds: string[];
+}
+
+// ===== TOKENS (Cinema Mode Design) =====
 const TOKENS = {
   colors: {
     topbar: "#111118",
@@ -53,26 +137,265 @@ const TOKENS = {
     canvas: "#FFFFFF",
     textPrimary: "#111827",
     textSecondary: "#4B5563",
+    textMuted: "#9CA3AF",
     textLink: "#A435F0",
     textOnDark: "#F9FAFB",
+    success: "#22C55E",
+    border: "rgba(15, 23, 42, 0.1)",
   },
   spacing: {
     topbarHeight: "64px",
   }
 };
 
-// ===== HELPER: Parse Content =====
-function parseLessonContent(contentString?: string): ParsedContent | null {
-  if (!contentString) return null;
-  try {
-    const parsed = JSON.parse(contentString);
-    if (parsed.subsections && Array.isArray(parsed.subsections)) {
-      return parsed as ParsedContent;
-    }
-    return null;
-  } catch {
-    return null;
+// ===== HELPER: Format timestamp =====
+function formatTimestamp(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// ===== HELPER: Format file size =====
+function formatFileSize(kb?: number): string {
+  if (!kb) return '';
+  if (kb < 1024) return `${kb} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
+// ===== HELPER: Get file icon based on type =====
+function getFileIcon(fileType: string) {
+  if (fileType.includes('pdf')) return '📄';
+  if (fileType.includes('image')) return '🖼️';
+  if (fileType.includes('video')) return '🎬';
+  if (fileType.includes('word') || fileType.includes('document')) return '📝';
+  if (fileType.includes('excel') || fileType.includes('spreadsheet')) return '📊';
+  if (fileType.includes('powerpoint') || fileType.includes('presentation')) return '📑';
+  return '📎';
+}
+
+// ===== HELPER: Extract YouTube video ID =====
+function getYouTubeVideoId(url: string): string | null {
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+}
+
+// ===== HELPER: Extract path from Supabase Storage URL =====
+function extractStoragePath(url: string): { bucket: string; path: string } | null {
+  // URL format: https://xxx.supabase.co/storage/v1/object/public/BUCKET/PATH
+  const match = url.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+  if (match) {
+    return { bucket: match[1], path: decodeURIComponent(match[2]) };
   }
+  return null;
+}
+
+// ===== COMPONENT: Attachment Block (con URL firmada) =====
+function AttachmentBlock({ block }: { block: ContentBlock }) {
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fileSize = block.data?.fileSize ? formatFileSize(block.data.fileSize / 1024) : '';
+
+  const handleDownload = async () => {
+    // Si ya tenemos URL firmada válida, usarla
+    if (signedUrl) {
+      window.open(signedUrl, '_blank');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Extraer bucket y path de la URL pública guardada
+      console.log('[AttachmentBlock] URL original:', block.content);
+      const storageInfo = extractStoragePath(block.content);
+      console.log('[AttachmentBlock] Storage info:', storageInfo);
+      
+      if (!storageInfo) {
+        // Si no es URL de Supabase Storage, abrir directamente
+        console.log('[AttachmentBlock] No es URL de Supabase, abriendo directamente');
+        window.open(block.content, '_blank');
+        return;
+      }
+
+      // Obtener URL firmada
+      const apiUrl = `/api/student/getSignedUrl?bucket=${storageInfo.bucket}&path=${encodeURIComponent(storageInfo.path)}&expiresIn=3600`;
+      console.log('[AttachmentBlock] Llamando API:', apiUrl);
+      const res = await fetch(apiUrl);
+      console.log('[AttachmentBlock] Response status:', res.status);
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Error al obtener acceso al archivo');
+      }
+
+      const data = await res.json();
+      setSignedUrl(data.signedUrl);
+      window.open(data.signedUrl, '_blank');
+    } catch (err: any) {
+      console.error('Error getting signed URL:', err);
+      console.error('Error details:', JSON.stringify(err, null, 2));
+      setError(err?.message || 'Error al acceder al archivo');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="my-4 flex items-center gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
+      <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+        <IconPaperclip className="w-5 h-5 text-purple-600" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-gray-900 truncate">{block.data?.fileName || 'Archivo adjunto'}</p>
+        {fileSize && <p className="text-xs text-gray-500">{fileSize}</p>}
+        {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+      </div>
+      <button 
+        onClick={handleDownload}
+        disabled={loading}
+        className="px-4 py-2 text-sm font-medium text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {loading ? 'Cargando...' : 'Ver archivo'}
+      </button>
+    </div>
+  );
+}
+
+// ===== COMPONENT: Content Block Renderer =====
+function ContentBlockRenderer({ block }: { block: ContentBlock }) {
+  switch (block.type) {
+    case 'heading':
+      return (
+        <h2 className="text-2xl font-bold text-[#192170] mb-4 mt-6 first:mt-0">
+          {block.content}
+        </h2>
+      );
+    
+    case 'text':
+      return (
+        <p className="text-gray-700 leading-relaxed mb-4">
+          {block.content}
+        </p>
+      );
+    
+    case 'image':
+      return (
+        <div className="my-6 rounded-lg overflow-hidden">
+          <img 
+            src={block.content} 
+            alt={block.data?.fileName || 'Imagen de la lección'}
+            className="w-full h-auto max-h-[500px] object-contain bg-gray-100"
+          />
+          {block.data?.fileName && (
+            <p className="text-xs text-gray-500 mt-2 text-center">{block.data.fileName}</p>
+          )}
+        </div>
+      );
+    
+    case 'video':
+      const youtubeId = block.data?.videoType === 'youtube' ? getYouTubeVideoId(block.content) : null;
+      
+      if (youtubeId) {
+        return (
+          <div className="my-6 aspect-video rounded-lg overflow-hidden bg-black">
+            <iframe
+              src={`https://www.youtube.com/embed/${youtubeId}`}
+              title="Video de YouTube"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="w-full h-full"
+            />
+          </div>
+        );
+      }
+      
+      // Video URL directo
+      return (
+        <div className="my-6 aspect-video rounded-lg overflow-hidden bg-black">
+          <video 
+            src={block.content} 
+            controls 
+            className="w-full h-full"
+          />
+        </div>
+      );
+    
+    case 'attachment':
+      return <AttachmentBlock block={block} />;
+    
+    case 'list':
+      const items = block.data?.items || [];
+      return (
+        <ul className="my-4 space-y-2 pl-6">
+          {items.map((item, index) => (
+            <li key={index} className="text-gray-700 list-disc">
+              {item}
+            </li>
+          ))}
+        </ul>
+      );
+    
+    case 'table':
+      const cells = block.data?.cells || [];
+      if (cells.length === 0) return null;
+      
+      return (
+        <div className="my-6 overflow-x-auto">
+          <table className="w-full border-collapse border border-gray-300 rounded-lg overflow-hidden">
+            <tbody>
+              {cells.map((row, rowIndex) => (
+                <tr key={rowIndex} className={rowIndex === 0 ? 'bg-gray-100 font-semibold' : 'bg-white'}>
+                  {row.map((cell, cellIndex) => (
+                    <td 
+                      key={cellIndex} 
+                      className="border border-gray-300 px-4 py-2 text-gray-700"
+                    >
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    
+    default:
+      return null;
+  }
+}
+
+// ===== COMPONENT: Subsection Content Viewer =====
+function SubsectionViewer({ subsection }: { subsection: Subsection | null }) {
+  if (!subsection) {
+    return (
+      <div className="flex items-center justify-center h-full text-gray-500">
+        <p>Selecciona una lección para ver su contenido</p>
+      </div>
+    );
+  }
+  
+  const blocks = subsection.blocks || [];
+  
+  if (blocks.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-gray-500">
+        <p>Esta lección no tiene contenido todavía</p>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="max-w-4xl mx-auto">
+      {blocks.map((block) => (
+        <ContentBlockRenderer key={block.id} block={block} />
+      ))}
+    </div>
+  );
 }
 
 export default function LessonPlayerPage() {
@@ -80,43 +403,111 @@ export default function LessonPlayerPage() {
   const router = useRouter();
   const { user } = useAuth();
   
-  // State
+  // Core State
   const [loading, setLoading] = useState(true);
   const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [courseTitle, setCourseTitle] = useState("");
+  const [sections, setSections] = useState<Section[]>([]);
+  const [courseInfo, setCourseInfo] = useState<CourseInfo | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "questions" | "notes">("overview");
-  const [sidebarOpen, setSidebarOpen] = useState(true); // Responsive toggle logic could be added
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const hasFetchedRef = useRef(false);
+  
+  // Resources State
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [loadingResources, setLoadingResources] = useState(false);
+  
+  // Notes State
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [newNoteContent, setNewNoteContent] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteContent, setEditingNoteContent] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+  
+  // Q&A State
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [newQuestionText, setNewQuestionText] = useState("");
+  const [submittingQuestion, setSubmittingQuestion] = useState(false);
+  const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(null);
+  const [replyingToId, setReplyingToId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [submittingReply, setSubmittingReply] = useState(false);
+  const [questionSortBy, setQuestionSortBy] = useState<"recent" | "popular">("recent");
+  
+  // Video simulation state (para timestamp de notas)
+  const [currentVideoTime, setCurrentVideoTime] = useState(0);
+  
+  // Subsection State (para navegación dentro de una lección)
+  const [activeSubsectionIndex, setActiveSubsectionIndex] = useState(0);
+  // Progreso de lecciones dentro de cada lección (subsections completadas de forma secuencial)
+  const [completedSubsectionsByLesson, setCompletedSubsectionsByLesson] = useState<Record<string, number>>({});
   
   // Derived State
   const courseId = params.courseId as string;
-  const currentLessonId = params.lessonId as string; // This URL param maps to the specific subsection/lesson being played
+  const currentLessonId = params.lessonId as string;
+  
+  // Find current lesson
+  const currentLesson = useMemo(() => {
+    return lessons.find(l => l.id === currentLessonId);
+  }, [lessons, currentLessonId]);
+  
+  // Parse subsections from current lesson content
+  const currentSubsections = useMemo((): Subsection[] => {
+    if (!currentLesson?.content) return [];
+    try {
+      const parsed = JSON.parse(currentLesson.content);
+      return parsed.subsections || [];
+    } catch {
+      return [];
+    }
+  }, [currentLesson]);
+  
+  // Get active subsection
+  const activeSubsection = useMemo(() => {
+    return currentSubsections[activeSubsectionIndex] || null;
+  }, [currentSubsections, activeSubsectionIndex]);
+  
+  // Navigation helpers
+  const sortedLessons = useMemo(() => {
+    return [...lessons].sort((a, b) => a.order - b.order);
+  }, [lessons]);
+  
+  const currentIndex = sortedLessons.findIndex(l => l.id === currentLessonId);
+  const prevLesson = currentIndex > 0 ? sortedLessons[currentIndex - 1] : null;
+  const nextLesson = currentIndex < sortedLessons.length - 1 ? sortedLessons[currentIndex + 1] : null;
 
-  // Fetch Data
+  // ===== FETCH DATA =====
   useEffect(() => {
     const fetchData = async () => {
       if (!user || !courseId) return;
+      if (hasFetchedRef.current) return;
+      hasFetchedRef.current = true;
+      setLoading(true);
 
       try {
-        // 1. Fetch Course Details (for title) - simplified fetch
-        // In a real app we might have a getCourseById API or use the same getLessons API if it returned course info
-        // For now we will rely on the lessons API to populate content
-        
-        // 2. Fetch Lessons
+        // Fetch lessons and sections
         const lessonsRes = await fetch(`/api/student/getLessons?courseId=${courseId}&userId=${user.id}`);
         if (lessonsRes.ok) {
           const data = await lessonsRes.json();
           setLessons(data.lessons || []);
-          // Assuming we could get title from somewhere, or just use first lesson's course info if available
-          // For now placeholder or if API returned it.
-          // Since the API strictly returns lessons, we might need a separate call for Course Title or pass it via query param?
-          // Let's try to fetch course info separately or fallback.
+          setSections(data.sections || []);
+          
+          // Auto-expandir la sección de la lección actual
+          const currentLessonData = (data.lessons || []).find((l: Lesson) => l.id === currentLessonId);
+          if (currentLessonData?.sectionId) {
+            setExpandedSections(new Set([currentLessonData.sectionId]));
+          }
         }
         
-        // Fetch basic course info for the header title
-        // We'll reuse the client-side query pattern if possible, or just fetch from public API if exists
-        // Or we can assume the user came from the dashboard and we might have it in cache (unreliable).
-        // Let's just fetch the course title quickly via Supabase REST if possible or a new endpoint.
-        // For this demo, I'll set a placeholder or try to fetch.
+        // Fetch course info (simplified - could create dedicated endpoint)
+        // For now we'll use the course title from localStorage or a placeholder
+        setCourseInfo({
+          id: courseId,
+          title: "Curso",
+          teacherIds: [],
+        });
         
       } catch (error) {
         console.error("Error fetching course data", error);
@@ -128,51 +519,236 @@ export default function LessonPlayerPage() {
     fetchData();
   }, [courseId, user]);
 
-  // Find current context
-  // We need to flatten the structure to find "Next" and "Prev" logic easily
-  // Structure: Lesson -> Subsections. The URL `lessonId` corresponds to a Subsection ID usually, 
-  // BUT the prompt says "en cada LessonItem (subseccion)... redireccionar a .../[lessonId]".
-  // So `params.lessonId` is likely the SUBSECTION ID.
-  
-  // Let's build a flat map of all playable units
-  const flatPlayableUnits: { 
-    uid: string; // subsection id
-    lessonId: string; // parent lesson id
-    title: string; 
-    lessonTitle: string;
-    type: 'video' | 'text' | 'quiz';
-  }[] = [];
+  // Reset subsection index when lesson changes
+  useEffect(() => {
+    setActiveSubsectionIndex(0);
+  }, [currentLessonId]);
 
-  lessons.forEach(lesson => {
-    const content = parseLessonContent(lesson.content);
-    if (content?.subsections) {
-      content.subsections.forEach(sub => {
-        flatPlayableUnits.push({
-          uid: sub.id,
-          lessonId: lesson.id,
-          title: sub.title,
-          lessonTitle: lesson.title,
-          type: 'video' // Defaulting to video for now, logic would detect block types
-        });
-      });
-    } else {
-      // Fallback if no subsections, maybe the lesson itself is the unit?
-      // The previous implementation seemed to rely heavily on subsections.
+  // Fetch resources when lesson changes
+  useEffect(() => {
+    const fetchResources = async () => {
+      if (!currentLessonId) return;
+      setLoadingResources(true);
+      
+      try {
+        const res = await fetch(`/api/student/lesson-resources?lessonId=${currentLessonId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setResources(data.resources || []);
+        }
+      } catch (error) {
+        console.error("Error fetching resources:", error);
+      } finally {
+        setLoadingResources(false);
+      }
+    };
+
+    fetchResources();
+  }, [currentLessonId]);
+
+  // Fetch notes when lesson changes or tab opens
+  const fetchNotes = useCallback(async () => {
+    if (!currentLessonId || !user) return;
+    setLoadingNotes(true);
+    
+    try {
+      const res = await fetch(`/api/student/notes?lessonId=${currentLessonId}&userId=${user.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setNotes(data.notes || []);
+      }
+    } catch (error) {
+      console.error("Error fetching notes:", error);
+    } finally {
+      setLoadingNotes(false);
     }
-  });
+  }, [currentLessonId, user]);
 
-  const currentIndex = flatPlayableUnits.findIndex(u => u.uid === currentLessonId);
-  const currentUnit = flatPlayableUnits[currentIndex];
-  const prevUnit = flatPlayableUnits[currentIndex - 1];
-  const nextUnit = flatPlayableUnits[currentIndex + 1];
+  useEffect(() => {
+    if (activeTab === "notes") {
+      fetchNotes();
+    }
+  }, [activeTab, fetchNotes]);
 
-  // Navigation Handlers
-  const goToUnit = (uid: string) => {
-    router.push(`/student/courses/${courseId}/learn/lecture/${uid}`);
+  // Fetch questions when lesson changes or tab opens
+  const fetchQuestions = useCallback(async () => {
+    if (!currentLessonId) return;
+    setLoadingQuestions(true);
+    
+    try {
+      const res = await fetch(`/api/student/questions?lessonId=${currentLessonId}&sortBy=${questionSortBy}`);
+      if (res.ok) {
+        const data = await res.json();
+        setQuestions(data.questions || []);
+      }
+    } catch (error) {
+      console.error("Error fetching questions:", error);
+    } finally {
+      setLoadingQuestions(false);
+    }
+  }, [currentLessonId, questionSortBy]);
+
+  useEffect(() => {
+    if (activeTab === "questions") {
+      fetchQuestions();
+    }
+  }, [activeTab, fetchQuestions]);
+
+  // ===== HANDLERS =====
+  const goToLesson = (lessonId: string) => {
+    router.push(`/student/courses/${courseId}/learn/lecture/${lessonId}`);
   };
 
+  const toggleSection = (sectionId: string) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) {
+        next.delete(sectionId);
+      } else {
+        next.add(sectionId);
+      }
+      return next;
+    });
+  };
+
+  // Note Handlers
+  const handleCreateNote = async () => {
+    if (!newNoteContent.trim() || !user || !currentLessonId) return;
+    setSavingNote(true);
+    
+    try {
+      const res = await fetch('/api/student/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          lessonId: currentLessonId,
+          courseId: courseId,
+          content: newNoteContent.trim(),
+          videoTimestamp: currentVideoTime,
+        }),
+      });
+      
+      if (res.ok) {
+        setNewNoteContent("");
+        fetchNotes();
+      }
+    } catch (error) {
+      console.error("Error creating note:", error);
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
+  const handleUpdateNote = async (noteId: string) => {
+    if (!editingNoteContent.trim() || !user) return;
+    setSavingNote(true);
+    
+    try {
+      const res = await fetch('/api/student/notes', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          noteId,
+          userId: user.id,
+          content: editingNoteContent.trim(),
+        }),
+      });
+      
+      if (res.ok) {
+        setEditingNoteId(null);
+        setEditingNoteContent("");
+        fetchNotes();
+      }
+    } catch (error) {
+      console.error("Error updating note:", error);
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!user || !confirm("¿Estás seguro de eliminar esta nota?")) return;
+    
+    try {
+      const res = await fetch(`/api/student/notes?noteId=${noteId}&userId=${user.id}`, {
+        method: 'DELETE',
+      });
+      
+      if (res.ok) {
+        fetchNotes();
+      }
+    } catch (error) {
+      console.error("Error deleting note:", error);
+    }
+  };
+
+  // Question Handlers
+  const handleSubmitQuestion = async () => {
+    if (!newQuestionText.trim() || !user || !currentLessonId) return;
+    setSubmittingQuestion(true);
+    
+    try {
+      const res = await fetch('/api/student/questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          lessonId: currentLessonId,
+          courseId: courseId,
+          questionText: newQuestionText.trim(),
+          videoTimestamp: currentVideoTime,
+        }),
+      });
+      
+      if (res.ok) {
+        setNewQuestionText("");
+        fetchQuestions();
+      }
+    } catch (error) {
+      console.error("Error submitting question:", error);
+    } finally {
+      setSubmittingQuestion(false);
+    }
+  };
+
+  const handleSubmitReply = async (questionId: string) => {
+    if (!replyText.trim() || !user) return;
+    setSubmittingReply(true);
+    
+    try {
+      const res = await fetch('/api/student/questions/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          questionId: questionId,
+          answerText: replyText.trim(),
+        }),
+      });
+      
+      if (res.ok) {
+        setReplyText("");
+        setReplyingToId(null);
+        fetchQuestions();
+      }
+    } catch (error) {
+      console.error("Error submitting reply:", error);
+    } finally {
+      setSubmittingReply(false);
+    }
+  };
+
+  // ===== LOADING STATE =====
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-[#111118] text-white">Cargando...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: TOKENS.colors.topbar }}>
+        <div className="flex flex-col items-center gap-4 text-white">
+          <IconLoader2 className="w-8 h-8 animate-spin" />
+          <span>Cargando lección...</span>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -180,285 +756,716 @@ export default function LessonPlayerPage() {
       
       {/* ===== TOP BAR (Dark Mode) ===== */}
       <header 
-        className="flex items-center justify-between px-4 md:px-6 sticky top-0 z-50"
+        className="flex items-center justify-between px-4 md:px-6 sticky top-0 z-50 shrink-0"
         style={{ height: TOKENS.spacing.topbarHeight, backgroundColor: TOKENS.colors.topbar }}
       >
         <div className="flex items-center gap-4 overflow-hidden">
-          {/* Logo / Back */}
-          <button onClick={() => router.push(`/dashboard/student/courses/${courseId}`)} className="text-white hover:text-gray-300 transition-colors">
-             {/* Using a simple chevron/text for "Back to Dashboard" as "Platform Logo" usually goes home */}
-             <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center text-white font-bold text-xs">MU</div>
-                <div className="h-6 w-[1px] bg-gray-700 mx-2"></div>
-                <span className="text-gray-300 text-sm font-medium truncate max-w-[200px] md:max-w-md">
-                  {courseTitle || "Volver al curso"}
-                </span>
-             </div>
+          <button 
+            onClick={() => router.push(`/student/courses/${courseId}`)} 
+            className="text-white hover:text-gray-300 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center text-white font-bold text-xs">MU</div>
+              <div className="h-6 w-[1px] bg-gray-700 mx-2 hidden sm:block"></div>
+              <span className="text-gray-300 text-sm font-medium truncate max-w-[150px] md:max-w-md hidden sm:block">
+                {courseInfo?.title || "Volver al curso"}
+              </span>
+            </div>
           </button>
         </div>
 
-        <div className="flex items-center gap-4 text-white">
-          {/* Progress (Mock) */}
+        <div className="flex items-center gap-2 md:gap-4 text-white">
+          {/* Progress Indicator */}
           <div className="hidden md:flex items-center gap-2 text-sm text-gray-300">
-            <div className="flex items-center gap-1 text-yellow-400">
+            <div className="flex items-center gap-1 text-yellow-400 cursor-pointer hover:text-yellow-300">
               <IconStar size={16} fill="currentColor" />
-              <span className="font-bold">Deja una calificación</span>
+              <span className="font-medium">Calificar</span>
             </div>
             <div className="h-4 w-[1px] bg-gray-700 mx-2"></div>
             <div className="flex items-center gap-2 cursor-pointer hover:text-white">
-              <div className="relative w-8 h-8">
-                 <svg className="w-full h-full" viewBox="0 0 36 36">
-                    <path className="text-gray-700" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="2" />
-                    <path className="text-purple-500" strokeDasharray="75, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="2" />
-                 </svg>
-                 <div className="absolute inset-0 flex items-center justify-center text-[10px]">
-                   <IconCheck size={12} />
-                 </div>
+              <div className="relative w-7 h-7">
+                <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                  <circle 
+                    className="text-gray-700" 
+                    cx="18" cy="18" r="15.9155"
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2.5"
+                  />
+                  <circle 
+                    className="text-purple-500" 
+                    cx="18" cy="18" r="15.9155"
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2.5"
+                    strokeDasharray={`${(currentIndex + 1) / sortedLessons.length * 100}, 100`}
+                    strokeLinecap="round"
+                  />
+                </svg>
               </div>
-              <span>Tu progreso</span>
+              <span className="text-xs">{currentIndex + 1}/{sortedLessons.length}</span>
             </div>
           </div>
 
-          <button className="btn btn-sm btn-outline border-white text-white hover:bg-white hover:text-black gap-2">
-            <IconShare size={16} />
-            <span className="hidden sm:inline">Compartir</span>
+          <button className="p-2 rounded hover:bg-white/10 transition-colors">
+            <IconShare size={18} />
           </button>
           
-          <button className="btn btn-sm btn-ghost btn-circle text-white">
-            <IconDotsVertical size={20} />
+          <button className="p-2 rounded hover:bg-white/10 transition-colors">
+            <IconDotsVertical size={18} />
           </button>
         </div>
       </header>
 
       {/* ===== MAIN CONTENT (Split Screen) ===== */}
-      <main className="flex flex-1 overflow-hidden h-[calc(100vh-64px)]">
+      <main className="flex flex-1 overflow-hidden">
         
         {/* ZONE A: Main Content Stage (Left) */}
-        <div className="flex-1 overflow-y-auto scrollbar-hide relative flex flex-col">
+        <div className="flex-1 overflow-y-auto flex flex-col">
           
-          {/* Content Canvas */}
-          <div className="flex-1" style={{ backgroundColor: TOKENS.colors.topbar }}> {/* Dark background for cinema effect */}
-             <div className="w-full h-full flex flex-col">
-                
-                {/* Video Player Placeholder / Dynamic Content */}
-                <div className="flex-1 bg-black flex items-center justify-center relative group">
-                   {currentUnit ? (
-                     <div className="w-full h-full flex items-center justify-center text-white">
-                       {/* Simulate Video Player */}
-                       <div className="text-center">
-                         <IconPlayerPlay size={64} className="mx-auto mb-4 opacity-80 group-hover:opacity-100 transition-opacity cursor-pointer" />
-                         <h2 className="text-xl font-medium">{currentUnit.title}</h2>
-                         <p className="text-gray-400 text-sm mt-2">{currentUnit.lessonTitle}</p>
-                       </div>
-                     </div>
-                   ) : (
-                     <div className="text-white">Selecciona una lección</div>
-                   )}
-
-                   {/* Side Arrow Controls (Overlay) */}
-                   {prevUnit && (
-                     <button 
-                       onClick={() => goToUnit(prevUnit.uid)}
-                       className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-12 bg-[#2D2F31] hover:bg-[#3E4143] text-white flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                     >
-                       <IconChevronLeft size={24} />
-                     </button>
-                   )}
-                   {nextUnit && (
-                     <button 
-                       onClick={() => goToUnit(nextUnit.uid)}
-                       className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-12 bg-[#2D2F31] hover:bg-[#3E4143] text-white flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                     >
-                       <IconChevronRight size={24} />
-                     </button>
-                   )}
-                </div>
-             </div>
+          {/* Lesson Content Area */}
+          <div className="flex-1 bg-white p-6 md:p-8 overflow-y-auto">
+            <SubsectionViewer subsection={activeSubsection} />
           </div>
 
-          {/* Lower Tabs & Meta Info */}
-          <div className="bg-white border-t border-gray-200 min-h-[300px]">
-             {/* Tab Navigation */}
-             <div className="border-b border-gray-200 px-8">
-               <div className="flex gap-8">
-                 <button 
-                   onClick={() => setActiveTab("overview")}
-                   className={cn(
-                     "py-4 text-sm font-semibold border-b-2 transition-colors",
-                     activeTab === "overview" ? "border-black text-black" : "border-transparent text-gray-500 hover:text-gray-700"
-                   )}
-                 >
-                   Descripción general
-                 </button>
-                 <button 
-                   onClick={() => setActiveTab("questions")}
-                   className={cn(
-                     "py-4 text-sm font-semibold border-b-2 transition-colors",
-                     activeTab === "questions" ? "border-black text-black" : "border-transparent text-gray-500 hover:text-gray-700"
-                   )}
-                 >
-                   Preguntas y respuestas
-                 </button>
-                 <button 
-                   onClick={() => setActiveTab("notes")}
-                   className={cn(
-                     "py-4 text-sm font-semibold border-b-2 transition-colors",
-                     activeTab === "notes" ? "border-black text-black" : "border-transparent text-gray-500 hover:text-gray-700"
-                   )}
-                 >
-                   Notas
-                 </button>
-               </div>
-             </div>
+          {/* Lower Tabs & Content */}
+          <div className="bg-white border-t flex-1 flex flex-col" style={{ borderColor: TOKENS.colors.border }}>
+            {/* Tab Navigation */}
+            <div className="border-b px-4 md:px-8 shrink-0" style={{ borderColor: TOKENS.colors.border }}>
+              <div className="flex gap-4 md:gap-8 overflow-x-auto scrollbar-hide">
+                {[
+                  { id: "overview", label: "Descripción general" },
+                  { id: "questions", label: "Preguntas y respuestas" },
+                  { id: "notes", label: "Notas" },
+                ].map((tab) => (
+                  <button 
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={cn(
+                      "py-4 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap",
+                      activeTab === tab.id 
+                        ? "border-black text-black" 
+                        : "border-transparent text-gray-500 hover:text-gray-700"
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-             {/* Tab Content */}
-             <div className="p-8 max-w-4xl">
-               {activeTab === "overview" && currentUnit && (
-                 <div className="animate-in fade-in duration-200">
-                   <h1 className="text-2xl font-bold text-gray-900 mb-4">{currentUnit.lessonTitle}</h1>
-                   
-                   <div className="flex items-center gap-4 text-sm text-gray-600 mb-8">
-                      <div className="flex items-center gap-1">
-                        <IconStar size={14} className="text-yellow-500 fill-yellow-500" />
-                        <span className="font-bold text-black">4.8</span>
-                        <span>(1,452 calificaciones)</span>
+            {/* Tab Content */}
+            <div className="flex-1 overflow-y-auto p-4 md:p-8">
+              
+              {/* ===== OVERVIEW TAB ===== */}
+              {activeTab === "overview" && currentLesson && (
+                <div className="max-w-4xl animate-in fade-in duration-200">
+                  <h1 className="text-2xl font-bold text-gray-900 mb-4">{currentLesson.title}</h1>
+                  
+                  {currentLesson.description && (
+                    <div className="prose prose-sm max-w-none text-gray-700 mb-8">
+                      <p>{currentLesson.description}</p>
+                    </div>
+                  )}
+
+                  {/* Resources Section */}
+                  {resources.length > 0 && (
+                    <div className="mt-8">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                        <IconPaperclip size={20} />
+                        Recursos de la lección
+                      </h3>
+                      <div className="grid gap-3">
+                        {resources.map((resource) => (
+                          <a
+                            key={resource.id}
+                            href={resource.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-3 p-4 rounded-lg border hover:bg-gray-50 transition-colors group"
+                            style={{ borderColor: TOKENS.colors.border }}
+                          >
+                            <span className="text-2xl">{getFileIcon(resource.fileType)}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-gray-900 truncate group-hover:text-purple-600">
+                                {resource.fileName}
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                {formatFileSize(resource.sizeKb)}
+                              </p>
+                            </div>
+                            <IconDownload size={20} className="text-gray-400 group-hover:text-purple-600" />
+                          </a>
+                        ))}
                       </div>
-                      <span>•</span>
-                      <span>25,000 estudiantes</span>
-                      <span>•</span>
-                      <span>2h 15m total</span>
-                   </div>
+                    </div>
+                  )}
 
-                   <div className="prose prose-sm max-w-none text-gray-700">
-                     <p>
-                       Descripción de la lección: Esta sección debería contener la descripción detallada del contenido actual.
-                       Como estamos en un modo de demostración, este texto es un marcador de posición para simular el layout
-                       de "Cinema Mode" solicitado.
-                     </p>
-                     <p className="mt-4">
-                       En este módulo aprenderás sobre:
-                     </p>
-                     <ul className="list-disc pl-5 mt-2 space-y-1">
-                       <li>Conceptos fundamentales de la arquitectura.</li>
-                       <li>Implementación de componentes visuales.</li>
-                       <li>Gestión de estado y navegación.</li>
-                     </ul>
-                   </div>
-                 </div>
-               )}
-               {activeTab === "questions" && (
-                 <div className="flex flex-col items-center justify-center py-12 text-center text-gray-500">
-                   <IconMessageCircle size={48} className="mb-4 opacity-20" />
-                   <h3 className="text-lg font-medium text-gray-900">Sin preguntas todavía</h3>
-                   <p>Sé el primero en preguntar algo sobre esta lección.</p>
-                 </div>
-               )}
-               {activeTab === "notes" && (
-                 <div className="flex flex-col items-center justify-center py-12 text-center text-gray-500">
-                   <IconNote size={48} className="mb-4 opacity-20" />
-                   <h3 className="text-lg font-medium text-gray-900">Tus notas</h3>
-                   <button className="mt-4 btn btn-primary btn-sm text-white" style={{ backgroundColor: TOKENS.colors.accent }}>
-                     + Crear nueva nota
-                   </button>
-                 </div>
-               )}
-             </div>
+                  {loadingResources && (
+                    <div className="flex items-center gap-2 text-gray-500 mt-4">
+                      <IconLoader2 className="w-4 h-4 animate-spin" />
+                      <span>Cargando recursos...</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ===== QUESTIONS TAB ===== */}
+              {activeTab === "questions" && (
+                <div className="max-w-4xl animate-in fade-in duration-200">
+                  {/* New Question Input */}
+                  <div className="mb-6">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-semibold shrink-0">
+                        {user?.email?.charAt(0).toUpperCase() || "U"}
+                      </div>
+                      <div className="flex-1">
+                        <textarea
+                          value={newQuestionText}
+                          onChange={(e) => setNewQuestionText(e.target.value)}
+                          placeholder={`Haz una pregunta en ${formatTimestamp(currentVideoTime)}...`}
+                          className="w-full p-3 border rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          rows={3}
+                          style={{ borderColor: TOKENS.colors.border }}
+                        />
+                        <div className="flex justify-between items-center mt-2">
+                          <span className="text-xs text-gray-500">
+                            <IconClock size={12} className="inline mr-1" />
+                            {formatTimestamp(currentVideoTime)}
+                          </span>
+                          <button
+                            onClick={handleSubmitQuestion}
+                            disabled={!newQuestionText.trim() || submittingQuestion}
+                            className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700 transition-colors flex items-center gap-2"
+                          >
+                            {submittingQuestion ? (
+                              <IconLoader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <IconSend size={16} />
+                            )}
+                            Publicar pregunta
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sort Options */}
+                  <div className="flex gap-4 mb-6 border-b pb-4" style={{ borderColor: TOKENS.colors.border }}>
+                    <button
+                      onClick={() => setQuestionSortBy("recent")}
+                      className={cn(
+                        "text-sm font-medium transition-colors",
+                        questionSortBy === "recent" ? "text-purple-600" : "text-gray-500 hover:text-gray-700"
+                      )}
+                    >
+                      Más recientes
+                    </button>
+                    <button
+                      onClick={() => setQuestionSortBy("popular")}
+                      className={cn(
+                        "text-sm font-medium transition-colors",
+                        questionSortBy === "popular" ? "text-purple-600" : "text-gray-500 hover:text-gray-700"
+                      )}
+                    >
+                      Más votadas
+                    </button>
+                  </div>
+
+                  {/* Questions List */}
+                  {loadingQuestions ? (
+                    <div className="flex items-center justify-center py-12">
+                      <IconLoader2 className="w-6 h-6 animate-spin text-gray-400" />
+                    </div>
+                  ) : questions.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center text-gray-500">
+                      <IconMessageCircle size={48} className="mb-4 opacity-20" />
+                      <h3 className="text-lg font-medium text-gray-900">Sin preguntas todavía</h3>
+                      <p>Sé el primero en preguntar algo sobre esta lección.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {questions.map((question) => (
+                        <div key={question.id} className="border-b pb-6" style={{ borderColor: TOKENS.colors.border }}>
+                          <div className="flex gap-3">
+                            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-semibold shrink-0">
+                              {question.author?.avatarUrl ? (
+                                <Image 
+                                  src={question.author.avatarUrl} 
+                                  alt="" 
+                                  width={40} 
+                                  height={40} 
+                                  className="rounded-full"
+                                />
+                              ) : (
+                                question.author?.name?.charAt(0).toUpperCase() || "?"
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-medium text-gray-900">{question.author?.name || "Usuario"}</span>
+                                <span className="text-xs text-gray-500">
+                                  {formatDistanceToNow(new Date(question.createdAt), { addSuffix: true, locale: es })}
+                                </span>
+                                {question.videoTimestamp > 0 && (
+                                  <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
+                                    {formatTimestamp(question.videoTimestamp)}
+                                  </span>
+                                )}
+                                {question.isResolved && (
+                                  <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded flex items-center gap-1">
+                                    <IconCheck size={12} />
+                                    Resuelta
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-gray-700 mb-3">{question.questionText}</p>
+                              
+                              <div className="flex items-center gap-4 text-sm">
+                                <button className="flex items-center gap-1 text-gray-500 hover:text-purple-600 transition-colors">
+                                  <IconThumbUp size={16} />
+                                  <span>{question.upvotes}</span>
+                                </button>
+                                <button 
+                                  onClick={() => setExpandedQuestionId(expandedQuestionId === question.id ? null : question.id)}
+                                  className="text-gray-500 hover:text-purple-600 transition-colors"
+                                >
+                                  {question.answersCount} respuesta{question.answersCount !== 1 ? 's' : ''}
+                                </button>
+                                <button 
+                                  onClick={() => {
+                                    setReplyingToId(replyingToId === question.id ? null : question.id);
+                                    setExpandedQuestionId(question.id);
+                                  }}
+                                  className="text-purple-600 hover:text-purple-700 font-medium"
+                                >
+                                  Responder
+                                </button>
+                              </div>
+
+                              {/* Answers */}
+                              {expandedQuestionId === question.id && (
+                                <div className="mt-4 ml-4 pl-4 border-l-2 space-y-4" style={{ borderColor: TOKENS.colors.border }}>
+                                  {question.answers.map((answer) => (
+                                    <div key={answer.id} className="flex gap-3">
+                                      <div className={cn(
+                                        "w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold shrink-0",
+                                        answer.isInstructorAnswer 
+                                          ? "bg-purple-100 text-purple-600" 
+                                          : "bg-gray-100 text-gray-600"
+                                      )}>
+                                        {answer.author?.name?.charAt(0).toUpperCase() || "?"}
+                                      </div>
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <span className="font-medium text-gray-900 text-sm">
+                                            {answer.author?.name || "Usuario"}
+                                          </span>
+                                          {answer.isInstructorAnswer && (
+                                            <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
+                                              Instructor
+                                            </span>
+                                          )}
+                                          {answer.isAccepted && (
+                                            <span className="text-xs text-green-600">
+                                              <IconCheck size={14} className="inline" /> Aceptada
+                                            </span>
+                                          )}
+                                          <span className="text-xs text-gray-500">
+                                            {formatDistanceToNow(new Date(answer.createdAt), { addSuffix: true, locale: es })}
+                                          </span>
+                                        </div>
+                                        <p className="text-gray-700 text-sm">{answer.answerText}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+
+                                  {/* Reply Form */}
+                                  {replyingToId === question.id && (
+                                    <div className="flex gap-3 mt-4">
+                                      <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-semibold shrink-0 text-sm">
+                                        {user?.email?.charAt(0).toUpperCase() || "U"}
+                                      </div>
+                                      <div className="flex-1">
+                                        <textarea
+                                          value={replyText}
+                                          onChange={(e) => setReplyText(e.target.value)}
+                                          placeholder="Escribe tu respuesta..."
+                                          className="w-full p-2 border rounded-lg resize-none text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                          rows={2}
+                                          style={{ borderColor: TOKENS.colors.border }}
+                                        />
+                                        <div className="flex justify-end gap-2 mt-2">
+                                          <button
+                                            onClick={() => {
+                                              setReplyingToId(null);
+                                              setReplyText("");
+                                            }}
+                                            className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+                                          >
+                                            Cancelar
+                                          </button>
+                                          <button
+                                            onClick={() => handleSubmitReply(question.id)}
+                                            disabled={!replyText.trim() || submittingReply}
+                                            className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium disabled:opacity-50 hover:bg-purple-700 flex items-center gap-1"
+                                          >
+                                            {submittingReply && <IconLoader2 className="w-3 h-3 animate-spin" />}
+                                            Responder
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ===== NOTES TAB ===== */}
+              {activeTab === "notes" && (
+                <div className="max-w-4xl animate-in fade-in duration-200">
+                  {/* New Note Input */}
+                  <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2 text-sm text-gray-600">
+                      <IconClock size={14} />
+                      <span>Crear una nueva nota en {formatTimestamp(currentVideoTime)}</span>
+                    </div>
+                    <div className="flex gap-3">
+                      <input
+                        type="text"
+                        value={newNoteContent}
+                        onChange={(e) => setNewNoteContent(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleCreateNote()}
+                        placeholder="Escribe tu nota aquí..."
+                        className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        style={{ borderColor: TOKENS.colors.border }}
+                      />
+                      <button
+                        onClick={handleCreateNote}
+                        disabled={!newNoteContent.trim() || savingNote}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg font-medium disabled:opacity-50 hover:bg-purple-700 transition-colors flex items-center gap-2"
+                      >
+                        {savingNote ? (
+                          <IconLoader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <IconNote size={18} />
+                        )}
+                        <span className="hidden sm:inline">Guardar</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Notes List */}
+                  {loadingNotes ? (
+                    <div className="flex items-center justify-center py-12">
+                      <IconLoader2 className="w-6 h-6 animate-spin text-gray-400" />
+                    </div>
+                  ) : notes.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center text-gray-500">
+                      <IconNote size={48} className="mb-4 opacity-20" />
+                      <h3 className="text-lg font-medium text-gray-900">Sin notas todavía</h3>
+                      <p>Crea tu primera nota para recordar los puntos importantes.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {notes.map((note) => (
+                        <div 
+                          key={note.id} 
+                          className="p-4 border rounded-lg hover:shadow-sm transition-shadow"
+                          style={{ borderColor: TOKENS.colors.border }}
+                        >
+                          {editingNoteId === note.id ? (
+                            <div>
+                              <textarea
+                                value={editingNoteContent}
+                                onChange={(e) => setEditingNoteContent(e.target.value)}
+                                className="w-full p-3 border rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                rows={3}
+                                style={{ borderColor: TOKENS.colors.border }}
+                              />
+                              <div className="flex justify-end gap-2 mt-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingNoteId(null);
+                                    setEditingNoteContent("");
+                                  }}
+                                  className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateNote(note.id)}
+                                  disabled={!editingNoteContent.trim() || savingNote}
+                                  className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium disabled:opacity-50 hover:bg-purple-700"
+                                >
+                                  Guardar cambios
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex-1">
+                                  <button 
+                                    className="text-sm text-purple-600 bg-purple-50 px-2 py-0.5 rounded mb-2 hover:bg-purple-100"
+                                    title="Ir a este momento del video"
+                                  >
+                                    {formatTimestamp(note.video_timestamp)}
+                                  </button>
+                                  <p className="text-gray-700">{note.content}</p>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => {
+                                      setEditingNoteId(note.id);
+                                      setEditingNoteContent(note.content);
+                                    }}
+                                    className="p-1.5 text-gray-400 hover:text-purple-600 rounded transition-colors"
+                                    title="Editar nota"
+                                  >
+                                    <IconEdit size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteNote(note.id)}
+                                    className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors"
+                                    title="Eliminar nota"
+                                  >
+                                    <IconTrash size={16} />
+                                  </button>
+                                </div>
+                              </div>
+                              <p className="text-xs text-gray-400 mt-2">
+                                {formatDistanceToNow(new Date(note.created_at), { addSuffix: true, locale: es })}
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
         {/* ZONE B: Curriculum Sidebar (Right) */}
         <aside className={cn(
-          "w-[360px] bg-white border-l border-gray-200 flex flex-col transition-all duration-300",
-          !sidebarOpen && "w-0 border-0"
-        )}>
+          "w-[320px] lg:w-[360px] bg-white border-l flex flex-col transition-all duration-300 shrink-0",
+          !sidebarOpen && "w-0 overflow-hidden border-0"
+        )} style={{ borderColor: TOKENS.colors.border }}>
           {/* Sidebar Header */}
-          <div className="p-4 flex items-center justify-between border-b border-gray-200 bg-white sticky top-0 z-10">
+          <div className="p-4 flex items-center justify-between border-b bg-white shrink-0" style={{ borderColor: TOKENS.colors.border }}>
             <h3 className="font-bold text-gray-900">Contenido del curso</h3>
-            <button onClick={() => setSidebarOpen(false)} className="text-gray-500 hover:text-gray-700 lg:hidden">
-              <IconX size={20} />
+            <button 
+              onClick={() => setSidebarOpen(false)} 
+              className="p-1 text-gray-500 hover:text-gray-700 rounded hover:bg-gray-100"
+            >
+              <IconX size={18} />
             </button>
           </div>
 
-          {/* Accordion List */}
+          {/* Sections & Lessons List */}
           <div className="flex-1 overflow-y-auto">
-            {lessons.map((lesson, index) => {
-              const content = parseLessonContent(lesson.content);
-              const subsections = content?.subsections || [];
-              // Check if any subsection in this lesson is active to auto-expand (optional logic, simpler to just list them)
-              const isActiveLesson = subsections.some(s => s.id === currentLessonId);
+            {sortedLessons.map((lesson) => {
+              // Parsear subsecciones del content JSON
+              let subsections: Subsection[] = [];
+              try {
+                if (lesson.content) {
+                  const parsed = JSON.parse(lesson.content);
+                  subsections = parsed.subsections || [];
+                }
+              } catch (e) {
+                // Si falla el parse, subsections queda vacío
+              }
+              
+              const isExpanded = expandedSections.has(lesson.id) || 
+                (expandedSections.size === 0 && lesson.id === currentLessonId);
+              const isActiveSection = lesson.id === currentLessonId;
+              const totalDuration = lesson.durationMinutes || (subsections.length * 5); // Estimado 5 min por subsección
+
+              // Progreso secuencial: índice más alto completado para esta lección
+              const highestCompletedIndex = completedSubsectionsByLesson[lesson.id] ?? -1;
+              const completedCount = highestCompletedIndex >= 0 ? highestCompletedIndex + 1 : 0;
 
               return (
-                <div key={lesson.id} className="border-b border-gray-100">
-                  {/* Section Header */}
-                  <div className="bg-gray-50 px-4 py-3 cursor-pointer flex justify-between items-start group">
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-800 group-hover:text-black">
-                        Sección {index + 1}: {lesson.title}
+                <div key={lesson.id} className="border-b" style={{ borderColor: TOKENS.colors.border }}>
+                  {/* Section Header (Lesson = Section) */}
+                  <button
+                    onClick={() => toggleSection(lesson.id)}
+                    className={cn(
+                      "w-full px-4 py-3 flex items-start justify-between text-left transition-colors",
+                      isActiveSection ? "bg-gray-100" : "bg-gray-50 hover:bg-gray-100"
+                    )}
+                  >
+                    <div className="flex-1 min-w-0 pr-2">
+                      <h4 className="font-bold text-sm text-gray-900 leading-tight">
+                        {lesson.title}
                       </h4>
-                      <div className="text-xs text-gray-500 mt-1">
-                        0 / {subsections.length} | {lesson.durationMinutes || 15} min
-                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {completedCount} / {subsections.length || 1} | {totalDuration} min
+                      </p>
                     </div>
-                    {/* Assuming always expanded for Cinema View simpler nav, or toggle logic could be added */}
-                  </div>
+                    <IconChevronDown 
+                      size={18} 
+                      className={cn(
+                        "text-gray-500 transition-transform duration-200 mt-0.5 shrink-0",
+                        isExpanded && "rotate-180"
+                      )} 
+                    />
+                  </button>
 
-                  {/* Subsections List */}
-                  <div>
-                    {subsections.map((sub, subIdx) => {
-                      const isActive = sub.id === currentLessonId;
-                      return (
+                  {/* Subsections (Real Lessons) */}
+                  {isExpanded && (
+                    <div className="bg-white">
+                      {subsections.length > 0 ? (
+                        subsections.map((subsection, subIndex) => {
+                          // La subsección activa es la que coincide con el índice actual
+                          const isActiveSubsection = isActiveSection && subIndex === activeSubsectionIndex;
+
+                          // Considerar completadas todas las subsecciones hasta highestCompletedIndex
+                          const highestCompletedIndexForLesson = completedSubsectionsByLesson[lesson.id] ?? -1;
+                          const isCompleted = subIndex <= highestCompletedIndexForLesson;
+
+                          const handleSubsectionClick = () => {
+                            if (lesson.id === currentLessonId) {
+                              // Si ya estamos en esta misma lección
+                              const previousIndex = activeSubsectionIndex;
+                              const nextIndex = subIndex;
+
+                              // Si el alumno avanza de forma consecutiva (ej. 0 -> 1, 1 -> 2)
+                              if (nextIndex === previousIndex + 1) {
+                                setCompletedSubsectionsByLesson((prev) => {
+                                  const currentMax = prev[lesson.id] ?? -1;
+                                  const newMax = Math.max(currentMax, previousIndex);
+                                  return {
+                                    ...prev,
+                                    [lesson.id]: newMax,
+                                  };
+                                });
+                              }
+
+                              setActiveSubsectionIndex(nextIndex);
+                            } else {
+                              // Navegar a otra lección y establecer subsección inicial
+                              setActiveSubsectionIndex(subIndex);
+                              goToLesson(lesson.id);
+                            }
+                          };
+
+                          return (
+                            <div 
+                              key={subsection.id}
+                              onClick={handleSubsectionClick}
+                              className={cn(
+                                "pl-6 pr-4 py-2.5 flex gap-3 cursor-pointer transition-colors",
+                                isActiveSubsection 
+                                  ? "bg-purple-100" 
+                                  : "hover:bg-gray-50"
+                              )}
+                            >
+                              {/* Checkbox */}
+                              <div className="pt-0.5 shrink-0">
+                                <div
+                                  className={cn(
+                                    "w-4 h-4 border rounded-sm flex items-center justify-center",
+                                    isActiveSubsection
+                                      ? "bg-purple-600 border-purple-600"
+                                      : isCompleted
+                                        ? "bg-purple-50 border-purple-600"
+                                        : "border-gray-400 bg-white"
+                                  )}
+                                >
+                                  {(isActiveSubsection || isCompleted) && (
+                                    <IconCheck
+                                      size={10}
+                                      className={isActiveSubsection ? "text-white" : "text-purple-600"}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                              
+                              {/* Subsection Info */}
+                              <div className="flex-1 min-w-0">
+                                <p className={cn(
+                                  "text-sm leading-tight",
+                                  isActiveSubsection ? "text-gray-900 font-medium" : "text-gray-700"
+                                )}>
+                                  {subIndex + 1}. {subsection.title}
+                                </p>
+                                <div className="flex items-center gap-1.5 mt-1 text-xs text-gray-500">
+                                  <IconVideo size={12} />
+                                  <span>5 min</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        // Si no hay subsecciones, mostrar la lección como único item
                         <div 
-                          key={sub.id || `${lesson.id}-sub-${subIdx}`}
-                          onClick={() => goToUnit(sub.id)}
+                          onClick={() => {
+                            setActiveSubsectionIndex(0);
+                            goToLesson(lesson.id);
+                          }}
                           className={cn(
-                            "px-4 py-3 flex gap-3 cursor-pointer transition-colors hover:bg-gray-50",
-                            isActive && "bg-[#E6F2F5] border-l-4 border-[#A435F0]" // Active state style override
+                            "pl-6 pr-4 py-2.5 flex gap-3 cursor-pointer transition-colors",
+                            isActiveSection 
+                              ? "bg-purple-100" 
+                              : "hover:bg-gray-50"
                           )}
-                          style={isActive ? { backgroundColor: TOKENS.colors.accentSoft, borderLeftColor: TOKENS.colors.accent } : {}}
                         >
-                          <div className="pt-1">
+                          <div className="pt-0.5 shrink-0">
                             <div className={cn(
                               "w-4 h-4 border rounded-sm flex items-center justify-center",
-                              isActive ? "border-[#A435F0]" : "border-gray-400"
+                              isActiveSection 
+                                ? "bg-purple-600 border-purple-600" 
+                                : "border-gray-400 bg-white"
                             )}>
-                              {/* Checkbox logic would go here */}
+                              {isActiveSection && <IconCheck size={10} className="text-white" />}
                             </div>
                           </div>
-                          <div className="flex-1">
+                          <div className="flex-1 min-w-0">
                             <p className={cn(
-                              "text-sm",
-                              isActive ? "text-black font-medium" : "text-gray-600"
+                              "text-sm leading-tight",
+                              isActiveSection ? "text-gray-900 font-medium" : "text-gray-700"
                             )}>
-                              {sub.title}
+                              1. {lesson.title}
                             </p>
-                            <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
+                            <div className="flex items-center gap-1.5 mt-1 text-xs text-gray-500">
                               <IconVideo size={12} />
-                              <span>5 min</span>
+                              <span>{lesson.durationMinutes || 5} min</span>
                             </div>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
+
           </div>
         </aside>
 
-        {/* Toggle Sidebar Button (Absolute) */}
+        {/* Toggle Sidebar Button (cuando está cerrado) */}
         {!sidebarOpen && (
           <button 
             onClick={() => setSidebarOpen(true)}
-            className="absolute right-0 top-4 bg-white border border-gray-200 p-2 rounded-l shadow-md z-20"
+            className="fixed right-0 top-1/2 -translate-y-1/2 bg-white border border-r-0 p-2 rounded-l-lg shadow-lg z-20 hover:bg-gray-50"
+            style={{ borderColor: TOKENS.colors.border }}
           >
             <IconChevronLeft size={20} />
-            <span className="sr-only">Mostrar temario</span>
           </button>
         )}
-
       </main>
     </div>
   );
 }
-

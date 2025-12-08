@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { supabaseClient } from "@/lib/supabase";
 import { TABLES } from "@/utils/constants";
 import { courseRepository } from "@/lib/repositories/courseRepository";
 import { Loader } from "@/components/common/Loader";
+import RichTextContent from "@/components/ui/RichTextContent";
 import { 
   IconBook, 
   IconPlayerPlay,
@@ -159,7 +160,11 @@ function getBlockIcon(type: BlockType) {
 export default function StudentCoursePage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
+  
+  // Modo preview para maestros (no requiere inscripción)
+  const isPreviewMode = searchParams.get("preview") === "true";
   const [course, setCourse] = useState<FullCourse | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
@@ -272,24 +277,31 @@ export default function StudentCoursePage() {
         }
 
         // Verificar inscripción usando API (bypaseando RLS)
-        const enrollmentRes = await fetch(`/api/student/check-enrollment?userId=${user.id}&courseId=${params.id}`);
-        
-        if (!enrollmentRes.ok) {
-          console.error('Error verificando inscripción');
-          alert('Error al verificar tu inscripción. Por favor recarga la página.');
-          return;
-        }
+        // En modo preview (para maestros), saltamos esta validación
+        if (!isPreviewMode) {
+          const enrollmentRes = await fetch(`/api/student/check-enrollment?userId=${user.id}&courseId=${params.id}`);
+          
+          if (!enrollmentRes.ok) {
+            console.error('Error verificando inscripción');
+            alert('Error al verificar tu inscripción. Por favor recarga la página.');
+            return;
+          }
 
-        const { isEnrolled } = await enrollmentRes.json();
-        
-        if (!isEnrolled) {
-          alert('No estás inscrito en este curso');
-          router.push('/dashboard/enrolled-courses');
-          return;
+          const { isEnrolled } = await enrollmentRes.json();
+          
+          if (!isEnrolled) {
+            alert('No estás inscrito en este curso');
+            router.push('/dashboard/enrolled-courses');
+            return;
+          }
         }
 
         // Cargar lecciones usando API (bypaseando RLS)
-        const lessonsRes = await fetch(`/api/student/getLessons?courseId=${params.id}&userId=${user.id}`);
+        // En modo preview, agregamos el parámetro para saltar validación de inscripción
+        const lessonsUrl = isPreviewMode 
+          ? `/api/student/getLessons?courseId=${params.id}&preview=true`
+          : `/api/student/getLessons?courseId=${params.id}&userId=${user.id}`;
+        const lessonsRes = await fetch(lessonsUrl);
         
         if (lessonsRes.ok) {
           const { lessons: allLessonsData } = await lessonsRes.json();
@@ -903,7 +915,7 @@ export default function StudentCoursePage() {
         
         {/* Botón Volver */}
         <button 
-          onClick={() => router.push('/dashboard/enrolled-courses')}
+          onClick={() => router.push(isPreviewMode ? `/dashboard/courses/${params.id}/edit` : '/dashboard/enrolled-courses')}
           className="flex items-center gap-2 mb-6 px-4 py-2 rounded-full transition-all duration-200 hover:shadow-md"
           style={{ 
             backgroundColor: COLORS.surface,
@@ -912,7 +924,7 @@ export default function StudentCoursePage() {
           }}
         >
           <IconArrowLeft size={18} />
-          <span className="font-medium text-sm">Volver a Mis Cursos</span>
+          <span className="font-medium text-sm">{isPreviewMode ? 'Volver al editor' : 'Volver a Mis Cursos'}</span>
         </button>
 
         {/* ===== COURSE HEADER CARD ===== */}
@@ -952,12 +964,10 @@ export default function StudentCoursePage() {
             
             {/* Descripción */}
             {course.description && (
-              <p 
-                className="text-base mb-6 leading-relaxed"
-                style={{ color: COLORS.text.secondary }}
-              >
-                {course.description}
-              </p>
+              <RichTextContent 
+                html={course.description}
+                className="text-base mb-6"
+              />
             )}
 
             {/* Meta información */}
@@ -1021,7 +1031,7 @@ export default function StudentCoursePage() {
                   <p className="text-xs" style={{ color: COLORS.text.muted }}>Contenido</p>
                   <p className="text-sm font-medium" style={{ color: COLORS.text.primary }}>
                     {lessons.length} {lessons.length === 1 ? 'sección' : 'secciones'}
-                    {totalSubsections > 0 && ` · ${totalSubsections} subsecciones`}
+                    {totalSubsections > 0 && ` · ${totalSubsections} lecciones`}
                   </p>
                 </div>
               </div>
@@ -1080,7 +1090,7 @@ export default function StudentCoursePage() {
                   {totalSubsections > 0 && (
                     <span className="flex items-center gap-1">
                       <IconListDetails size={16} />
-                      {totalSubsections} subsecciones
+                      {totalSubsections} lecciones
                     </span>
                   )}
                   {getCompletedCount() > 0 && (
@@ -1200,7 +1210,7 @@ export default function StudentCoursePage() {
                       >
                         <IconListDetails size={14} />
                         <span className="text-xs font-medium">
-                          {subsectionsCount} {subsectionsCount === 1 ? 'subsección' : 'subsecciones'}
+                          {subsectionsCount} {subsectionsCount === 1 ? 'lección' : 'lecciones'}
                         </span>
                       </div>
                     </div>
@@ -1231,18 +1241,8 @@ export default function StudentCoursePage() {
                               const hasQuiz = blockTypes.includes('quiz');
                               const hasAttachment = blockTypes.includes('attachment');
                               
-                              return (
-                                <Link
-                                  href={`/student/courses/${params.id}/learn/lecture/${subsection.id}`}
-                                  key={`${lesson.id}-${subsection.id || subIdx}`}
-                                  className="flex items-center gap-3 p-3 rounded-xl transition-all duration-200 hover:opacity-80"
-                                  style={{ 
-                                    backgroundColor: isSubCompleted ? '#D1FAE5' : '#F9FAFB',
-                                    border: `1px solid ${COLORS.accent.border}`,
-                                    display: 'flex',
-                                    cursor: 'pointer'
-                                  }}
-                                >
+                              const subsectionContent = (
+                                <>
                                   {/* Icono de estado */}
                                   <div 
                                     className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
@@ -1277,13 +1277,43 @@ export default function StudentCoursePage() {
                                       <IconPaperclip size={16} style={{ color: COLORS.text.muted }} />
                                     )}
                                   </div>
+                                </>
+                              );
+                              
+                              const sharedStyles = {
+                                backgroundColor: isSubCompleted ? '#D1FAE5' : '#F9FAFB',
+                                border: `1px solid ${COLORS.accent.border}`,
+                              };
+                              
+                              // En modo preview, mostrar como div sin navegación
+                              if (isPreviewMode) {
+                                return (
+                                  <div
+                                    key={`${lesson.id}-${subsection.id || subIdx}`}
+                                    className="flex items-center gap-3 p-3 rounded-xl"
+                                    style={{ ...sharedStyles, cursor: 'default' }}
+                                  >
+                                    {subsectionContent}
+                                  </div>
+                                );
+                              }
+                              
+                              return (
+                                <Link
+                                  href={`/student/courses/${params.id}/learn/lecture/${subsection.id}`}
+                                  key={`${lesson.id}-${subsection.id || subIdx}`}
+                                  className="flex items-center gap-3 p-3 rounded-xl transition-all duration-200 hover:opacity-80"
+                                  style={{ ...sharedStyles, cursor: 'pointer' }}
+                                >
+                                  {subsectionContent}
                                 </Link>
                               );
                             })}
                           </div>
                         )}
 
-                        {/* Botones de acción */}
+                        {/* Botones de acción - Ocultos en modo preview */}
+                        {!isPreviewMode && (
                         <div className="pl-12 flex flex-wrap gap-2">
                           {/* Botón Ver Video/Unirse */}
                           {(lesson.recordedVideoUrl || (!lesson.isLive && lesson.videoUrl)) && (
@@ -1404,6 +1434,7 @@ export default function StudentCoursePage() {
                             return null;
                           })()}
                         </div>
+                        )}
 
                         {/* Fecha programada */}
                         {formatLessonDateTime(lesson) && (

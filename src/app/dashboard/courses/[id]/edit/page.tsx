@@ -14,8 +14,10 @@ import {
   Eye,
   Check,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import SortableSectionList, { CourseSection } from "@/components/course/SortableSectionList";
+import RichTextEditor from "@/components/ui/RichTextEditor";
 
 // ============================================================================
 // TIPOS E INTERFACES
@@ -231,6 +233,7 @@ export default function EditCoursePage() {
   
   // Estados para el formulario
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState<string>("");
   const [university, setUniversity] = useState<string>("Cualquier universidad");
   const [specialization, setSpecialization] = useState<string>("Negocios");
   const [courseLevel, setCourseLevel] = useState<string>("Principiante");
@@ -243,6 +246,8 @@ export default function EditCoursePage() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [currentCourseId, setCurrentCourseId] = useState<string | null>(courseId || null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   
   const { uploadFile, uploading: uploadingImage } = useUploadFile();
 
@@ -382,13 +387,28 @@ export default function EditCoursePage() {
   };
 
   const addTag = (tag: string) => {
-    if (!selectedTags.includes(tag) && selectedTags.length < 10) {
-      setSelectedTags([...selectedTags, tag]);
+    const trimmedTag = tag.trim();
+    if (trimmedTag && !selectedTags.includes(trimmedTag) && selectedTags.length < 10) {
+      setSelectedTags([...selectedTags, trimmedTag]);
     }
   };
 
   const removeTag = (tag: string) => {
     setSelectedTags(selectedTags.filter(t => t !== tag));
+  };
+
+  // Manejar input de etiquetas personalizadas
+  const handleTagInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (tagInput.trim()) {
+        addTag(tagInput.trim());
+        setTagInput("");
+      }
+    } else if (e.key === "Backspace" && tagInput === "" && selectedTags.length > 0) {
+      // Eliminar última etiqueta si el input está vacío
+      removeTag(selectedTags[selectedTags.length - 1]);
+    }
   };
 
   // Toggle para expandir/colapsar sección del acordeón
@@ -761,6 +781,33 @@ export default function EditCoursePage() {
   const remainingChars = 500 - (description.length || 0);
   const displayTitle = courseTitle || "Nuevo curso";
 
+  // Función para eliminar el curso
+  const handleDeleteCourse = async () => {
+    if (!courseId) return;
+    
+    try {
+      setDeleting(true);
+      
+      const response = await fetch(`/api/admin/deleteCourse?courseId=${courseId}`, {
+        method: "DELETE",
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Error al eliminar el curso");
+      }
+      
+      // Redirigir a la lista de cursos
+      router.push("/dashboard/my-courses");
+    } catch (err: any) {
+      console.error("Error eliminando curso:", err);
+      setError(err.message || "Error al eliminar el curso");
+      setShowDeleteModal(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // Mostrar loader mientras carga
   if (loading) {
     return (
@@ -807,6 +854,14 @@ export default function EditCoursePage() {
           </nav>
         </div>
         <div className="flex gap-3 items-center">
+          <button
+            type="button"
+            onClick={() => setShowDeleteModal(true)}
+            className="h-10 w-10 flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-600 rounded-full transition-colors"
+            title="Eliminar curso"
+          >
+            <Trash2 size={18} />
+          </button>
           <button
             type="button"
             onClick={() => router.back()}
@@ -878,24 +933,12 @@ export default function EditCoursePage() {
                     <label className="block text-xs font-medium text-slate-500 mb-1 uppercase tracking-wide">
                       Descripción
                     </label>
-                    <div className="border border-slate-200 rounded-lg overflow-hidden">
-                      {/* Rich Text Toolbar */}
-                      <div className="bg-slate-50 h-10 border-b border-slate-200 flex items-center px-3 gap-1.5">
-                        <select className="px-2 py-1 text-[13px] border border-slate-200 rounded-md bg-white cursor-pointer">
-                          <option>Texto normal</option>
-                        </select>
-                      </div>
-                      <textarea
-                        {...register("description")}
-                        placeholder="Describe tu curso..."
-                        className="w-full min-h-[120px] p-3 text-sm border-none outline-none resize-y leading-relaxed"
-                      />
-                    </div>
-                    <div className="flex justify-end mt-1">
-                      <p className="text-[11px] text-slate-400">
-                        {remainingChars} caracteres restantes
-                      </p>
-                    </div>
+                    <RichTextEditor
+                      value={description}
+                      onChange={(html: string) => setValue("description", html)}
+                      placeholder="Describe tu curso..."
+                      maxLength={500}
+                    />
                     {errors.description && (
                       <p className="text-red-500 text-xs mt-1.5">{errors.description.message}</p>
                     )}
@@ -988,6 +1031,10 @@ export default function EditCoursePage() {
               </p>
               <button
                 type="button"
+                onClick={() => {
+                  // Abrir vista previa del estudiante en nueva pestaña (modo preview para maestros)
+                  window.open(`/dashboard/student/courses/${courseId}?preview=true`, "_blank");
+                }}
                 className="w-full h-9 flex items-center justify-center gap-2 border border-slate-300 rounded-full text-brand-primary text-sm font-medium hover:bg-slate-50 transition-colors"
               >
                 <Eye size={18} />
@@ -1094,8 +1141,11 @@ export default function EditCoursePage() {
                     Etiquetas del curso <span className="text-slate-300">(hasta 10)</span>
                   </label>
                   
-                  {/* Selected Tags */}
-                  <div className="flex flex-wrap gap-2 mb-3">
+                  {/* Selected Tags + Input */}
+                  <div 
+                    className="flex flex-wrap gap-2 p-2.5 min-h-[44px] border border-slate-200 rounded-lg bg-white focus-within:ring-2 focus-within:ring-purple-400 focus-within:border-transparent cursor-text"
+                    onClick={() => document.getElementById("tag-input")?.focus()}
+                  >
                     {selectedTags.map(tag => (
                       <span
                         key={tag}
@@ -1104,28 +1154,47 @@ export default function EditCoursePage() {
                         {tag}
                         <button
                           type="button"
-                          onClick={() => removeTag(tag)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeTag(tag);
+                          }}
                           className="hover:text-red-300 transition-colors"
                         >
                           <X size={14} />
                         </button>
                       </span>
                     ))}
+                    <input
+                      id="tag-input"
+                      type="text"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={handleTagInputKeyDown}
+                      placeholder={selectedTags.length === 0 ? "Escribe una etiqueta..." : selectedTags.length >= 10 ? "" : ""}
+                      disabled={selectedTags.length >= 10}
+                      className="flex-1 min-w-[100px] text-sm outline-none bg-transparent placeholder:text-slate-400 disabled:cursor-not-allowed"
+                    />
                   </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Presiona Enter para agregar
+                  </p>
 
-                  {/* Available Tags */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {AVAILABLE_TAGS.filter(tag => !selectedTags.includes(tag)).map(tag => (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => addTag(tag)}
-                        disabled={selectedTags.length >= 10}
-                        className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-slate-600 px-3 py-1.5 rounded-full text-xs transition-colors"
-                      >
-                        + {tag}
-                      </button>
-                    ))}
+                  {/* Available Tags (Quick Selection) */}
+                  <div className="mt-3">
+                    <p className="text-[10px] text-slate-400 mb-1.5">Selección rápida:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {AVAILABLE_TAGS.filter(tag => !selectedTags.includes(tag)).map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => addTag(tag)}
+                          disabled={selectedTags.length >= 10}
+                          className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-slate-600 px-3 py-1.5 rounded-full text-xs transition-colors"
+                        >
+                          + {tag}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1256,6 +1325,42 @@ export default function EditCoursePage() {
         onClose={() => setShowNewSectionModal(false)}
         onCreate={handleCreateSection}
       />
+
+      {/* Modal de confirmación para eliminar */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-[90%] max-w-[400px] shadow-elevated">
+            <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
+              <Trash2 size={24} className="text-red-500" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-900 text-center mb-2">
+              ¿Eliminar curso?
+            </h3>
+            <p className="text-sm text-slate-500 text-center mb-6">
+              Esta acción no se puede deshacer. Se eliminarán todas las lecciones y contenido asociado al curso.
+            </p>
+            
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-brand-primary rounded-full text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteCourse}
+                disabled={deleting}
+                className="flex-1 h-10 bg-red-500 hover:bg-red-600 disabled:opacity-70 disabled:cursor-not-allowed text-white rounded-full text-sm font-semibold transition-colors"
+              >
+                {deleting ? "Eliminando..." : "Eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

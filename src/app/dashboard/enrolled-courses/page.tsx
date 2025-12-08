@@ -8,6 +8,20 @@ import { lessonRepository } from "@/lib/repositories/lessonRepository";
 import { Loader } from "@/components/common/Loader";
 import { IconBook, IconPlayerPlay, IconClock, IconUsers } from "@tabler/icons-react";
 
+// Función para extraer texto plano de HTML (para previews)
+function stripHtml(html: string): string {
+  if (!html) return "";
+  // Reemplazar tags de bloque y saltos de línea por espacios
+  let text = html
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text;
+}
+
 interface Course {
   id: string;
   title: string;
@@ -136,7 +150,7 @@ export default function EnrolledCoursesPage() {
                 <h2 className="card-title">{course.title}</h2>
                 {course.description && (
                   <p className="text-sm text-base-content/70 line-clamp-2">
-                    {course.description}
+                    {stripHtml(course.description)}
                   </p>
                 )}
                 <div className="flex items-center gap-2 text-sm text-base-content/60 mt-2">
