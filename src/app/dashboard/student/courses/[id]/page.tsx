@@ -1300,7 +1300,7 @@ export default function StudentCoursePage() {
                               
                               return (
                                 <Link
-                                  href={`/student/courses/${params.id}/learn/lecture/${subsection.id}`}
+                                  href={`/student/courses/${params.id}/learn/lecture/${lesson.id}?subsection=${subIdx}`}
                                   key={`${lesson.id}-${subsection.id || subIdx}`}
                                   className="flex items-center gap-3 p-3 rounded-xl transition-all duration-200 hover:opacity-80"
                                   style={{ ...sharedStyles, cursor: 'pointer' }}

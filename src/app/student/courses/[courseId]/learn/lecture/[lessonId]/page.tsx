@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -398,10 +398,25 @@ function SubsectionViewer({ subsection }: { subsection: Subsection | null }) {
   );
 }
 
+// Types for progress API
+interface ProgressData {
+  progress: number;
+  completedLessons: string[];
+  subsectionProgress: Record<string, number>;
+  lastAccessedLessonId: string | null;
+  totalLessons: number;
+}
+
 export default function LessonPlayerPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
+  
+  // Get initial subsection index from URL query parameter
+  const initialSubsectionIndex = searchParams.get("subsection") 
+    ? parseInt(searchParams.get("subsection")!, 10) 
+    : 0;
   
   // Core State
   const [loading, setLoading] = useState(true);
@@ -412,6 +427,12 @@ export default function LessonPlayerPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const hasFetchedRef = useRef(false);
+  
+  // Progress persistence state
+  const [dbCompletedLessons, setDbCompletedLessons] = useState<string[]>([]);
+  const [dbProgress, setDbProgress] = useState(0);
+  const [totalDbLessons, setTotalDbLessons] = useState(0);
+  const progressFetchedRef = useRef(false);
   
   // Resources State
   const [resources, setResources] = useState<Resource[]>([]);
@@ -440,9 +461,16 @@ export default function LessonPlayerPage() {
   const [currentVideoTime, setCurrentVideoTime] = useState(0);
   
   // Subsection State (para navegación dentro de una lección)
-  const [activeSubsectionIndex, setActiveSubsectionIndex] = useState(0);
+  // Inicializa con el valor del query parameter si existe
+  const [activeSubsectionIndex, setActiveSubsectionIndex] = useState(initialSubsectionIndex);
   // Progreso de lecciones dentro de cada lección (subsections completadas de forma secuencial)
+  // Este estado ahora se sincroniza con la BD
   const [completedSubsectionsByLesson, setCompletedSubsectionsByLesson] = useState<Record<string, number>>({});
+  // Ref para saber si ya aplicamos el índice inicial del query param
+  const initialSubsectionAppliedRef = useRef(false);
+  
+  // Flag para evitar actualizaciones duplicadas
+  const isUpdatingProgressRef = useRef(false);
   
   // Derived State
   const courseId = params.courseId as string;
@@ -478,6 +506,92 @@ export default function LessonPlayerPage() {
   const prevLesson = currentIndex > 0 ? sortedLessons[currentIndex - 1] : null;
   const nextLesson = currentIndex < sortedLessons.length - 1 ? sortedLessons[currentIndex + 1] : null;
 
+  // ===== CALCULATE VISUAL PROGRESS =====
+  // Calcula el progreso real basado en subsecciones completadas de todas las lecciones
+  const visualProgress = useMemo(() => {
+    if (sortedLessons.length === 0) return 0;
+    
+    let totalSubsections = 0;
+    let completedSubsections = 0;
+    
+    sortedLessons.forEach(lesson => {
+      // Parsear subsecciones de cada lección
+      let subsections: Subsection[] = [];
+      try {
+        if (lesson.content) {
+          const parsed = JSON.parse(lesson.content);
+          subsections = parsed.subsections || [];
+        }
+      } catch {
+        // Si falla el parse, contar como 1 subsección
+      }
+      
+      const lessonSubsectionCount = subsections.length || 1;
+      totalSubsections += lessonSubsectionCount;
+      
+      // Si la lección está completada en la BD, todas sus subsecciones están completadas
+      if (dbCompletedLessons.includes(lesson.id)) {
+        completedSubsections += lessonSubsectionCount;
+      } else {
+        // Contar subsecciones completadas según el progreso local
+        const highestCompletedIndex = completedSubsectionsByLesson[lesson.id] ?? -1;
+        if (highestCompletedIndex >= 0) {
+          // +1 porque el índice es 0-based
+          completedSubsections += Math.min(highestCompletedIndex + 1, lessonSubsectionCount);
+        }
+      }
+    });
+    
+    if (totalSubsections === 0) return 0;
+    return Math.round((completedSubsections / totalSubsections) * 100);
+  }, [sortedLessons, dbCompletedLessons, completedSubsectionsByLesson]);
+
+  // ===== HELPER: Update progress in background =====
+  const updateProgressInBackground = useCallback(async (
+    lessonId: string,
+    subsectionIndex: number,
+    isCompleted: boolean,
+    totalSubsections: number
+  ) => {
+    if (!user || !courseId || isUpdatingProgressRef.current) return;
+    
+    isUpdatingProgressRef.current = true;
+    
+    try {
+      const response = await fetch('/api/student/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId,
+          userId: user.id,
+          lessonId,
+          subsectionIndex,
+          isCompleted,
+          totalSubsections,
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Actualizar estado local con los datos de la BD
+        setDbProgress(data.progress || 0);
+        setDbCompletedLessons(data.completedLessons || []);
+        
+        // Sincronizar subsection progress si viene de la BD
+        if (data.subsectionProgress) {
+          setCompletedSubsectionsByLesson(prev => ({
+            ...prev,
+            ...data.subsectionProgress,
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('[updateProgressInBackground] Error:', error);
+    } finally {
+      isUpdatingProgressRef.current = false;
+    }
+  }, [user, courseId]);
+
   // ===== FETCH DATA =====
   useEffect(() => {
     const fetchData = async () => {
@@ -487,7 +601,7 @@ export default function LessonPlayerPage() {
       setLoading(true);
 
       try {
-        // Fetch lessons and sections
+        // Fetch lessons, sections and course info
         const lessonsRes = await fetch(`/api/student/getLessons?courseId=${courseId}&userId=${user.id}`);
         if (lessonsRes.ok) {
           const data = await lessonsRes.json();
@@ -499,15 +613,22 @@ export default function LessonPlayerPage() {
           if (currentLessonData?.sectionId) {
             setExpandedSections(new Set([currentLessonData.sectionId]));
           }
+          
+          // Set course info from API response
+          if (data.course) {
+            setCourseInfo({
+              id: data.course.id,
+              title: data.course.title || "Curso",
+              teacherIds: data.course.teacherIds || [],
+            });
+          } else {
+            setCourseInfo({
+              id: courseId,
+              title: "Curso",
+              teacherIds: [],
+            });
+          }
         }
-        
-        // Fetch course info (simplified - could create dedicated endpoint)
-        // For now we'll use the course title from localStorage or a placeholder
-        setCourseInfo({
-          id: courseId,
-          title: "Curso",
-          teacherIds: [],
-        });
         
       } catch (error) {
         console.error("Error fetching course data", error);
@@ -519,10 +640,66 @@ export default function LessonPlayerPage() {
     fetchData();
   }, [courseId, user]);
 
-  // Reset subsection index when lesson changes
+  // ===== FETCH PROGRESS FROM DB =====
   useEffect(() => {
-    setActiveSubsectionIndex(0);
-  }, [currentLessonId]);
+    const fetchProgress = async () => {
+      if (!user || !courseId) return;
+      if (progressFetchedRef.current) return;
+      progressFetchedRef.current = true;
+
+      try {
+        const response = await fetch(
+          `/api/student/progress?courseId=${courseId}&userId=${user.id}`
+        );
+        
+        if (response.ok) {
+          const data: ProgressData = await response.json();
+          
+          // Sincronizar estado local con BD
+          setDbProgress(data.progress);
+          setDbCompletedLessons(data.completedLessons);
+          setTotalDbLessons(data.totalLessons);
+          
+          // Sincronizar subsection progress
+          if (data.subsectionProgress && Object.keys(data.subsectionProgress).length > 0) {
+            setCompletedSubsectionsByLesson(data.subsectionProgress);
+          }
+          
+          // Si el usuario entró sin lessonId específico y hay un lastAccessedLessonId,
+          // redirigir a esa lección
+          // Nota: Este check se hace aquí porque necesitamos los datos de la BD
+          if (data.lastAccessedLessonId && !currentLessonId) {
+            router.replace(
+              `/student/courses/${courseId}/learn/lecture/${data.lastAccessedLessonId}`
+            );
+          }
+        }
+      } catch (error) {
+        console.error('[fetchProgress] Error:', error);
+      }
+    };
+
+    fetchProgress();
+  }, [user, courseId, currentLessonId, router]);
+
+  // Set subsection index when lesson changes or from URL query parameter
+  useEffect(() => {
+    // Si hay un query parameter de subsección y no lo hemos aplicado aún
+    const subsectionParam = searchParams.get("subsection");
+    if (subsectionParam !== null && !initialSubsectionAppliedRef.current) {
+      const index = parseInt(subsectionParam, 10);
+      if (!isNaN(index) && index >= 0) {
+        setActiveSubsectionIndex(index);
+        initialSubsectionAppliedRef.current = true;
+        // Expandir la sección de la lección actual
+        setExpandedSections(prev => new Set([...prev, currentLessonId]));
+      }
+    } else if (subsectionParam === null) {
+      // Si no hay query param, resetear a 0 cuando cambia la lección
+      setActiveSubsectionIndex(0);
+      initialSubsectionAppliedRef.current = false;
+    }
+  }, [currentLessonId, searchParams]);
 
   // Fetch resources when lesson changes
   useEffect(() => {
@@ -595,9 +772,25 @@ export default function LessonPlayerPage() {
   }, [activeTab, fetchQuestions]);
 
   // ===== HANDLERS =====
-  const goToLesson = (lessonId: string) => {
+  const goToLesson = useCallback((lessonId: string) => {
+    // Actualizar last_accessed_lesson_id en segundo plano
+    if (user && courseId) {
+      fetch('/api/student/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId,
+          userId: user.id,
+          lessonId,
+          subsectionIndex: 0, // Empezando en la primera subsección
+          isCompleted: false,
+          totalSubsections: 1,
+        }),
+      }).catch(err => console.error('[goToLesson] Error updating progress:', err));
+    }
+    
     router.push(`/student/courses/${courseId}/learn/lecture/${lessonId}`);
-  };
+  }, [router, courseId, user]);
 
   const toggleSection = (sectionId: string) => {
     setExpandedSections(prev => {
@@ -768,7 +961,7 @@ export default function LessonPlayerPage() {
               <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center text-white font-bold text-xs">MU</div>
               <div className="h-6 w-[1px] bg-gray-700 mx-2 hidden sm:block"></div>
               <span className="text-gray-300 text-sm font-medium truncate max-w-[150px] md:max-w-md hidden sm:block">
-                {courseInfo?.title || "Volver al curso"}
+                {courseInfo?.title ? `Microcredencial - ${courseInfo.title}` : "Volver al curso"}
               </span>
             </div>
           </button>
@@ -782,28 +975,33 @@ export default function LessonPlayerPage() {
               <span className="font-medium">Calificar</span>
             </div>
             <div className="h-4 w-[1px] bg-gray-700 mx-2"></div>
-            <div className="flex items-center gap-2 cursor-pointer hover:text-white">
-              <div className="relative w-7 h-7">
+            <div className="flex items-center cursor-pointer hover:text-white">
+              {/* Circle Progress Chart con porcentaje dentro */}
+              <div className="relative w-14 h-14 flex items-center justify-center">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                  {/* Background circle */}
                   <circle 
-                    className="text-gray-700" 
                     cx="18" cy="18" r="15.9155"
                     fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="2.5"
+                    stroke="#374151"
+                    strokeWidth="3"
                   />
+                  {/* Progress circle */}
                   <circle 
-                    className="text-purple-500" 
                     cx="18" cy="18" r="15.9155"
                     fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="2.5"
-                    strokeDasharray={`${(currentIndex + 1) / sortedLessons.length * 100}, 100`}
+                    stroke="#A855F7"
+                    strokeWidth="3"
+                    strokeDasharray={`${visualProgress}, 100`}
                     strokeLinecap="round"
+                    style={{ transition: 'stroke-dasharray 0.3s ease' }}
                   />
                 </svg>
+                {/* Percentage text inside circle */}
+                <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">
+                  {visualProgress}%
+                </span>
               </div>
-              <span className="text-xs">{currentIndex + 1}/{sortedLessons.length}</span>
             </div>
           </div>
 
@@ -1293,7 +1491,11 @@ export default function LessonPlayerPage() {
 
               // Progreso secuencial: índice más alto completado para esta lección
               const highestCompletedIndex = completedSubsectionsByLesson[lesson.id] ?? -1;
-              const completedCount = highestCompletedIndex >= 0 ? highestCompletedIndex + 1 : 0;
+              // Si la lección está en completedLessons de la BD, todas las subsecciones están completadas
+              const isLessonCompletedInDb = dbCompletedLessons.includes(lesson.id);
+              const completedCount = isLessonCompletedInDb 
+                ? (subsections.length || 1) 
+                : (highestCompletedIndex >= 0 ? highestCompletedIndex + 1 : 0);
 
               return (
                 <div key={lesson.id} className="border-b" style={{ borderColor: TOKENS.colors.border }}>
@@ -1331,8 +1533,10 @@ export default function LessonPlayerPage() {
                           const isActiveSubsection = isActiveSection && subIndex === activeSubsectionIndex;
 
                           // Considerar completadas todas las subsecciones hasta highestCompletedIndex
+                          // O si la lección entera está marcada como completada en la BD
                           const highestCompletedIndexForLesson = completedSubsectionsByLesson[lesson.id] ?? -1;
-                          const isCompleted = subIndex <= highestCompletedIndexForLesson;
+                          const isLessonFullyCompleted = dbCompletedLessons.includes(lesson.id);
+                          const isCompleted = isLessonFullyCompleted || subIndex <= highestCompletedIndexForLesson;
 
                           const handleSubsectionClick = () => {
                             if (lesson.id === currentLessonId) {
@@ -1342,6 +1546,7 @@ export default function LessonPlayerPage() {
 
                               // Si el alumno avanza de forma consecutiva (ej. 0 -> 1, 1 -> 2)
                               if (nextIndex === previousIndex + 1) {
+                                // Actualización optimista del estado local
                                 setCompletedSubsectionsByLesson((prev) => {
                                   const currentMax = prev[lesson.id] ?? -1;
                                   const newMax = Math.max(currentMax, previousIndex);
@@ -1350,6 +1555,17 @@ export default function LessonPlayerPage() {
                                     [lesson.id]: newMax,
                                   };
                                 });
+
+                                // Verificar si es la última subsección (lección completada)
+                                const isLastSubsection = nextIndex === subsections.length - 1;
+                                
+                                // Guardar progreso en segundo plano (sin bloquear UI)
+                                updateProgressInBackground(
+                                  lesson.id,
+                                  previousIndex, // Guardamos el índice que acabamos de completar
+                                  isLastSubsection,
+                                  subsections.length
+                                );
                               }
 
                               setActiveSubsectionIndex(nextIndex);

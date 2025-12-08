@@ -54,6 +54,18 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Buscar información del curso
+    const { data: courseData, error: courseError } = await supabaseAdmin
+      .from(TABLES.COURSES)
+      .select('id, title, description, cover_image_url, thumbnail_url, teacher_ids')
+      .eq('id', courseId)
+      .single();
+
+    if (courseError) {
+      console.error('[getLessons API] Error loading course:', courseError);
+      // No es error crítico, continuamos sin info del curso
+    }
+
     // Buscar secciones del curso
     const { data: sectionsData, error: sectionsError } = await supabaseAdmin
       .from(TABLES.COURSE_SECTIONS)
@@ -114,10 +126,21 @@ export async function GET(req: NextRequest) {
       sectionId: l.section_id, // ID de la sección a la que pertenece
     }));
 
+    // Mapear información del curso
+    const course = courseData ? {
+      id: courseData.id,
+      title: courseData.title || '',
+      description: courseData.description || '',
+      coverImageUrl: courseData.cover_image_url,
+      thumbnailUrl: courseData.thumbnail_url,
+      teacherIds: courseData.teacher_ids || [],
+    } : null;
+
+    console.log('[getLessons API] Course:', course?.title);
     console.log('[getLessons API] Sections found:', sections.length, sections.map((s: any) => ({ id: s.id, title: s.title })));
     console.log('[getLessons API] Lessons found:', lessons.length, lessons.map((l: any) => ({ id: l.id, title: l.title, sectionId: l.sectionId })));
     
-    return NextResponse.json({ lessons, sections }, { status: 200 });
+    return NextResponse.json({ lessons, sections, course }, { status: 200 });
   } catch (e: any) {
     console.error('[getLessons API] Error:', e);
     return NextResponse.json({ error: e?.message || 'Error interno' }, { status: 500 });
