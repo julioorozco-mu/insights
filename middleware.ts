@@ -87,6 +87,23 @@ export async function middleware(request: NextRequest) {
 
   const authUser = session?.user ?? null;
   const isAuthenticated = !!session;
+  
+  // Obtener el rol del usuario - primero del JWT metadata, luego de la tabla users
+  let userRole = authUser?.user_metadata?.role || authUser?.app_metadata?.role;
+  
+  // Si no hay rol en metadata, intentar obtenerlo de la tabla users
+  if (!userRole && authUser?.id) {
+    const { data: userData } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', authUser.id)
+      .single();
+    
+    userRole = userData?.role;
+  }
+  
+  // Default a 'student' si no se encuentra rol
+  userRole = userRole || 'student';
   const isProtectedRoute = matchesRoute(pathname, PROTECTED_ROUTES);
   const isAuthOnlyRoute = matchesRoute(pathname, AUTH_ONLY_ROUTES);
   const isPublicRoute = matchesRoute(pathname, PUBLIC_ROUTES);
@@ -108,19 +125,15 @@ export async function middleware(request: NextRequest) {
     }
     
     // 1c. Verificar permisos basados en rol (si aplica)
-    if (authUser) {
-      // Obtener rol del usuario desde metadata
-      const userRole = authUser.user_metadata?.role || 'student';
-      
-      // Verificar si la ruta tiene restricción de roles
-      for (const [route, allowedRoles] of Object.entries(ROLE_PERMISSIONS)) {
-        if (pathname.startsWith(route)) {
-          if (!allowedRoles.includes(userRole)) {
-            // Usuario no tiene permisos para esta ruta
-            return NextResponse.redirect(new URL('/dashboard', request.url));
-          }
-          break;
+    // Verificar si la ruta tiene restricción de roles
+    for (const [route, allowedRoles] of Object.entries(ROLE_PERMISSIONS)) {
+      if (pathname.startsWith(route)) {
+        if (!allowedRoles.includes(userRole)) {
+          // Usuario no tiene permisos para esta ruta
+          console.log(`[Middleware] Acceso denegado a ${pathname} para rol ${userRole}`);
+          return NextResponse.redirect(new URL('/dashboard', request.url));
         }
+        break;
       }
     }
     
