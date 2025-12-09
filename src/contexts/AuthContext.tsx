@@ -277,6 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: data.email,
         password: data.password,
         options: {
+          emailRedirectTo: undefined, // No requerir confirmación de email
           data: {
             name: data.name,
             last_name: data.lastName,
@@ -290,15 +291,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(message);
       }
 
+      // Si el usuario fue creado pero requiere confirmación, intentar confirmarlo automáticamente
+      // usando una llamada al API admin (si está disponible)
+      if (authData.user && !authData.session) {
+        try {
+          const confirmResponse = await fetch('/api/auth/auto-confirm-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: authData.user.id }),
+          });
+          
+          if (confirmResponse.ok) {
+            // Recargar usuario después de confirmar
+            await loadUserData(authData.user.id);
+          }
+        } catch (confirmError) {
+          console.warn("No se pudo auto-confirmar email (continuando sin correo):", confirmError);
+          // Continuar sin confirmación - el usuario puede iniciar sesión de todas formas
+        }
+      }
+
       // El perfil básico del usuario se crea automáticamente en la base de datos
       // mediante el trigger public.handle_new_user() sobre auth.users.
-      // Aquí solo disparamos el correo de bienvenida si aplica.
+      // Sin embargo, necesitamos actualizar con todos los campos adicionales
       if (authData.user) {
+        const userId = authData.user.id;
+        
+        // Actualizar el registro del usuario con todos los campos adicionales
+        try {
+          const userRepoModule = await import("@/lib/repositories/userRepository");
+          await userRepoModule.userRepository.create(userId, data);
+        } catch (userError) {
+          console.error("Error actualizando datos del usuario:", userError);
+          // No lanzamos error para no interrumpir el registro
+          // Los datos básicos ya fueron creados por el trigger
+        }
+
+        // Intentamos enviar correo de bienvenida de forma opcional (no bloquea el registro)
         sendWelcomeEmail({
           to: data.email,
           name: data.name,
         }).catch((emailError) => {
-          console.error("Error al enviar correo de bienvenida:", emailError);
+          console.warn("No se pudo enviar correo de bienvenida (continuando sin correo):", emailError);
+          // No interrumpe el flujo - el usuario se registra exitosamente
         });
       }
     } finally {

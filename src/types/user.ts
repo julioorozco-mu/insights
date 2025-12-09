@@ -16,6 +16,7 @@ export interface User {
   dateOfBirth?: string;
   gender?: "male" | "female" | "other";
   state?: string;
+  municipality?: string;
   avatarUrl?: string;
   bio?: string;
   socialLinks?: {
@@ -67,6 +68,7 @@ export interface CreateUserData {
   dateOfBirth?: string;
   gender?: "male" | "female" | "other";
   state?: string;
+  municipality?: string;
   role?: UserRole;
   bio?: string;
   expertise?: string[]; // para teachers

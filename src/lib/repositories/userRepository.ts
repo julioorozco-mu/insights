@@ -7,7 +7,7 @@ export class UserRepository {
   private table = TABLES.USERS;
 
   async create(id: string, data: CreateUserData): Promise<User> {
-    const userData = {
+    const userData: Record<string, unknown> = {
       id,
       name: data.name,
       last_name: data.lastName,
@@ -21,6 +21,11 @@ export class UserRepository {
       bio: data.bio || null,
       is_verified: false,
     };
+
+    // Agregar municipality si existe
+    if (data.municipality) {
+      userData.municipality = data.municipality;
+    }
 
     // Usar upsert para manejar el caso donde el usuario ya existe (creado por trigger)
     // o donde necesitamos crear uno nuevo
@@ -199,6 +204,7 @@ export class UserRepository {
       dateOfBirth: data.date_of_birth as string | undefined,
       gender: data.gender as "male" | "female" | "other" | undefined,
       state: data.state as string | undefined,
+      municipality: data.municipality as string | undefined,
       avatarUrl: data.avatar_url as string | undefined,
       bio: data.bio as string | undefined,
       socialLinks: data.social_links as User["socialLinks"],

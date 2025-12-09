@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,6 +18,14 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [authTimeout, setAuthTimeout] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
+  
+  // Estados para validación de email
+  const [emailChecking, setEmailChecking] = useState(false);
+  const [emailExists, setEmailExists] = useState(false);
+  const [emailValidated, setEmailValidated] = useState(false);
+  
+  // Ref para el input de email para detectar autocompletado
+  const emailInputRef = useRef<HTMLInputElement>(null);
   
   // Redirigir usuarios ya logueados al dashboard (respaldo del middleware)
   useEffect(() => {
@@ -62,6 +70,117 @@ export default function SignUpPage() {
   const password = watch("password");
   const confirmPassword = watch("confirmPassword");
   const dateOfBirth = watch("dateOfBirth");
+  const email = watch("email");
+
+  // Función para verificar si el email ya existe
+  const checkEmailExists = async (emailToCheck: string) => {
+    if (!emailToCheck || emailToCheck.trim() === "") {
+      setEmailValidated(false);
+      setEmailExists(false);
+      return;
+    }
+
+    // Validar formato básico de email antes de llamar al API
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailToCheck)) {
+      setEmailValidated(false);
+      setEmailExists(false);
+      return;
+    }
+
+    setEmailChecking(true);
+    try {
+      const response = await fetch(`/api/auth/check-email?email=${encodeURIComponent(emailToCheck)}`);
+      const data = await response.json();
+      
+      setEmailExists(data.exists);
+      setEmailValidated(true);
+    } catch (err) {
+      console.error("Error checking email:", err);
+      setEmailValidated(false);
+    } finally {
+      setEmailChecking(false);
+    }
+  };
+
+  // Manejar blur del campo email
+  const handleEmailBlur = () => {
+    if (email) {
+      checkEmailExists(email);
+    }
+  };
+
+  // Validar email cuando cambia (incluyendo autocompletado)
+  useEffect(() => {
+    if (!email || email.trim() === "") {
+      setEmailValidated(false);
+      setEmailExists(false);
+      return;
+    }
+
+    // Validar formato básico de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setEmailValidated(false);
+      setEmailExists(false);
+      return;
+    }
+
+    // Debounce: esperar 500ms después de que el usuario deje de escribir
+    // Esto permite validar tanto al escribir como al autocompletar
+    const timeoutId = setTimeout(() => {
+      checkEmailExists(email);
+    }, 500);
+
+    // Limpiar timeout si el email cambia antes de los 500ms
+    return () => clearTimeout(timeoutId);
+  }, [email]); // Validar cada vez que cambia el email (incluyendo autocompletado)
+
+  // Detectar cambios de autocompletado usando eventos nativos del DOM
+  useEffect(() => {
+    const inputElement = emailInputRef.current;
+    if (!inputElement) return;
+
+    // Listener para detectar cambios en el input (incluyendo autocompletado)
+    const handleInputChange = () => {
+      const currentValue = inputElement.value;
+      if (currentValue && currentValue !== email) {
+        // Actualizar el valor en react-hook-form usando setValue
+        setValue("email", currentValue, { shouldValidate: false });
+        // El useEffect que observa 'email' detectará el cambio y validará
+      }
+    };
+
+    // Agregar listeners para múltiples eventos que pueden disparar autocompletado
+    inputElement.addEventListener("input", handleInputChange);
+    inputElement.addEventListener("change", handleInputChange);
+    
+    // Usar MutationObserver para detectar cambios en el valor cuando se autocompleta
+    const observer = new MutationObserver(() => {
+      handleInputChange();
+    });
+    
+    observer.observe(inputElement, {
+      attributes: true,
+      attributeFilter: ['value'],
+      childList: false,
+      subtree: false
+    });
+
+    // Verificar periódicamente si el valor cambió (fallback para navegadores que no disparan eventos)
+    const intervalId = setInterval(() => {
+      if (inputElement.value && inputElement.value !== email) {
+        handleInputChange();
+      }
+    }, 200);
+
+    return () => {
+      inputElement.removeEventListener("input", handleInputChange);
+      inputElement.removeEventListener("change", handleInputChange);
+      observer.disconnect();
+      clearInterval(intervalId);
+    };
+  }, [email, setValue]);
 
   // Calcular edad automáticamente
   useEffect(() => {
@@ -139,6 +258,21 @@ export default function SignUpPage() {
 
   const onSubmit = async (data: CreateUserInput) => {
     if (loading || isRedirecting) return;
+    
+    // Verificar si el email ya existe antes de continuar
+    if (emailExists) {
+      setError("Este correo electrónico ya está registrado. Por favor usa otro.");
+      return;
+    }
+
+    // Si no se ha validado el email, verificarlo primero
+    if (!emailValidated && data.email) {
+      await checkEmailExists(data.email);
+      if (emailExists) {
+        setError("Este correo electrónico ya está registrado. Por favor usa otro.");
+        return;
+      }
+    }
     
     try {
       setLoading(true);
@@ -250,16 +384,59 @@ export default function SignUpPage() {
                 <label className="label">
                   <span className="label-text">Correo Electrónico *</span>
                 </label>
-                <input
-                  type="email"
-                  {...register("email")}
-                  className="input input-bordered"
-                  placeholder="tu@email.com"
-                  autoComplete="off"
-                />
+                <div className="relative">
+                  <input
+                    type="email"
+                    {...register("email", {
+                      onChange: () => {
+                        // React-hook-form actualiza el valor automáticamente
+                        // El useEffect detectará el cambio a través de watch("email")
+                      }
+                    })}
+                    ref={(e) => {
+                      emailInputRef.current = e;
+                    }}
+                    onBlur={handleEmailBlur}
+                    className={`input input-bordered w-full ${
+                      emailValidated 
+                        ? emailExists 
+                          ? "input-error" 
+                          : "input-success" 
+                        : ""
+                    }`}
+                    placeholder="tu@email.com"
+                    autoComplete="email"
+                  />
+                  {emailChecking && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <span className="loading loading-spinner loading-sm text-primary"></span>
+                    </span>
+                  )}
+                  {emailValidated && !emailChecking && (
+                    <span className={`absolute right-3 top-1/2 -translate-y-1/2 ${
+                      emailExists ? "text-error" : "text-success"
+                    }`}>
+                      {emailExists ? "✗" : "✓"}
+                    </span>
+                  )}
+                </div>
                 {errors.email && (
                   <label className="label">
                     <span className="label-text-alt text-error">{errors.email.message}</span>
+                  </label>
+                )}
+                {emailValidated && emailExists && !errors.email && (
+                  <label className="label">
+                    <span className="label-text-alt text-error">
+                      Este correo electrónico ya está registrado
+                    </span>
+                  </label>
+                )}
+                {emailValidated && !emailExists && !errors.email && (
+                  <label className="label">
+                    <span className="label-text-alt text-success">
+                      Correo electrónico disponible
+                    </span>
                   </label>
                 )}
               </div>
@@ -384,7 +561,7 @@ export default function SignUpPage() {
                   value={selectedMunicipality}
                   onChange={(municipality) => {
                     setSelectedMunicipality(municipality);
-                    setValue("municipality" as any, municipality);
+                    setValue("municipality", municipality);
                   }}
                 />
               </div>
@@ -461,9 +638,9 @@ export default function SignUpPage() {
             <button 
               type="submit" 
               className="btn btn-primary w-full btn-lg text-white" 
-              disabled={loading}
+              disabled={loading || emailExists || emailChecking}
             >
-              {loading ? "Creando cuenta..." : "Crear Cuenta"}
+              {loading ? "Creando cuenta..." : emailChecking ? "Verificando email..." : "Crear Cuenta"}
             </button>
           </form>
 
