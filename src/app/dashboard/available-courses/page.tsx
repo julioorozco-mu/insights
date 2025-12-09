@@ -8,6 +8,7 @@ import { courseRepository } from "@/lib/repositories/courseRepository";
 import { Course } from "@/types/course";
 import { Loader } from "@/components/common/Loader";
 import { formatDate } from "@/utils/formatDate";
+import { stripHtmlAndTruncate } from "@/lib/utils";
 import { 
   IconBook, 
   IconClock, 
@@ -315,7 +316,7 @@ export default function AvailableCoursesPage() {
                 <div className="card-body">
                   <h2 className="card-title">{course.title}</h2>
                   <p className="text-sm text-base-content/70 line-clamp-2">
-                    {course.description}
+                    {stripHtmlAndTruncate(course.description, 120)}
                   </p>
                   
                   {/* Instructor */}

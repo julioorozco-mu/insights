@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { Bookmark, Star } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, stripHtmlAndTruncate } from "@/lib/utils";
 
 interface CourseCardProps {
   level: "Principiante" | "Intermedio" | "Avanzado";
@@ -23,9 +23,10 @@ const levelStyles: Record<string, string> = {
 
 export function CourseCard(props: CourseCardProps) {
   const levelClass = levelStyles[props.level] || "bg-slate-100 text-slate-700";
+  const cleanDescription = stripHtmlAndTruncate(props.description, 120);
 
   return (
-    <article className="rounded-3xl bg-white p-4 shadow-card-soft transition hover:-translate-y-1 hover:shadow-card">
+    <article className="flex flex-col rounded-3xl bg-white p-4 shadow-card-soft transition hover:-translate-y-1 hover:shadow-card">
       <div className="relative mb-4 overflow-hidden rounded-2xl">
         <Image
           src={props.thumbnail}
@@ -44,7 +45,7 @@ export function CourseCard(props: CourseCardProps) {
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="flex flex-1 flex-col space-y-3">
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span className="flex items-center gap-1">
             <span className="h-2 w-2 rounded-full bg-brand-primary" /> {props.students} estudiantes
@@ -54,7 +55,7 @@ export function CourseCard(props: CourseCardProps) {
           </span>
         </div>
         <h3 className="text-lg font-semibold text-slate-900 line-clamp-2">{props.title}</h3>
-        <p className="text-sm text-slate-500 line-clamp-2">{props.description}</p>
+        <p className="flex-1 text-sm text-slate-500 line-clamp-3">{cleanDescription}</p>
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span className="text-brand-primary font-semibold">{props.mentor}</span>
           {props.rating > 0 ? (
