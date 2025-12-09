@@ -16,7 +16,7 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 // Rutas que requieren autenticación (rutas privadas)
-const PROTECTED_ROUTES = ['/dashboard', '/profile'];
+const PROTECTED_ROUTES = ['/dashboard', '/profile', '/student'];
 
 // Rutas públicas específicas de autenticación (solo accesibles si NO estás logueado)
 const AUTH_ONLY_ROUTES = ['/auth/login', '/auth/sign-up', '/auth/recover-password'];
