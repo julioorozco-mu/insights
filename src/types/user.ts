@@ -76,6 +76,13 @@ export interface CreateUserData {
 
 export interface UpdateUserData {
   name?: string;
+  lastName?: string;
+  phone?: string;
+  username?: string;
+  dateOfBirth?: string;
+  gender?: "male" | "female" | "other";
+  state?: string;
+  municipality?: string;
   avatarUrl?: string;
   bio?: string;
   socialLinks?: {

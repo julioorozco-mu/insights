@@ -313,14 +313,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // El perfil básico del usuario se crea automáticamente en la base de datos
       // mediante el trigger public.handle_new_user() sobre auth.users.
-      // Sin embargo, necesitamos actualizar con todos los campos adicionales
+      // Sin embargo, necesitamos actualizar con todos los campos adicionales usando API admin
       if (authData.user) {
         const userId = authData.user.id;
         
         // Actualizar el registro del usuario con todos los campos adicionales
+        // Usamos API admin porque el cliente no tiene sesión activa aún (RLS lo bloquea)
         try {
-          const userRepoModule = await import("@/lib/repositories/userRepository");
-          await userRepoModule.userRepository.create(userId, data);
+          const updateResponse = await fetch('/api/auth/update-user-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId,
+              name: data.name,
+              lastName: data.lastName,
+              email: data.email,
+              phone: data.phone,
+              username: data.username,
+              dateOfBirth: data.dateOfBirth,
+              gender: data.gender,
+              state: data.state,
+              municipality: data.municipality,
+            }),
+          });
+
+          if (!updateResponse.ok) {
+            const errorData = await updateResponse.json();
+            console.error("Error actualizando perfil del usuario:", errorData);
+          } else {
+            console.log("[SignUp] Perfil del usuario actualizado correctamente");
+          }
         } catch (userError) {
           console.error("Error actualizando datos del usuario:", userError);
           // No lanzamos error para no interrumpir el registro

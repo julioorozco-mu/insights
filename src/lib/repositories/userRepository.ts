@@ -152,13 +152,24 @@ export class UserRepository {
   async update(id: string, data: UpdateUserData): Promise<void> {
     const updateData: Record<string, unknown> = {};
     
+    // Campos básicos del perfil
     if (data.name !== undefined) updateData.name = data.name;
+    if (data.lastName !== undefined) updateData.last_name = data.lastName;
+    if (data.phone !== undefined) updateData.phone = data.phone;
+    if (data.username !== undefined) updateData.username = data.username;
+    if (data.dateOfBirth !== undefined) updateData.date_of_birth = data.dateOfBirth;
+    if (data.gender !== undefined) updateData.gender = data.gender;
+    if (data.state !== undefined) updateData.state = data.state;
+    if (data.municipality !== undefined) updateData.municipality = data.municipality;
     if (data.avatarUrl !== undefined) updateData.avatar_url = data.avatarUrl;
     if (data.bio !== undefined) updateData.bio = data.bio;
     if (data.socialLinks !== undefined) updateData.social_links = data.socialLinks;
+    
+    // Campos para teachers
     if (data.expertise !== undefined) updateData.expertise = data.expertise;
     if (data.resumeUrl !== undefined) updateData.resume_url = data.resumeUrl;
     if (data.signatureUrl !== undefined) updateData.signature_url = data.signatureUrl;
+    
     // Campos adicionales para perfil público
     if (data.coverImageUrl !== undefined) updateData.cover_image_url = data.coverImageUrl;
     if (data.aboutMe !== undefined) updateData.about_me = data.aboutMe;
