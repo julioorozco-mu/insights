@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Crear cliente de Supabase con service role para bypass de RLS
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+/**
+ * Obtiene un cliente de Supabase con la service role.
+ * Se valida que las env vars existan para evitar 500 silenciosos.
+ */
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Faltan variables de entorno NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY');
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey);
+}
 
 /**
  * GET /api/admin/course-tests
@@ -13,6 +22,7 @@ const supabaseAdmin = createClient(
  */
 export async function GET(request: NextRequest) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const searchParams = request.nextUrl.searchParams;
     const courseId = searchParams.get('courseId');
 
@@ -82,6 +92,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ courseTests: transformedCourseTests });
   } catch (error) {
     console.error('Error in GET /api/admin/course-tests:', error);
+
+    // Errores por falta de variables de entorno
+    if (error instanceof Error && error.message.includes('SUPABASE')) {
+      return NextResponse.json(
+        { error: 'Faltan variables de entorno para Supabase (NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY)' },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
       { error: 'Error interno del servidor' },
       { status: 500 }
@@ -95,6 +113,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const body = await request.json();
     const { testId, courseId, createdBy, isRequired, availableFrom, availableUntil } = body;
 
@@ -209,6 +228,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ courseTest: transformedCourseTest }, { status: 201 });
   } catch (error) {
     console.error('Error in POST /api/admin/course-tests:', error);
+
+    if (error instanceof Error && error.message.includes('SUPABASE')) {
+      return NextResponse.json(
+        { error: 'Faltan variables de entorno para Supabase (NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY)' },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
       { error: 'Error interno del servidor' },
       { status: 500 }
@@ -222,6 +248,7 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const searchParams = request.nextUrl.searchParams;
     const courseTestId = searchParams.get('id');
     const courseId = searchParams.get('courseId');
@@ -265,6 +292,13 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error in DELETE /api/admin/course-tests:', error);
+
+    if (error instanceof Error && error.message.includes('SUPABASE')) {
+      return NextResponse.json(
+        { error: 'Faltan variables de entorno para Supabase (NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY)' },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
       { error: 'Error interno del servidor' },
       { status: 500 }

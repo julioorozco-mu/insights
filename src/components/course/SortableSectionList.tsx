@@ -22,10 +22,11 @@ import {
   GripVertical,
   ChevronDown,
   ChevronRight,
-  MoreHorizontal,
+  MoreVertical,
   Edit3,
   Plus,
   Trash2,
+  Copy,
 } from "lucide-react";
 
 // ============================================================================
@@ -56,6 +57,7 @@ interface SortableSectionItemProps {
   onEditSubsection: (sectionId: string, subsectionId: string) => void;
   onAddSubsection: (sectionId: string) => void;
   onDelete?: (sectionId: string) => void;
+  onDuplicate?: (sectionId: string) => void;
 }
 
 interface SortableSectionListProps {
@@ -65,6 +67,7 @@ interface SortableSectionListProps {
   onEditSubsection: (sectionId: string, subsectionId: string) => void;
   onAddSubsection: (sectionId: string) => void;
   onDeleteSection?: (sectionId: string) => void;
+  onDuplicateSection?: (sectionId: string) => void;
   emptyMessage?: string;
 }
 
@@ -81,7 +84,11 @@ function SortableSectionItem({
   onEditSubsection,
   onAddSubsection,
   onDelete,
+  onDuplicate,
 }: SortableSectionItemProps) {
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
   const {
     attributes,
     listeners,
@@ -97,12 +104,29 @@ function SortableSectionItem({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // Cerrar menú al hacer clic fuera
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+
+    if (showMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showMenu]);
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`bg-[#F8FAFF] border border-slate-200 rounded-xl overflow-hidden transition-all ${
-        isDragging ? "shadow-elevated z-50" : "hover:shadow-cardSoft"
+      className={`bg-[#F8FAFF] border border-slate-200 rounded-xl transition-all ${
+        isDragging ? "shadow-elevated z-50" : showMenu ? "z-[100]" : "hover:shadow-cardSoft"
       }`}
     >
       {/* Section Header */}
@@ -164,14 +188,54 @@ function SortableSectionItem({
             Editar
           </button>
 
-          {/* More Options */}
-          <button
-            type="button"
-            onClick={(e) => e.stopPropagation()}
-            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors"
-          >
-            <MoreHorizontal size={16} />
-          </button>
+          {/* More Options Dropdown */}
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu(!showMenu);
+              }}
+              className={`p-2 rounded-full transition-all duration-200 ${
+                showMenu 
+                  ? "bg-brand-primary text-white shadow-md" 
+                  : "text-slate-400 hover:text-slate-600 hover:bg-slate-100 border border-transparent hover:border-slate-200"
+              }`}
+            >
+              <MoreVertical size={16} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {showMenu && (
+              <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDuplicate?.(section.id);
+                    setShowMenu(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <Copy size={15} className="text-slate-400" />
+                  Duplicar sección
+                </button>
+                <div className="my-1 border-t border-slate-100" />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete?.(section.id);
+                    setShowMenu(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 size={15} />
+                  Eliminar
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -238,6 +302,7 @@ export default function SortableSectionList({
   onEditSubsection,
   onAddSubsection,
   onDeleteSection,
+  onDuplicateSection,
   emptyMessage = "Aún no hay secciones",
 }: SortableSectionListProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
@@ -319,6 +384,7 @@ export default function SortableSectionList({
               onEditSubsection={onEditSubsection}
               onAddSubsection={onAddSubsection}
               onDelete={onDeleteSection}
+              onDuplicate={onDuplicateSection}
             />
           ))}
         </div>
