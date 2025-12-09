@@ -58,7 +58,16 @@ export class UserRepository {
       .eq("id", id)
       .maybeSingle();
 
-    if (error || !data) return null;
+    if (error) {
+      console.error("[UserRepository] Error fetching user by id:", error.message, error.code);
+      return null;
+    }
+    
+    if (!data) {
+      console.warn("[UserRepository] No user found with id:", id);
+      return null;
+    }
+    
     return this.mapToUser(data);
   }
 

@@ -7,9 +7,13 @@
  * - Database (PostgreSQL)
  * - Storage (archivos)
  * - Realtime (subscripciones en tiempo real)
+ * 
+ * IMPORTANTE: Usa createBrowserClient de @supabase/ssr para que las cookies
+ * se manejen correctamente y el middleware pueda leer la sesión.
  */
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 // Variables de entorno requeridas
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -22,30 +26,16 @@ if (typeof window !== 'undefined' && (!supabaseUrl || !supabaseAnonKey)) {
   );
 }
 
-// Opciones del cliente
-const supabaseOptions = {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-  },
-  global: {
-    headers: {
-      'x-application-name': 'MicroCert',
-    },
-  },
-};
-
 // Cliente singleton para uso en toda la aplicación
-// Nota: Usar tipos generados con `npm run db:types` para tipos estrictos
 let supabase: SupabaseClient;
 
 /**
  * Obtiene o crea el cliente de Supabase (patrón singleton)
+ * Usa createBrowserClient de @supabase/ssr para manejo correcto de cookies
  */
 export function getSupabaseClient(): SupabaseClient {
   if (!supabase) {
-    supabase = createClient(supabaseUrl, supabaseAnonKey, supabaseOptions);
+    supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
   }
   return supabase;
 }
