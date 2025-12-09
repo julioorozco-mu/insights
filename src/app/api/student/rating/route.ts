@@ -33,14 +33,14 @@ export async function GET(request: NextRequest) {
     // Solo buscar la reseña del usuario si tenemos un userId válido
     if (!isStatsOnly) {
       const { data: reviewData, error } = await supabase
-        .from("course_reviews")
-        .select("id, course_id, student_id, rating, comment, created_at, updated_at")
-        .eq("course_id", courseId)
-        .eq("student_id", userId)
-        .maybeSingle();
+      .from("course_reviews")
+      .select("id, course_id, student_id, rating, comment, created_at, updated_at")
+      .eq("course_id", courseId)
+      .eq("student_id", userId)
+      .maybeSingle();
 
-      if (error) {
-        console.error("[GET /api/student/rating] Error:", error);
+    if (error) {
+      console.error("[GET /api/student/rating] Error:", error);
         // No retornar error 500, continuar con las estadísticas
       } else {
         review = reviewData;
