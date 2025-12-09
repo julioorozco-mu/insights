@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         test:tests(id, title, description, status, time_mode, time_limit_minutes, passing_score, max_attempts),
         course:courses(id, title)
       `)
-      .order('order', { ascending: true });
+      .order('created_at', { ascending: true });
 
     if (courseId) {
       query = query.eq('course_id', courseId);
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
       isRequired: ct.is_required,
       availableFrom: ct.available_from,
       availableUntil: ct.available_until,
-      order: ct.order,
+      order: ct.order ?? 0,
       createdBy: ct.created_by,
       createdAt: ct.created_at,
       updatedAt: ct.updated_at,
@@ -168,17 +168,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Obtener el siguiente orden
-    const { data: lastOrder } = await supabaseAdmin
-      .from('course_tests')
-      .select('order')
-      .eq('course_id', courseId)
-      .order('order', { ascending: false })
-      .limit(1)
-      .single();
-
-    const nextOrder = (lastOrder?.order ?? -1) + 1;
-
     // Crear la vinculación
     const { data: courseTest, error } = await supabaseAdmin
       .from('course_tests')
@@ -189,7 +178,6 @@ export async function POST(request: NextRequest) {
         is_required: isRequired ?? true,
         available_from: availableFrom || null,
         available_until: availableUntil || null,
-        order: nextOrder,
       })
       .select(`
         *,
@@ -213,7 +201,7 @@ export async function POST(request: NextRequest) {
       isRequired: courseTest.is_required,
       availableFrom: courseTest.available_from,
       availableUntil: courseTest.available_until,
-      order: courseTest.order,
+      order: courseTest.order ?? 0,
       createdBy: courseTest.created_by,
       createdAt: courseTest.created_at,
       updatedAt: courseTest.updated_at,
