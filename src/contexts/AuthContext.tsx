@@ -290,20 +290,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(message);
       }
 
+      // El perfil básico del usuario se crea automáticamente en la base de datos
+      // mediante el trigger public.handle_new_user() sobre auth.users.
+      // Aquí solo disparamos el correo de bienvenida si aplica.
       if (authData.user) {
-        try {
-          await userRepository.create(authData.user.id, data);
-          
-          sendWelcomeEmail({
-            to: data.email,
-            name: data.name,
-          }).catch((emailError) => {
-            console.error("Error al enviar correo de bienvenida:", emailError);
-          });
-        } catch (dbError) {
-          console.error("Error creando perfil de usuario:", dbError);
-          throw new Error("Error al crear el perfil de usuario. Por favor, contacta al administrador.");
-        }
+        sendWelcomeEmail({
+          to: data.email,
+          name: data.name,
+        }).catch((emailError) => {
+          console.error("Error al enviar correo de bienvenida:", emailError);
+        });
       }
     } finally {
       setLoading(false);

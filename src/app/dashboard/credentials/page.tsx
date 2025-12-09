@@ -4,7 +4,7 @@ import { Award, Download, Share2, Shield, Clock, CheckCircle } from "lucide-reac
 
 export default function CredentialsPage() {
   return (
-    <div className="max-w-4xl mx-auto">
+    <div>
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Mis Credenciales</h1>
         <p className="text-base-content/70">Gestiona tus certificados y microcredenciales obtenidas</p>

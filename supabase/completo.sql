@@ -340,6 +340,30 @@ $$;
 ALTER FUNCTION "public"."get_user_role"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+BEGIN
+    INSERT INTO public.users (id, email, name, last_name, role, is_verified)
+    VALUES (
+        NEW.id,
+        NEW.email,
+        COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
+        COALESCE(NEW.raw_user_meta_data->>'last_name', ''),
+        'student',
+        false
+    )
+    ON CONFLICT (id) DO NOTHING;
+    
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_new_user"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."handle_user_role_jwt"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -521,6 +545,21 @@ ALTER TABLE "public"."course_accreditations" OWNER TO "postgres";
 
 
 COMMENT ON TABLE "public"."course_accreditations" IS 'Registro de acreditaciones de microcredenciales';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."course_favorites" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "course_id" "uuid" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."course_favorites" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."course_favorites" IS 'Cursos marcados como favoritos por usuarios';
 
 
 
@@ -1389,6 +1428,16 @@ ALTER TABLE ONLY "public"."course_accreditations"
 
 
 
+ALTER TABLE ONLY "public"."course_favorites"
+    ADD CONSTRAINT "course_favorites_course_user_unique" UNIQUE ("course_id", "user_id");
+
+
+
+ALTER TABLE ONLY "public"."course_favorites"
+    ADD CONSTRAINT "course_favorites_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."course_reviews"
     ADD CONSTRAINT "course_reviews_course_student_unique" UNIQUE ("course_id", "student_id");
 
@@ -1644,6 +1693,18 @@ CREATE INDEX "idx_course_accreditations_course_id" ON "public"."course_accredita
 
 
 CREATE INDEX "idx_course_accreditations_student_id" ON "public"."course_accreditations" USING "btree" ("student_id");
+
+
+
+CREATE INDEX "idx_course_favorites_course_id" ON "public"."course_favorites" USING "btree" ("course_id");
+
+
+
+CREATE INDEX "idx_course_favorites_created_at" ON "public"."course_favorites" USING "btree" ("created_at" DESC);
+
+
+
+CREATE INDEX "idx_course_favorites_user_id" ON "public"."course_favorites" USING "btree" ("user_id");
 
 
 
@@ -2116,6 +2177,16 @@ ALTER TABLE ONLY "public"."course_accreditations"
 
 ALTER TABLE ONLY "public"."course_accreditations"
     ADD CONSTRAINT "course_accreditations_test_attempt_id_fkey" FOREIGN KEY ("test_attempt_id") REFERENCES "public"."test_attempts"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."course_favorites"
+    ADD CONSTRAINT "course_favorites_course_id_fkey" FOREIGN KEY ("course_id") REFERENCES "public"."courses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."course_favorites"
+    ADD CONSTRAINT "course_favorites_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
 
 
 
@@ -2635,6 +2706,21 @@ CREATE POLICY "course_accreditations_student_own" ON "public"."course_accreditat
 
 
 
+ALTER TABLE "public"."course_favorites" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "course_favorites_delete_own" ON "public"."course_favorites" FOR DELETE USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "course_favorites_insert_own" ON "public"."course_favorites" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "course_favorites_select_own" ON "public"."course_favorites" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
 ALTER TABLE "public"."course_reviews" ENABLE ROW LEVEL SECURITY;
 
 
@@ -2985,6 +3071,7 @@ GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
+GRANT USAGE ON SCHEMA "public" TO "supabase_auth_admin";
 
 
 
@@ -3150,6 +3237,12 @@ GRANT ALL ON FUNCTION "public"."get_user_role"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."handle_user_role_jwt"() TO "anon";
 GRANT ALL ON FUNCTION "public"."handle_user_role_jwt"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."handle_user_role_jwt"() TO "service_role";
@@ -3210,6 +3303,12 @@ GRANT ALL ON TABLE "public"."certificates" TO "service_role";
 GRANT ALL ON TABLE "public"."course_accreditations" TO "anon";
 GRANT ALL ON TABLE "public"."course_accreditations" TO "authenticated";
 GRANT ALL ON TABLE "public"."course_accreditations" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."course_favorites" TO "anon";
+GRANT ALL ON TABLE "public"."course_favorites" TO "authenticated";
+GRANT ALL ON TABLE "public"."course_favorites" TO "service_role";
 
 
 
@@ -3414,6 +3513,7 @@ GRANT ALL ON TABLE "public"."tests" TO "service_role";
 GRANT ALL ON TABLE "public"."users" TO "anon";
 GRANT ALL ON TABLE "public"."users" TO "authenticated";
 GRANT ALL ON TABLE "public"."users" TO "service_role";
+GRANT INSERT ON TABLE "public"."users" TO "supabase_auth_admin";
 
 
 

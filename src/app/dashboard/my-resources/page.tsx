@@ -43,7 +43,7 @@ export default function MyResourcesPage() {
     
     try {
       setLoading(true);
-      const data = await resourceService.getByOwnerId(user.id);
+      const data = await resourceService.getByOwner(user.id);
       setResources(data);
     } catch (error) {
       console.error("Error loading resources:", error);

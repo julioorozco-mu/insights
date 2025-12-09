@@ -4,7 +4,7 @@ import { CalendarDays, Clock, Video, Users, Bell, CheckCircle } from "lucide-rea
 
 export default function CalendarPage() {
   return (
-    <div className="max-w-6xl mx-auto">
+    <div>
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Calendario</h1>
         <p className="text-base-content/70">Gestiona tus clases, eventos y sesiones en vivo</p>

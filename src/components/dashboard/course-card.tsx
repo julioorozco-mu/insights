@@ -26,14 +26,15 @@ export function CourseCard(props: CourseCardProps) {
   const cleanDescription = stripHtmlAndTruncate(props.description, 120);
 
   return (
-    <article className="flex flex-col rounded-3xl bg-white p-4 shadow-card-soft transition hover:-translate-y-1 hover:shadow-card">
-      <div className="relative mb-4 overflow-hidden rounded-2xl">
+    <article className="flex h-full flex-col rounded-3xl bg-white p-4 shadow-card-soft transition hover:-translate-y-1 hover:shadow-card">
+      {/* Imagen con altura fija */}
+      <div className="relative mb-4 h-40 flex-shrink-0 overflow-hidden rounded-2xl">
         <Image
           src={props.thumbnail}
           alt={props.title}
           width={400}
           height={220}
-          className="h-40 w-full object-cover"
+          className="h-full w-full object-cover"
           priority={props.priority}
           loading={props.priority ? "eager" : undefined}
         />
@@ -45,6 +46,7 @@ export function CourseCard(props: CourseCardProps) {
         </div>
       </div>
 
+      {/* Contenido con flex-1 para ocupar el espacio restante */}
       <div className="flex flex-1 flex-col space-y-3">
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span className="flex items-center gap-1">
@@ -54,9 +56,12 @@ export function CourseCard(props: CourseCardProps) {
             <span className="h-2 w-2 rounded-full bg-brand-secondary" /> {props.lessons} lecciones
           </span>
         </div>
-        <h3 className="text-lg font-semibold text-slate-900 line-clamp-2">{props.title}</h3>
-        <p className="flex-1 text-sm text-slate-500 line-clamp-3">{cleanDescription}</p>
-        <div className="flex items-center justify-between text-sm text-slate-500">
+        {/* Título con altura mínima fija */}
+        <h3 className="min-h-[2.75rem] text-lg font-semibold text-slate-900 line-clamp-2">{props.title}</h3>
+        {/* Descripción con altura fija */}
+        <p className="min-h-[3rem] text-sm text-slate-500 line-clamp-2">{cleanDescription}</p>
+        {/* Footer siempre al final */}
+        <div className="mt-auto flex items-center justify-between text-sm text-slate-500">
           <span className="text-brand-primary font-semibold">{props.mentor}</span>
           {props.rating > 0 ? (
             <span className="flex items-center gap-1">

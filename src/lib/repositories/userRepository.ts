@@ -22,33 +22,46 @@ export class UserRepository {
       is_verified: false,
     };
 
-    const { data: insertedUser, error } = await supabaseClient
+    // Usar upsert para manejar el caso donde el usuario ya existe (creado por trigger)
+    // o donde necesitamos crear uno nuevo
+    const { data: upsertedUser, error } = await supabaseClient
       .from(this.table)
-      .insert(userData)
+      .upsert(userData, { 
+        onConflict: 'id',
+        ignoreDuplicates: false 
+      })
       .select()
       .single();
 
     if (error) {
-      console.error("Error creating user:", error);
+      console.error("Error creating/updating user:", error);
       throw error;
     }
 
     // Si el rol es estudiante, también crear documento de estudiante
     if (userData.role === "student") {
-      await studentRepository.create({
-        userId: id,
-        name: data.name,
-        lastName: data.lastName,
-        email: data.email,
-        phone: data.phone,
-        username: data.username,
-        dateOfBirth: data.dateOfBirth,
-        gender: data.gender,
-        state: data.state,
-      });
+      try {
+        await studentRepository.create({
+          userId: id,
+          name: data.name,
+          lastName: data.lastName,
+          email: data.email,
+          phone: data.phone,
+          username: data.username,
+          dateOfBirth: data.dateOfBirth,
+          gender: data.gender,
+          state: data.state,
+        });
+      } catch (studentError: unknown) {
+        // Si el estudiante ya existe, ignorar el error
+        const error = studentError as { code?: string };
+        if (error?.code !== '23505') { // 23505 = unique_violation
+          console.error("Error creating student:", studentError);
+        }
+      }
     }
 
-    return this.mapToUser(insertedUser);
+    return this.mapToUser(upsertedUser);
   }
 
   async findById(id: string): Promise<User | null> {

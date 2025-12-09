@@ -205,7 +205,7 @@ export default function ReportsPage() {
   const selectedCourseData = courses.find((c) => c.id === selectedCourse);
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div>
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2 flex items-center gap-3">
           <IconFileAnalytics size={40} />

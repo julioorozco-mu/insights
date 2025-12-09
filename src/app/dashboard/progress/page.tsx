@@ -4,7 +4,7 @@ import { TrendingUp, Target, Award, BarChart3, Clock, CheckCircle } from "lucide
 
 export default function ProgressPage() {
   return (
-    <div className="max-w-4xl mx-auto">
+    <div>
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Mi Progreso</h1>
         <p className="text-base-content/70">Visualiza tu avance en las microcredenciales</p>

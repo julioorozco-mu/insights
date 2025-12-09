@@ -8,6 +8,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createUserSchema, CreateUserInput } from "@/lib/validators/userSchema";
 import { MunicipalitySelector } from "@/components/MunicipalitySelector";
+import { DatePicker } from "@/components/ui/DatePicker";
 import { APP_NAME } from "@/utils/constants";
 
 export default function SignUpPage() {
@@ -215,12 +216,12 @@ export default function SignUpPage() {
                 <label className="label">
                   <span className="label-text">Fecha de Nacimiento *</span>
                 </label>
-                <input
-                  type="date"
-                  {...register("dateOfBirth")}
-                  className="input input-bordered"
-                  max={new Date().toISOString().split('T')[0]}
-                  autoComplete="off"
+                <DatePicker
+                  value={dateOfBirth}
+                  onChange={(date) => setValue("dateOfBirth", date)}
+                  placeholder="DD/MM/AAAA"
+                  maxDate={new Date()}
+                  error={!!errors.dateOfBirth}
                 />
                 {errors.dateOfBirth && (
                   <label className="label">

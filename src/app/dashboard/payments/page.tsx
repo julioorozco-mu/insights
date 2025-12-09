@@ -4,7 +4,7 @@ import { CreditCard, Clock, FileText, TrendingUp } from "lucide-react";
 
 export default function PaymentsPage() {
   return (
-    <div className="max-w-4xl mx-auto">
+    <div>
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Pagos</h1>
         <p className="text-base-content/70">Gestiona tus pagos y transacciones</p>

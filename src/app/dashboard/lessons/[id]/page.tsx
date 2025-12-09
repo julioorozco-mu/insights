@@ -836,7 +836,7 @@ export default function LessonDetailPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto py-3">
+    <div className="py-3">
       <button onClick={() => router.back()} className="btn btn-ghost btn-sm mb-3">
         ← Salir
       </button>

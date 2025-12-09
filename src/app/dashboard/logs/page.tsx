@@ -4,7 +4,7 @@ import { FileText, Clock, Shield, AlertTriangle, Search, Download } from "lucide
 
 export default function SystemLogsPage() {
   return (
-    <div className="max-w-6xl mx-auto">
+    <div>
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Logs del Sistema</h1>
         <p className="text-base-content/70">Monitorea la actividad y eventos del sistema</p>

@@ -4,7 +4,7 @@ import { BarChart3, TrendingUp, Users, BookOpen, Clock, Award } from "lucide-rea
 
 export default function AnalyticsPage() {
   return (
-    <div className="max-w-6xl mx-auto">
+    <div>
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Analytics</h1>
         <p className="text-base-content/70">Métricas y estadísticas de la plataforma</p>

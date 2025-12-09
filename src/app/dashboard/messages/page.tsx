@@ -4,7 +4,7 @@ import { MessageCircle, Users, Bell, Search, Clock, Send } from "lucide-react";
 
 export default function MessagesPage() {
   return (
-    <div className="max-w-4xl mx-auto">
+    <div>
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Mensajes</h1>
         <p className="text-base-content/70">Centro de comunicación y notificaciones</p>
