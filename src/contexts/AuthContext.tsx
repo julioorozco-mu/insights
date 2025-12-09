@@ -291,10 +291,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(message);
       }
 
-      // Si el usuario fue creado pero requiere confirmación, intentar confirmarlo automáticamente
-      // usando una llamada al API admin (si está disponible)
+      // Si el usuario fue creado pero no hay sesión, confirmar email e iniciar sesión automáticamente
       if (authData.user && !authData.session) {
         try {
+          // Confirmar email automáticamente
           const confirmResponse = await fetch('/api/auth/auto-confirm-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -302,13 +302,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
           
           if (confirmResponse.ok) {
-            // Recargar usuario después de confirmar
-            await loadUserData(authData.user.id);
+            // Después de confirmar, iniciar sesión automáticamente
+            const signInResponse = await supabaseClient.auth.signInWithPassword({
+              email: data.email,
+              password: data.password,
+            });
+
+            if (signInResponse.error) {
+              console.error("[SignUp] Error iniciando sesión después del registro:", signInResponse.error);
+              throw signInResponse.error;
+            } else if (signInResponse.data.session) {
+              // La sesión se establece automáticamente a través de onAuthStateChange
+              console.log("[SignUp] Sesión iniciada automáticamente después del registro");
+              // Actualizar estado inmediatamente
+              setSession(signInResponse.data.session);
+              setSupabaseUser(signInResponse.data.user);
+            }
+          } else {
+            // Si falla la confirmación, intentar iniciar sesión de todas formas
+            console.warn("[SignUp] No se pudo confirmar email, intentando iniciar sesión directamente");
+            const signInResponse = await supabaseClient.auth.signInWithPassword({
+              email: data.email,
+              password: data.password,
+            });
+            if (signInResponse.data?.session) {
+              console.log("[SignUp] Sesión iniciada automáticamente (sin confirmar email)");
+              setSession(signInResponse.data.session);
+              setSupabaseUser(signInResponse.data.user);
+            }
           }
         } catch (confirmError) {
-          console.warn("No se pudo auto-confirmar email (continuando sin correo):", confirmError);
-          // Continuar sin confirmación - el usuario puede iniciar sesión de todas formas
+          console.warn("[SignUp] Error en proceso de auto-confirmación:", confirmError);
+          // Intentar iniciar sesión de todas formas
+          try {
+            const signInResponse = await supabaseClient.auth.signInWithPassword({
+              email: data.email,
+              password: data.password,
+            });
+            if (signInResponse.data?.session) {
+              console.log("[SignUp] Sesión iniciada automáticamente (fallback)");
+              setSession(signInResponse.data.session);
+              setSupabaseUser(signInResponse.data.user);
+            }
+          } catch (signInError) {
+            console.error("[SignUp] No se pudo iniciar sesión automáticamente:", signInError);
+            // No lanzamos error aquí para no interrumpir el registro
+          }
         }
+      } else if (authData.session) {
+        // Si ya hay sesión después del signUp, actualizar estado inmediatamente
+        console.log("[SignUp] Sesión obtenida directamente del signUp");
+        setSession(authData.session);
+        setSupabaseUser(authData.user);
       }
 
       // El perfil básico del usuario se crea automáticamente en la base de datos

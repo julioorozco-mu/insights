@@ -27,13 +27,14 @@ export default function SignUpPage() {
   // Ref para el input de email para detectar autocompletado
   const emailInputRef = useRef<HTMLInputElement>(null);
   
-  // Redirigir usuarios ya logueados al dashboard (respaldo del middleware)
+  // Redirigir usuarios ya logueados al dashboard (después del registro o si ya están autenticados)
   useEffect(() => {
     if (!authLoading && (user || session) && !isRedirecting) {
       setIsRedirecting(true);
-      window.location.href = "/dashboard";
+      // Usar router.push en lugar de window.location para mejor navegación
+      router.push("/dashboard");
     }
-  }, [authLoading, user, session, isRedirecting]);
+  }, [authLoading, user, session, isRedirecting, router]);
 
   // Timeout de seguridad: si después de 3 segundos sigue cargando, mostrar la página
   useEffect(() => {
@@ -112,6 +113,10 @@ export default function SignUpPage() {
 
   // Validar email cuando cambia (incluyendo autocompletado)
   useEffect(() => {
+    // Debug: verificar que el email se está capturando
+    console.log("[EmailValidation] Email value from watch:", email);
+    
+    // Si el email está vacío, limpiar estados
     if (!email || email.trim() === "") {
       setEmailValidated(false);
       setEmailExists(false);
@@ -120,7 +125,7 @@ export default function SignUpPage() {
 
     // Validar formato básico de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!emailRegex.test(email.trim())) {
       setEmailValidated(false);
       setEmailExists(false);
       return;
@@ -129,11 +134,13 @@ export default function SignUpPage() {
     // Debounce: esperar 500ms después de que el usuario deje de escribir
     // Esto permite validar tanto al escribir como al autocompletar
     const timeoutId = setTimeout(() => {
-      checkEmailExists(email);
+      console.log("[EmailValidation] Validando email después de debounce:", email.trim());
+      checkEmailExists(email.trim());
     }, 500);
 
     // Limpiar timeout si el email cambia antes de los 500ms
     return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [email]); // Validar cada vez que cambia el email (incluyendo autocompletado)
 
   // Detectar cambios de autocompletado usando eventos nativos del DOM
@@ -144,10 +151,10 @@ export default function SignUpPage() {
     // Listener para detectar cambios en el input (incluyendo autocompletado)
     const handleInputChange = () => {
       const currentValue = inputElement.value;
-      if (currentValue && currentValue !== email) {
-        // Actualizar el valor en react-hook-form usando setValue
-        setValue("email", currentValue, { shouldValidate: false });
-        // El useEffect que observa 'email' detectará el cambio y validará
+      // Solo actualizar si el valor cambió y es diferente al email actual
+      if (currentValue !== email) {
+        // Actualizar el valor en react-hook-form
+        setValue("email", currentValue, { shouldValidate: true, shouldDirty: true });
       }
     };
 
@@ -155,29 +162,17 @@ export default function SignUpPage() {
     inputElement.addEventListener("input", handleInputChange);
     inputElement.addEventListener("change", handleInputChange);
     
-    // Usar MutationObserver para detectar cambios en el valor cuando se autocompleta
-    const observer = new MutationObserver(() => {
-      handleInputChange();
-    });
-    
-    observer.observe(inputElement, {
-      attributes: true,
-      attributeFilter: ['value'],
-      childList: false,
-      subtree: false
-    });
-
-    // Verificar periódicamente si el valor cambió (fallback para navegadores que no disparan eventos)
+    // Verificar periódicamente si el valor cambió (fallback para autocompletado del navegador)
     const intervalId = setInterval(() => {
-      if (inputElement.value && inputElement.value !== email) {
+      const currentValue = inputElement.value;
+      if (currentValue && currentValue.trim() !== (email || "").trim()) {
         handleInputChange();
       }
-    }, 200);
+    }, 500);
 
     return () => {
       inputElement.removeEventListener("input", handleInputChange);
       inputElement.removeEventListener("change", handleInputChange);
-      observer.disconnect();
       clearInterval(intervalId);
     };
   }, [email, setValue]);
@@ -278,8 +273,17 @@ export default function SignUpPage() {
       setLoading(true);
       setError(null);
       await signUp(data);
-      setIsRedirecting(true);
-      window.location.href = "/dashboard";
+      
+      // El AuthContext ahora maneja automáticamente el inicio de sesión después del registro
+      // El useEffect de arriba se encargará de redirigir cuando detecte la sesión
+      // No necesitamos hacer nada más aquí, solo esperar
+      // Si después de 2 segundos no hay redirección, forzar redirección
+      setTimeout(() => {
+        if (!isRedirecting) {
+          setIsRedirecting(true);
+          router.push("/dashboard");
+        }
+      }, 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al crear la cuenta");
       setLoading(false);
@@ -387,16 +391,22 @@ export default function SignUpPage() {
                 <div className="relative">
                   <input
                     type="email"
-                    {...register("email", {
-                      onChange: () => {
-                        // React-hook-form actualiza el valor automáticamente
-                        // El useEffect detectará el cambio a través de watch("email")
-                      }
-                    })}
+                    {...register("email")}
                     ref={(e) => {
                       emailInputRef.current = e;
                     }}
-                    onBlur={handleEmailBlur}
+                    onBlur={(e) => {
+                      // Asegurar que el valor esté actualizado antes de validar
+                      const value = e.target.value;
+                      if (value && value !== email) {
+                        setValue("email", value, { shouldValidate: true });
+                      }
+                      handleEmailBlur();
+                    }}
+                    onChange={(e) => {
+                      // Actualizar el valor inmediatamente
+                      setValue("email", e.target.value, { shouldValidate: true });
+                    }}
                     className={`input input-bordered w-full ${
                       emailValidated 
                         ? emailExists 
