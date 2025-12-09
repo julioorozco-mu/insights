@@ -60,7 +60,7 @@ interface Section {
 
 interface ContentBlock {
   id: string;
-  type: 'heading' | 'text' | 'image' | 'video' | 'attachment' | 'list' | 'table';
+  type: 'heading' | 'text' | 'image' | 'video' | 'attachment' | 'list' | 'table' | 'quiz';
   content: string;
   data?: {
     fileName?: string;
@@ -71,6 +71,9 @@ interface ContentBlock {
     rows?: number;
     cols?: number;
     cells?: string[][];
+    // Quiz data
+    quizId?: string;
+    quizTitle?: string;
   };
 }
 
@@ -270,6 +273,364 @@ function AttachmentBlock({ block }: { block: ContentBlock }) {
   );
 }
 
+// ===== COMPONENT: Quiz Block =====
+interface QuizOption {
+  label: string;
+  value: string;
+  imageUrl?: string;
+  isCorrect?: boolean;
+}
+
+interface QuizQuestion {
+  id: string;
+  type: string;
+  questionText: string;
+  options?: QuizOption[];
+  correctAnswer?: string | string[];
+  isRequired?: boolean;
+}
+
+interface QuizData {
+  id: string;
+  title: string;
+  description?: string;
+  type: string;
+  questions: QuizQuestion[];
+}
+
+function QuizBlock({ quizId, quizTitle }: { quizId?: string; quizTitle?: string }) {
+  const [quiz, setQuiz] = useState<QuizData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
+  const [showResults, setShowResults] = useState(false);
+
+  useEffect(() => {
+    if (!quizId) {
+      setLoading(false);
+      setError("No se encontró el ID del quiz");
+      return;
+    }
+
+    const loadQuiz = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch('/api/admin/getSurveys');
+        if (!res.ok) throw new Error('Error al cargar el quiz');
+        
+        const data = await res.json();
+        const foundQuiz = data.surveys?.find((s: any) => s.id === quizId);
+        
+        if (foundQuiz) {
+          setQuiz({
+            id: foundQuiz.id,
+            title: foundQuiz.title,
+            description: foundQuiz.description,
+            type: foundQuiz.type,
+            questions: foundQuiz.questions || [],
+          });
+        } else {
+          setError("Quiz no encontrado");
+        }
+      } catch (err: any) {
+        console.error("Error loading quiz:", err);
+        setError(err.message || "Error al cargar el quiz");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadQuiz();
+  }, [quizId]);
+
+  const handleAnswerChange = (questionId: string, value: string | string[]) => {
+    setAnswers(prev => ({ ...prev, [questionId]: value }));
+  };
+
+  const handleSubmit = () => {
+    if (!quiz) return;
+    
+    let correctCount = 0;
+    quiz.questions.forEach(q => {
+      const userAnswer = answers[q.id];
+      
+      // Verificar usando isCorrect en las opciones
+      if (q.options && q.options.some(o => o.isCorrect)) {
+        const correctOptions = q.options.filter(o => o.isCorrect).map(o => o.value);
+        
+        if (q.type === 'multiple_choice') {
+          // Para multiple choice, todas las correctas deben estar seleccionadas
+          const userAnswers = Array.isArray(userAnswer) ? userAnswer : [];
+          if (correctOptions.length === userAnswers.length &&
+              correctOptions.every(c => userAnswers.includes(c))) {
+            correctCount++;
+          }
+        } else {
+          // Para single choice
+          if (correctOptions.includes(userAnswer as string)) {
+            correctCount++;
+          }
+        }
+      } else if (q.correctAnswer) {
+        // Fallback a correctAnswer si no hay isCorrect
+        if (Array.isArray(q.correctAnswer)) {
+          if (Array.isArray(userAnswer) && 
+              userAnswer.length === q.correctAnswer.length &&
+              userAnswer.every(a => q.correctAnswer?.includes(a))) {
+            correctCount++;
+          }
+        } else if (userAnswer === q.correctAnswer) {
+          correctCount++;
+        }
+      }
+    });
+    
+    setScore({ correct: correctCount, total: quiz.questions.length });
+    setSubmitted(true);
+    setShowResults(true);
+  };
+
+  const handleRetry = () => {
+    setAnswers({});
+    setSubmitted(false);
+    setScore(null);
+    setShowResults(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="my-6 p-6 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border border-purple-200">
+        <div className="flex items-center justify-center gap-3 text-purple-600">
+          <IconLoader2 className="w-6 h-6 animate-spin" />
+          <span className="font-medium">Cargando quiz...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !quiz) {
+    return (
+      <div className="my-6 p-6 bg-red-50 rounded-xl border border-red-200">
+        <div className="flex items-center gap-3 text-red-600">
+          <IconX className="w-6 h-6" />
+          <span className="font-medium">{error || "No se pudo cargar el quiz"}</span>
+        </div>
+      </div>
+    );
+  }
+
+  const getQuestionTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      'single_choice': 'Selección única',
+      'multiple_choice': 'Selección múltiple',
+      'short_text': 'Respuesta corta',
+      'long_text': 'Respuesta larga',
+      'dropdown': 'Desplegable',
+      'quiz': 'Quiz',
+    };
+    return labels[type] || type;
+  };
+
+  const isCorrectAnswer = (questionId: string, optionValue: string) => {
+    const question = quiz.questions.find(q => q.id === questionId);
+    if (!question) return false;
+    
+    // Primero verificar si la opción tiene isCorrect marcado
+    const option = question.options?.find(o => o.value === optionValue);
+    if (option?.isCorrect) return true;
+    
+    // Si no, verificar contra correctAnswer
+    if (!question.correctAnswer) return false;
+    
+    if (Array.isArray(question.correctAnswer)) {
+      return question.correctAnswer.includes(optionValue);
+    }
+    return question.correctAnswer === optionValue;
+  };
+
+  return (
+    <div className="my-6 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border border-purple-200 overflow-hidden">
+      {/* Header */}
+      <div className="bg-[#192170] text-white px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+            <IconCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-bold text-lg">{quiz.title || quizTitle || "Quiz"}</h3>
+            {quiz.description && (
+              <p className="text-white/80 text-sm mt-1">{quiz.description}</p>
+            )}
+          </div>
+        </div>
+        <div className="mt-3 flex items-center gap-4 text-sm text-white/70">
+          <span>{quiz.questions.length} preguntas</span>
+          {score && (
+            <span className="bg-white/20 px-3 py-1 rounded-full font-semibold">
+              Puntuación: {score.correct}/{score.total} ({Math.round((score.correct / score.total) * 100)}%)
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Questions */}
+      <div className="p-6 space-y-6">
+        {quiz.questions.map((question, index) => (
+          <div 
+            key={question.id} 
+            className={cn(
+              "p-5 rounded-xl border transition-all",
+              showResults && question.correctAnswer
+                ? isCorrectAnswer(question.id, answers[question.id] as string)
+                  ? "bg-green-50 border-green-300"
+                  : "bg-red-50 border-red-300"
+                : "bg-white border-gray-200"
+            )}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <span className="w-8 h-8 bg-[#192170] text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0">
+                {index + 1}
+              </span>
+              <div className="flex-1">
+                <p className="font-semibold text-gray-900">{question.questionText}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {getQuestionTypeLabel(question.type)}
+                  {question.isRequired && <span className="text-red-500 ml-1">*</span>}
+                </p>
+              </div>
+            </div>
+
+            {/* Options for choice questions */}
+            {['single_choice', 'multiple_choice', 'dropdown', 'quiz'].includes(question.type) && question.options && (
+              <div className="space-y-2 ml-11">
+                {question.options.map((option, optIndex) => {
+                  const optionValue = option.value;
+                  const optionLabel = option.label;
+                  
+                  const isSelected = question.type === 'multiple_choice'
+                    ? (answers[question.id] as string[] || []).includes(optionValue)
+                    : answers[question.id] === optionValue;
+                  
+                  const isCorrect = showResults && (option.isCorrect || isCorrectAnswer(question.id, optionValue));
+                  const isWrong = showResults && isSelected && !isCorrect;
+
+                  return (
+                    <label 
+                      key={optIndex}
+                      className={cn(
+                        "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                        submitted ? "cursor-default" : "hover:bg-gray-50",
+                        isSelected && !showResults && "bg-purple-50 border-purple-300",
+                        isCorrect && "bg-green-100 border-green-400",
+                        isWrong && "bg-red-100 border-red-400",
+                        !isSelected && !isCorrect && !isWrong && "border-gray-200"
+                      )}
+                    >
+                      <input
+                        type={question.type === 'multiple_choice' ? 'checkbox' : 'radio'}
+                        name={question.id}
+                        value={optionValue}
+                        checked={isSelected}
+                        disabled={submitted}
+                        onChange={(e) => {
+                          if (question.type === 'multiple_choice') {
+                            const current = (answers[question.id] as string[]) || [];
+                            if (e.target.checked) {
+                              handleAnswerChange(question.id, [...current, optionValue]);
+                            } else {
+                              handleAnswerChange(question.id, current.filter(o => o !== optionValue));
+                            }
+                          } else {
+                            handleAnswerChange(question.id, optionValue);
+                          }
+                        }}
+                        className="w-4 h-4 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className={cn(
+                        "flex-1",
+                        isCorrect && "font-semibold text-green-700",
+                        isWrong && "text-red-700"
+                      )}>
+                        {optionLabel}
+                      </span>
+                      {showResults && isCorrect && (
+                        <IconCheck className="w-5 h-5 text-green-600" />
+                      )}
+                      {showResults && isWrong && (
+                        <IconX className="w-5 h-5 text-red-600" />
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Text input for text questions */}
+            {['short_text', 'long_text'].includes(question.type) && (
+              <div className="ml-11">
+                {question.type === 'short_text' ? (
+                  <input
+                    type="text"
+                    value={(answers[question.id] as string) || ''}
+                    onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                    disabled={submitted}
+                    placeholder="Escribe tu respuesta..."
+                    className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50"
+                  />
+                ) : (
+                  <textarea
+                    value={(answers[question.id] as string) || ''}
+                    onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                    disabled={submitted}
+                    placeholder="Escribe tu respuesta..."
+                    rows={4}
+                    className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 resize-none"
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* Actions */}
+        <div className="flex items-center justify-between pt-4 border-t border-purple-200">
+          {!submitted ? (
+            <button
+              onClick={handleSubmit}
+              disabled={Object.keys(answers).length === 0}
+              className="px-6 py-3 bg-[#192170] text-white rounded-lg font-semibold hover:bg-[#141a5a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <IconCheck className="w-5 h-5" />
+              Enviar respuestas
+            </button>
+          ) : (
+            <button
+              onClick={handleRetry}
+              className="px-6 py-3 bg-purple-100 text-purple-700 rounded-lg font-semibold hover:bg-purple-200 transition-colors flex items-center gap-2"
+            >
+              Intentar de nuevo
+            </button>
+          )}
+          
+          {score && (
+            <div className={cn(
+              "text-lg font-bold px-4 py-2 rounded-lg",
+              score.correct / score.total >= 0.7 
+                ? "bg-green-100 text-green-700" 
+                : "bg-yellow-100 text-yellow-700"
+            )}>
+              {score.correct / score.total >= 0.7 ? "¡Muy bien! " : "Sigue practicando "}
+              {Math.round((score.correct / score.total) * 100)}%
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ===== COMPONENT: Content Block Renderer =====
 function ContentBlockRenderer({ block }: { block: ContentBlock }) {
   switch (block.type) {
@@ -368,6 +729,9 @@ function ContentBlockRenderer({ block }: { block: ContentBlock }) {
           </table>
         </div>
       );
+    
+    case 'quiz':
+      return <QuizBlock quizId={block.data?.quizId} quizTitle={block.data?.quizTitle} />;
     
     default:
       return null;

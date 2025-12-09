@@ -13,9 +13,8 @@ interface Survey {
   id: string;
   title: string;
   description?: string;
-  type: "entry" | "exit" | "general";
+  type: "entry" | "exit" | "lesson";
   questions: any[];
-  isActive: boolean;
   createdAt: string;
 }
 
@@ -85,18 +84,22 @@ export default function SurveysPage() {
 
     setDeleting(true);
     try {
-      // Eliminación física (la tabla no tiene soft-delete)
-      await supabaseClient
-        .from(TABLES.SURVEYS)
-        .delete()
-        .eq('id', surveyToDelete.id);
+      const response = await fetch(`/api/admin/surveys?id=${surveyToDelete.id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al eliminar el cuestionario');
+      }
       
       setShowDeleteModal(false);
       setSurveyToDelete(null);
       loadSurveys();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting survey:", error);
-      alert("Error al eliminar la encuesta");
+      alert(error.message || "Error al eliminar el cuestionario");
     } finally {
       setDeleting(false);
     }
@@ -107,23 +110,25 @@ export default function SurveysPage() {
     
     setCloning(survey.id);
     try {
-      // Crear una copia de la encuesta con un nuevo nombre
-      const clonedSurvey = {
-        title: `Copia de ${survey.title}`,
-        description: survey.description || '',
-        type: survey.type,
-        questions: survey.questions || [],
-      };
+      const response = await fetch('/api/admin/surveys/clone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ surveyId: survey.id }),
+      });
 
-      await supabaseClient.from(TABLES.SURVEYS).insert(clonedSurvey);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al clonar el cuestionario');
+      }
       
-      // Recargar encuestas
+      // Recargar cuestionarios
       await loadSurveys();
       
-      alert('Encuesta clonada exitosamente');
-    } catch (error) {
+      alert(data.message || 'Cuestionario clonado exitosamente');
+    } catch (error: any) {
       console.error('Error cloning survey:', error);
-      alert('Error al clonar la encuesta');
+      alert(error.message || 'Error al clonar el cuestionario');
     } finally {
       setCloning(null);
     }
@@ -139,8 +144,10 @@ export default function SurveysPage() {
         return "Entrada";
       case "exit":
         return "Salida";
+      case "lesson":
+        return "Lección";
       default:
-        return "General";
+        return type;
     }
   };
 
@@ -150,6 +157,8 @@ export default function SurveysPage() {
         return "badge-info text-white";
       case "exit":
         return "badge-success text-white";
+      case "lesson":
+        return "badge-warning text-white";
       default:
         return "badge-neutral text-white";
     }
@@ -159,12 +168,12 @@ export default function SurveysPage() {
     <div>
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-4xl font-bold mb-2">Encuestas</h1>
-          <p className="text-base-content/70">Gestiona las encuestas de evaluación</p>
+          <h1 className="text-4xl font-bold mb-2">Cuestionarios</h1>
+          <p className="text-base-content/70">Gestiona los cuestionarios de evaluación</p>
         </div>
         <Link href="/dashboard/surveys/new" className="btn btn-primary text-white gap-2">
           <IconPlus size={20} />
-          Crear Encuesta
+          Crear Cuestionario
         </Link>
       </div>
 
@@ -174,33 +183,30 @@ export default function SurveysPage() {
             <div className="text-primary mb-4 flex justify-center">
               <IconChartBar size={64} stroke={2} />
             </div>
-            <h2 className="text-2xl font-bold mb-2">No hay encuestas creadas</h2>
+            <h2 className="text-2xl font-bold mb-2">No hay cuestionarios creados</h2>
             <p className="text-base-content/70 mb-4">
-              Crea encuestas para evaluar a tus estudiantes
+              Crea cuestionarios para evaluar a tus estudiantes
             </p>
             <Link href="/dashboard/surveys/new" className="btn btn-primary text-white gap-2 mx-auto">
               <IconPlus size={20} />
-              Crear Primera Encuesta
+              Crear Primer Cuestionario
             </Link>
           </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
-          {surveys.map((survey) => (
+          {surveys.map((survey, index) => (
             <div key={survey.id} className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
               <div className="card-body">
-                <div className="flex justify-between items-start">
+                <div className="flex justify-between items-start gap-6">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
+                      <span className="badge badge-primary text-white font-bold">{index + 1}</span>
                       <h2 className="card-title text-xl">{survey.title}</h2>
                       <div className={`badge ${getSurveyTypeBadge(survey.type)}`}>
                         {getSurveyTypeLabel(survey.type)}
                       </div>
-                      {survey.isActive ? (
-                        <div className="badge badge-success text-white">Activa</div>
-                      ) : (
-                        <div className="badge badge-ghost text-white">Inactiva</div>
-                      )}
+                      <div className="badge badge-success text-white">Activo</div>
                     </div>
                     {survey.description && (
                       <p className="text-base-content/70 mb-3">{survey.description}</p>
@@ -211,32 +217,32 @@ export default function SurveysPage() {
                       <span>Creada: {formatDate(survey.createdAt)}</span>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    {user?.role === 'admin' && (
-                      <>
-                        <button 
-                          onClick={() => router.push(`/dashboard/surveys/${survey.id}/edit`)}
-                          className="btn btn-sm btn-primary text-white gap-2"
-                        >
-                          <IconEdit size={16} />
-                          Editar
-                        </button>
-                        <button 
-                          onClick={() => handleCloneSurvey(survey)}
-                          className="btn btn-sm btn-info text-white gap-2"
-                          disabled={cloning === survey.id}
-                        >
-                          <IconCopy size={16} />
-                          {cloning === survey.id ? 'Clonando...' : 'Clonar'}
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteClick(survey)}
-                          className="btn btn-sm btn-ghost text-error gap-2"
-                        >
-                          <IconTrash size={16} />
-                        </button>
-                      </>
-                    )}
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="text-xs font-semibold text-base-content/60 uppercase tracking-wide">Acciones</span>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => router.push(`/dashboard/surveys/${survey.id}/edit`)}
+                        className="btn btn-sm btn-primary text-white gap-2"
+                      >
+                        <IconEdit size={16} />
+                        Editar
+                      </button>
+                      <button 
+                        onClick={() => handleCloneSurvey(survey)}
+                        className="btn btn-sm btn-info text-white gap-2"
+                        disabled={cloning === survey.id}
+                      >
+                        <IconCopy size={16} />
+                        {cloning === survey.id ? 'Clonando...' : 'Clonar'}
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteClick(survey)}
+                        className="btn btn-sm btn-ghost text-error gap-2"
+                      >
+                        <IconTrash size={16} />
+                        Eliminar
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -256,12 +262,12 @@ export default function SurveysPage() {
             </div>
             
             <h3 className="font-bold text-xl text-center mb-2">
-              ¿Eliminar Encuesta?
+              ¿Eliminar Cuestionario?
             </h3>
             
             <div className="text-center mb-6">
               <p className="text-base-content/70 mb-4">
-                Estás a punto de eliminar la encuesta:
+                Estás a punto de eliminar el cuestionario:
               </p>
               <p className="font-semibold text-lg">"{surveyToDelete.title}"</p>
             </div>
@@ -270,7 +276,7 @@ export default function SurveysPage() {
               <div className="alert alert-warning text-white mb-4">
                 <IconAlertTriangle size={20} />
                 <div>
-                  <h4 className="font-semibold">⚠️ Esta encuesta está siendo usada en cursos</h4>
+                  <h4 className="font-semibold">⚠️ Este cuestionario está siendo usado en cursos</h4>
                   <p className="text-sm">
                     Se eliminarán también las referencias en los cursos asociados.
                   </p>
@@ -283,7 +289,7 @@ export default function SurveysPage() {
               <div>
                 <h4 className="font-semibold">Esta acción no se puede deshacer</h4>
                 <p className="text-sm">
-                  La encuesta será eliminada permanentemente de la base de datos.
+                  El cuestionario será eliminado permanentemente de la base de datos.
                 </p>
               </div>
             </div>

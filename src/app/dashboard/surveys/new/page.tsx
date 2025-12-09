@@ -24,8 +24,6 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { supabaseClient } from "@/lib/supabase";
-import { TABLES } from "@/utils/constants";
 
 // Componente sortable para cada pregunta
 function SortableQuestion({ 
@@ -69,7 +67,7 @@ export default function NewSurveyPage() {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [type, setType] = useState<'entry' | 'exit' | 'general'>('general');
+  const [type, setType] = useState<'entry' | 'exit' | 'lesson'>('entry');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -129,7 +127,7 @@ export default function NewSurveyPage() {
 
   const handleSave = async () => {
     if (!title.trim()) {
-      alert('Por favor ingresa un título para la encuesta');
+      alert('Por favor ingresa un título para el cuestionario');
       return;
     }
 
@@ -157,22 +155,28 @@ export default function NewSurveyPage() {
 
     try {
       setSaving(true);
-      const now = new Date();
 
-      const surveyData = {
-        title,
-        description,
-        type,
-        questions,
-        is_active: true,
-      };
+      const response = await fetch('/api/admin/surveys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          description,
+          type,
+          questions,
+        }),
+      });
 
-      await supabaseClient.from(TABLES.SURVEYS).insert(surveyData);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al guardar el cuestionario');
+      }
       
       router.push('/dashboard/surveys');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving survey:', error);
-      alert('Error al guardar la encuesta');
+      alert(error.message || 'Error al guardar el cuestionario');
     } finally {
       setSaving(false);
     }
@@ -186,7 +190,7 @@ export default function NewSurveyPage() {
 
       <div className="card bg-base-100 shadow-xl mb-6">
         <div className="card-body">
-          <h1 className="text-3xl font-bold mb-6">Crear Nueva Encuesta</h1>
+          <h1 className="text-3xl font-bold mb-6">Crear Nuevo Cuestionario</h1>
 
           {/* Información básica */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -198,7 +202,7 @@ export default function NewSurveyPage() {
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Ej: Encuesta de Satisfacción del Curso"
+                placeholder="Ej: Cuestionario de Satisfacción del Curso"
                 className="input input-bordered"
               />
             </div>
@@ -212,9 +216,9 @@ export default function NewSurveyPage() {
                 onChange={(e) => setType(e.target.value as any)}
                 className="select select-bordered"
               >
-                <option value="general">General</option>
                 <option value="entry">Entrada (Pre-curso)</option>
                 <option value="exit">Salida (Post-curso)</option>
+                <option value="lesson">Lección</option>
               </select>
             </div>
           </div>
@@ -226,7 +230,7 @@ export default function NewSurveyPage() {
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe el propósito de esta encuesta..."
+              placeholder="Describe el propósito de este cuestionario..."
               className="textarea textarea-bordered h-24"
             />
           </div>
@@ -304,7 +308,7 @@ export default function NewSurveyPage() {
           disabled={saving || questions.length === 0}
         >
           <IconDeviceFloppy size={20} />
-          {saving ? 'Guardando...' : 'Guardar Encuesta'}
+          {saving ? 'Guardando...' : 'Guardar Cuestionario'}
         </button>
       </div>
     </div>

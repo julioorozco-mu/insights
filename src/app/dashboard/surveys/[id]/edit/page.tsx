@@ -23,8 +23,6 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { supabaseClient } from "@/lib/supabase";
-import { TABLES } from "@/utils/constants";
 import { Loader } from "@/components/common/Loader";
 
 // Componente sortable para cada pregunta
@@ -143,7 +141,7 @@ export default function EditSurveyPage() {
   const [editMode, setEditMode] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [type, setType] = useState<'entry' | 'exit' | 'general'>('general');
+  const [type, setType] = useState<'entry' | 'exit' | 'lesson'>('entry');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [saving, setSaving] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -159,17 +157,17 @@ export default function EditSurveyPage() {
   useEffect(() => {
     const loadSurvey = async () => {
       try {
-        const { data: surveyData } = await supabaseClient
-          .from(TABLES.SURVEYS)
-          .select('*')
-          .eq('id', params.id as string)
-          .single();
+        const response = await fetch(`/api/admin/getSurveys`);
+        const data = await response.json();
         
-        if (surveyData) {
-          setTitle(surveyData.title || '');
-          setDescription(surveyData.description || '');
-          setType(surveyData.type || 'general');
-          setQuestions(surveyData.questions || []);
+        if (data.surveys) {
+          const surveyData = data.surveys.find((s: any) => s.id === params.id);
+          if (surveyData) {
+            setTitle(surveyData.title || '');
+            setDescription(surveyData.description || '');
+            setType(surveyData.type || 'entry');
+            setQuestions(surveyData.questions || []);
+          }
         }
       } catch (error) {
         console.error('Error loading survey:', error);
@@ -220,7 +218,7 @@ export default function EditSurveyPage() {
 
   const handleSave = async () => {
     if (!title.trim()) {
-      alert('Por favor ingresa un título para la encuesta');
+      alert('Por favor ingresa un título para el cuestionario');
       return;
     }
 
@@ -246,26 +244,30 @@ export default function EditSurveyPage() {
 
     try {
       setSaving(true);
-      const now = new Date();
 
-      const surveyUpdateData = {
-        title,
-        description,
-        type,
-        questions,
-        updated_at: now.toISOString(),
-      };
+      const response = await fetch('/api/admin/surveys', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: params.id,
+          title,
+          description,
+          type,
+          questions,
+        }),
+      });
 
-      await supabaseClient
-        .from(TABLES.SURVEYS)
-        .update(surveyUpdateData)
-        .eq('id', params.id as string);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al actualizar el cuestionario');
+      }
       
       setShowSuccessModal(true);
       setEditMode(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating survey:', error);
-      alert('Error al actualizar la encuesta');
+      alert(error.message || 'Error al actualizar el cuestionario');
     } finally {
       setSaving(false);
     }
@@ -284,7 +286,7 @@ export default function EditSurveyPage() {
       <div className="card bg-base-100 shadow-xl mb-6">
         <div className="card-body">
           <div className="flex justify-between items-start mb-6">
-            <h1 className="text-3xl font-bold">{editMode ? 'Editar Encuesta' : 'Vista Previa de Encuesta'}</h1>
+            <h1 className="text-3xl font-bold">{editMode ? 'Editar Cuestionario' : 'Vista Previa de Cuestionario'}</h1>
             <button
               onClick={() => setEditMode(!editMode)}
               className={`btn gap-2 ${editMode ? 'btn-ghost' : 'btn-primary text-white'}`}
@@ -315,7 +317,7 @@ export default function EditSurveyPage() {
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Ej: Encuesta de Satisfacción del Curso"
+                    placeholder="Ej: Cuestionario de Satisfacción del Curso"
                     className="input input-bordered"
                   />
                 </div>
@@ -329,9 +331,9 @@ export default function EditSurveyPage() {
                     onChange={(e) => setType(e.target.value as any)}
                     className="select select-bordered"
                   >
-                    <option value="general">General</option>
                     <option value="entry">Entrada (Pre-curso)</option>
                     <option value="exit">Salida (Post-curso)</option>
+                    <option value="lesson">Lección</option>
                   </select>
                 </div>
               </div>
@@ -343,7 +345,7 @@ export default function EditSurveyPage() {
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe el propósito de esta encuesta..."
+                  placeholder="Describe el propósito de este cuestionario..."
                   className="textarea textarea-bordered h-24"
                 />
               </div>
@@ -353,8 +355,8 @@ export default function EditSurveyPage() {
               <h2 className="text-2xl font-bold mb-2">{title}</h2>
               {description && <p className="text-base-content/70 mb-4">{description}</p>}
               <div className="flex gap-2 mb-4">
-                <div className={`badge ${type === 'entry' ? 'badge-info' : type === 'exit' ? 'badge-success' : 'badge-neutral'} text-white`}>
-                  {type === 'entry' ? 'Entrada' : type === 'exit' ? 'Salida' : 'General'}
+                <div className={`badge ${type === 'entry' ? 'badge-info' : type === 'exit' ? 'badge-success' : 'badge-warning'} text-white`}>
+                  {type === 'entry' ? 'Entrada' : type === 'exit' ? 'Salida' : 'Lección'}
                 </div>
                 <div className="badge badge-outline">{questions.length} preguntas</div>
               </div>
@@ -458,7 +460,7 @@ export default function EditSurveyPage() {
                 <IconCheck size={48} className="text-success" />
               </div>
             </div>
-            <h3 className="font-bold text-2xl mb-2">¡Encuesta actualizada!</h3>
+            <h3 className="font-bold text-2xl mb-2">¡Cuestionario actualizado!</h3>
             <p className="text-base-content/70 mb-6">
               Los cambios se han guardado exitosamente
             </p>

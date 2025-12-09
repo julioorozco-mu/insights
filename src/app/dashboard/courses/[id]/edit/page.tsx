@@ -280,6 +280,10 @@ export default function EditCoursePage() {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingSection, setDeletingSection] = useState<string | null>(null);
+  const [duplicatingSection, setDuplicatingSection] = useState<string | null>(null);
+  const [showDeleteSectionModal, setShowDeleteSectionModal] = useState(false);
+  const [sectionToDelete, setSectionToDelete] = useState<string | null>(null);
   
   // Estados para evaluación de acreditación
   const [availableTests, setAvailableTests] = useState<AvailableTest[]>([]);
@@ -920,6 +924,76 @@ export default function EditCoursePage() {
   const remainingChars = 500 - (description.length || 0);
   const displayTitle = courseTitle || "Nuevo curso";
 
+  // Función para eliminar una sección (lección)
+  const handleDeleteSection = async (sectionId: string) => {
+    setSectionToDelete(sectionId);
+    setShowDeleteSectionModal(true);
+  };
+
+  // Confirmar eliminación de sección
+  const confirmDeleteSection = async () => {
+    if (!sectionToDelete) return;
+
+    try {
+      setDeletingSection(sectionToDelete);
+
+      const response = await fetch(`/api/admin/deleteLesson?lessonId=${sectionToDelete}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Error al eliminar la sección");
+      }
+
+      // Actualizar lista de lecciones localmente
+      setLessons(prev => prev.filter(l => l.id !== sectionToDelete));
+      showSnackbarMessage("Sección eliminada correctamente");
+    } catch (err: any) {
+      console.error("Error eliminando sección:", err);
+      setError(err.message || "Error al eliminar la sección");
+    } finally {
+      setDeletingSection(null);
+      setShowDeleteSectionModal(false);
+      setSectionToDelete(null);
+    }
+  };
+
+  // Función para duplicar una sección (lección)
+  const handleDuplicateSection = async (sectionId: string) => {
+    try {
+      setDuplicatingSection(sectionId);
+
+      const response = await fetch("/api/admin/duplicateLesson", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lessonId: sectionId }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Error al duplicar la sección");
+      }
+
+      const data = await response.json();
+
+      // Agregar la nueva lección a la lista
+      setLessons(prev => [...prev, {
+        id: data.lesson.id,
+        title: data.lesson.title,
+        order: data.lesson.order,
+        subsections: [],
+      }]);
+
+      showSnackbarMessage(data.message || "Sección duplicada correctamente");
+    } catch (err: any) {
+      console.error("Error duplicando sección:", err);
+      setError(err.message || "Error al duplicar la sección");
+    } finally {
+      setDuplicatingSection(null);
+    }
+  };
+
   // Función para eliminar el curso
   const handleDeleteCourse = async () => {
     if (!courseId) return;
@@ -1151,6 +1225,8 @@ export default function EditCoursePage() {
                   onEditSection={(sectionId) => router.push(`/dashboard/lessons/${sectionId}/edit`)}
                   onEditSubsection={(sectionId, subsectionId) => router.push(`/dashboard/lessons/${sectionId}/edit?tab=${subsectionId}`)}
                   onAddSubsection={(sectionId) => router.push(`/dashboard/lessons/${sectionId}/edit?action=add`)}
+                  onDeleteSection={handleDeleteSection}
+                  onDuplicateSection={handleDuplicateSection}
                   emptyMessage="Aún no hay secciones"
                 />
               </div>
@@ -1618,7 +1694,7 @@ export default function EditCoursePage() {
         onCreate={handleCreateSection}
       />
 
-      {/* Modal de confirmación para eliminar */}
+      {/* Modal de confirmación para eliminar curso */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-[90%] max-w-[400px] shadow-elevated">
@@ -1648,6 +1724,45 @@ export default function EditCoursePage() {
                 className="flex-1 h-10 bg-red-500 hover:bg-red-600 disabled:opacity-70 disabled:cursor-not-allowed text-white rounded-full text-sm font-semibold transition-colors"
               >
                 {deleting ? "Eliminando..." : "Eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmación para eliminar sección */}
+      {showDeleteSectionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-[90%] max-w-[400px] shadow-elevated">
+            <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
+              <Trash2 size={24} className="text-red-500" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-900 text-center mb-2">
+              ¿Eliminar sección?
+            </h3>
+            <p className="text-sm text-slate-500 text-center mb-6">
+              Esta acción no se puede deshacer. Se eliminarán todas las lecciones y contenido asociado a esta sección.
+            </p>
+            
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteSectionModal(false);
+                  setSectionToDelete(null);
+                }}
+                disabled={!!deletingSection}
+                className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-brand-primary rounded-full text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteSection}
+                disabled={!!deletingSection}
+                className="flex-1 h-10 bg-red-500 hover:bg-red-600 disabled:opacity-70 disabled:cursor-not-allowed text-white rounded-full text-sm font-semibold transition-colors"
+              >
+                {deletingSection ? "Eliminando..." : "Eliminar"}
               </button>
             </div>
           </div>

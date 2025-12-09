@@ -22,7 +22,6 @@ export async function GET(req: NextRequest) {
       description: s.description,
       type: s.type,
       questions: s.questions || [],
-      isActive: true, // La tabla no tiene is_active, asumimos activo
       createdAt: s.created_at,
     }));
 
