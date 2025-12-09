@@ -168,7 +168,7 @@ export default function SettingsPage() {
         lastName,
         phone,
         dateOfBirth,
-        gender,
+        gender: gender as "male" | "female" | "other" | undefined,
         state,
         municipality,
         avatarUrl,
@@ -181,7 +181,7 @@ export default function SettingsPage() {
         externalCourses,
         services,
         achievements,
-      } as any);
+      });
 
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);

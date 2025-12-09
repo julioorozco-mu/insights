@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Resend } from "resend";
 import { getWelcomeEmailTemplate, getWelcomeEmailSubject } from "@/lib/email/templates";
 
 interface TestEmailRequest {
@@ -17,40 +18,36 @@ export async function POST(req: Request) {
       );
     }
 
-    const domain = process.env.MAILGUN_DOMAIN || "microcert.com";
-    const apiKey = process.env.MAILGUN_API_KEY!;
-
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "MAILGUN_API_KEY no configurada" },
-        { status: 500 }
-      );
+    // Si no hay API key configurada, retornar mensaje informativo (fallback)
+    if (!process.env.RESEND_API_KEY) {
+      return NextResponse.json({
+        success: true,
+        message: "RESEND_API_KEY no configurada - correo no enviado",
+        skipped: true,
+      });
     }
+
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    // Dominio para envío
+    const fromDomain = process.env.RESEND_FROM_DOMAIN || "onboarding@resend.dev";
+    const fromName = process.env.RESEND_FROM_NAME || "MicroCert";
 
     const subject = getWelcomeEmailSubject(name);
     const html = getWelcomeEmailTemplate({ name, email: to });
 
-    const response = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
-      method: "POST",
-      headers: {
-        Authorization: "Basic " + Buffer.from(`api:${apiKey}`).toString("base64"),
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        from: `MicroCert <noreply@${domain}>`,
-        to,
-        subject,
-        html,
-      }),
+    const { data, error } = await resend.emails.send({
+      from: `${fromName} <${fromDomain}>`,
+      to: [to],
+      subject,
+      html,
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error("Mailgun error:", data);
+    if (error) {
+      console.error("Resend error:", error);
       return NextResponse.json(
-        { error: "Error al enviar correo de prueba", details: data },
-        { status: response.status }
+        { error: "Error al enviar correo de prueba", details: error },
+        { status: 400 }
       );
     }
 
@@ -62,7 +59,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("Error en test-email:", error);
     return NextResponse.json(
-      { error: "Error interno del servidor" },
+      { error: "Error interno del servidor", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     );
   }

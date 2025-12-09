@@ -1357,6 +1357,7 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "date_of_birth" "date",
     "gender" "public"."gender_type",
     "state" character varying(100),
+    "municipality" character varying(255),
     "avatar_url" "text",
     "bio" "text",
     "social_links" "jsonb" DEFAULT '{}'::"jsonb",
