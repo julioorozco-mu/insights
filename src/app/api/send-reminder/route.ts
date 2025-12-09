@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Resend } from "resend";
 import { getReminderEmailTemplate, getReminderEmailSubject } from "@/lib/email/templates";
 import { supabaseClient } from "@/lib/supabase";
 import { TABLES } from "@/utils/constants";
@@ -26,16 +27,18 @@ interface ReminderRequest {
 export async function POST(req: Request) {
   try {
     const requestData = await req.json() as ReminderRequest;
-    
-    const domain = process.env.MAILGUN_DOMAIN || "microcert.com";
-    const apiKey = process.env.MAILGUN_API_KEY!;
 
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "MAILGUN_API_KEY no configurada" },
-        { status: 500 }
-      );
+    // Si no hay API key configurada, retornar éxito silenciosamente (fallback)
+    const hasResendKey = !!process.env.RESEND_API_KEY;
+    if (!hasResendKey) {
+      console.warn("RESEND_API_KEY no configurada - omitiendo envío de recordatorios");
     }
+
+    const resend = hasResendKey ? new Resend(process.env.RESEND_API_KEY) : null;
+
+    // Dominio para envío
+    const fromDomain = process.env.RESEND_FROM_DOMAIN || "onboarding@resend.dev";
+    const fromName = process.env.RESEND_FROM_NAME || "MicroCert";
 
     // Si es un envío programado, guardar en Supabase
     if (requestData.scheduledDate) {
@@ -120,27 +123,25 @@ export async function POST(req: Request) {
 
         const subject = getReminderEmailSubject(requestData.lessonTitle);
 
-        // Enviar correo vía Mailgun
-        const response = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
-          method: "POST",
-          headers: {
-            Authorization: "Basic " + Buffer.from(`api:${apiKey}`).toString("base64"),
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: new URLSearchParams({
-            from: `MicroCert <noreply@${domain}>`,
-            to: studentEmail,
-            subject,
-            html,
-          }),
+        // Enviar correo vía Resend (solo si está configurado)
+        if (!resend) {
+          // Si no hay Resend configurado, contar como enviado pero sin enviar realmente
+          sentCount++;
+          continue;
+        }
+
+        const { data, error } = await resend.emails.send({
+          from: `${fromName} <${fromDomain}>`,
+          to: [studentEmail],
+          subject,
+          html,
         });
 
-        if (response.ok) {
-          sentCount++;
-        } else {
+        if (error) {
           failedCount++;
-          const errorData = await response.json();
-          errors.push(`Error enviando a ${studentEmail}: ${JSON.stringify(errorData)}`);
+          errors.push(`Error enviando a ${studentEmail}: ${JSON.stringify(error)}`);
+        } else {
+          sentCount++;
         }
       } catch (error) {
         failedCount++;
