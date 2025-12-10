@@ -72,11 +72,6 @@ export function CourseCarousel({ courses, autoPlayInterval = 5000 }: CourseCarou
                 {currentCourse.title}
               </h2>
             )}
-            {currentCourse.description && (
-              <p className="text-lg md:text-xl text-white/90 mb-6 drop-shadow-md line-clamp-3">
-                {currentCourse.description}
-              </p>
-            )}
             {currentCourse.tags && currentCourse.tags.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {currentCourse.tags.slice(0, 3).map((tag, idx) => (
