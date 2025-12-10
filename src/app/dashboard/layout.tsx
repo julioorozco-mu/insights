@@ -117,8 +117,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen bg-brand-background">
-      {/* Sidebar */}
+    <div className="flex h-screen bg-brand-background overflow-hidden">
+      {/* Sidebar - Fixed */}
       <DashboardSidebar 
         isOpen={sidebarOpen}
         isCollapsed={sidebarCollapsed}
@@ -128,8 +128,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       />
       
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-h-screen bg-brand-background">
-        {/* Top Bar */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        {/* Top Bar - Fixed at top */}
         <DashboardTopbar 
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           sidebarCollapsed={sidebarCollapsed}
@@ -137,8 +137,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           onSignOut={signOut}
         />
         
-        {/* Main Content */}
-        <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-10">
+        {/* Main Content - Only this scrolls */}
+        <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 sm:px-6 lg:px-10">
           {children}
         </main>
       </div>

@@ -1709,6 +1709,7 @@ export default function EditLessonPage() {
         backgroundColor: COLORS.background.app,
         display: "flex",
         flexDirection: "column",
+        overflowX: "hidden",
       }}>
         {/* ===== HEADER BAR ===== */}
         <header style={{
@@ -1824,8 +1825,11 @@ export default function EditLessonPage() {
           gap: 8,
           borderBottom: `1px solid ${COLORS.accent.borderSubtle}`,
           overflowX: "auto",
+          overflowY: "hidden",
           position: "relative",
-          zIndex: 10, // Menor que el header del sistema
+          zIndex: 10,
+          flexShrink: 0,
+          scrollbarWidth: "thin",
         }}>
           <button
             onClick={addSubsection}
@@ -1842,13 +1846,14 @@ export default function EditLessonPage() {
               fontWeight: 500,
               cursor: "pointer",
               whiteSpace: "nowrap",
+              flexShrink: 0,
             }}
           >
             <IconPlus size={16} />
             Agregar lección
           </button>
           
-          <div style={{ width: 1, height: 24, backgroundColor: COLORS.accent.borderSubtle, margin: "0 8px" }} />
+          <div style={{ width: 1, height: 24, backgroundColor: COLORS.accent.borderSubtle, margin: "0 8px", flexShrink: 0 }} />
           
           {subsections.map((sub) => (
             <button
@@ -1868,6 +1873,7 @@ export default function EditLessonPage() {
                 cursor: "pointer",
                 whiteSpace: "nowrap",
                 transition: "all 150ms ease-out",
+                flexShrink: 0,
               }}
             >
               <span>{sub.title}</span>
