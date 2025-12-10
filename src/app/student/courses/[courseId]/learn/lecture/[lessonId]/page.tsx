@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import CourseRatingModal from "@/components/course/CourseRatingModal";
+import RichTextContent from "@/components/ui/RichTextContent";
 
 // ===== TYPES =====
 interface Lesson {
@@ -60,7 +61,7 @@ interface Section {
 
 interface ContentBlock {
   id: string;
-  type: 'heading' | 'text' | 'image' | 'video' | 'attachment' | 'list' | 'table' | 'quiz';
+  type: 'heading' | 'text' | 'richtext' | 'image' | 'video' | 'attachment' | 'list' | 'table' | 'quiz';
   content: string;
   data?: {
     fileName?: string;
@@ -74,6 +75,8 @@ interface ContentBlock {
     // Quiz data
     quizId?: string;
     quizTitle?: string;
+    description?: string;
+    styles?: any;
   };
 }
 
@@ -635,17 +638,76 @@ function QuizBlock({ quizId, quizTitle }: { quizId?: string; quizTitle?: string 
 function ContentBlockRenderer({ block }: { block: ContentBlock }) {
   switch (block.type) {
     case 'heading':
-      return (
-        <h2 className="text-2xl font-bold text-[#192170] mb-4 mt-6 first:mt-0">
-          {block.content}
-        </h2>
-      );
+      {
+        const styles = block.data?.styles || {};
+        const fontSize = styles.fontSize ? `${parseInt(styles.fontSize) + 8}px` : '24px';
+        const fontWeight = styles.bold ? '700' : '600';
+        const fontStyle = styles.italic ? 'italic' : 'normal';
+        const textDecoration = [
+          styles.underline ? 'underline' : '',
+          styles.strikethrough ? 'line-through' : ''
+        ].filter(Boolean).join(' ') || 'none';
+        const textAlign = styles.textAlign || 'left';
+        const fontFamily = styles.fontFamily || 'inherit';
+        const color = styles.color || '#192170';
+        
+        return (
+          <h2 
+            className="mb-4 mt-6 first:mt-0"
+            style={{
+              fontSize,
+              fontWeight,
+              fontStyle,
+              textDecoration,
+              textAlign,
+              fontFamily,
+              color,
+              lineHeight: 1.35,
+            }}
+          >
+            {block.content}
+          </h2>
+        );
+      }
     
     case 'text':
+      {
+        const styles = block.data?.styles || {};
+        const fontSize = styles.fontSize ? `${styles.fontSize}px` : '14px';
+        const fontWeight = styles.bold ? '700' : '400';
+        const fontStyle = styles.italic ? 'italic' : 'normal';
+        const textDecoration = [
+          styles.underline ? 'underline' : '',
+          styles.strikethrough ? 'line-through' : ''
+        ].filter(Boolean).join(' ') || 'none';
+        const textAlign = styles.textAlign || 'left';
+        const fontFamily = styles.fontFamily || 'inherit';
+        const color = styles.color || '#374151';
+        
+        return (
+          <p 
+            className="leading-relaxed mb-4"
+            style={{
+              fontSize,
+              fontWeight,
+              fontStyle,
+              textDecoration,
+              textAlign,
+              fontFamily,
+              color,
+              lineHeight: 1.6,
+            }}
+          >
+            {block.content}
+          </p>
+        );
+      }
+    
+    case 'richtext':
       return (
-        <p className="text-gray-700 leading-relaxed mb-4">
-          {block.content}
-        </p>
+        <div className="mb-4">
+          <RichTextContent html={block.content || ""} />
+        </div>
       );
     
     case 'image':
@@ -653,11 +715,13 @@ function ContentBlockRenderer({ block }: { block: ContentBlock }) {
         <div className="my-6 rounded-lg overflow-hidden">
           <img 
             src={block.content} 
-            alt={block.data?.fileName || 'Imagen de la lección'}
+            alt={block.data?.description || block.data?.fileName || 'Imagen de la lección'}
             className="w-full h-auto max-h-[500px] object-contain bg-gray-100"
           />
-          {block.data?.fileName && (
-            <p className="text-xs text-gray-500 mt-2 text-center">{block.data.fileName}</p>
+          {(block.data?.description || block.data?.fileName) && (
+            <p className="text-sm text-gray-600 mt-2 text-center italic">
+              {block.data?.description || block.data?.fileName}
+            </p>
           )}
         </div>
       );
@@ -781,6 +845,9 @@ export default function LessonPlayerPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
+  
+  // Modo preview para maestros/admins (no requiere inscripción)
+  const isPreviewMode = searchParams.get("preview") === "true";
   
   // Get initial subsection index from URL query parameter
   const initialSubsectionIndex = searchParams.get("subsection") 
@@ -939,6 +1006,8 @@ export default function LessonPlayerPage() {
     isCompleted: boolean,
     totalSubsections: number
   ) => {
+    // En modo preview, no actualizar progreso
+    if (isPreviewMode) return;
     if (!user || !courseId || isUpdatingProgressRef.current) return;
     
     isUpdatingProgressRef.current = true;
@@ -976,19 +1045,25 @@ export default function LessonPlayerPage() {
     } finally {
       isUpdatingProgressRef.current = false;
     }
-  }, [user, courseId]);
+  }, [user, courseId, isPreviewMode]);
 
   // ===== FETCH DATA =====
   useEffect(() => {
     const fetchData = async () => {
-      if (!user || !courseId) return;
+      // En modo preview, no requerimos user
+      if (!isPreviewMode && !user) return;
+      if (!courseId) return;
       if (hasFetchedRef.current) return;
       hasFetchedRef.current = true;
       setLoading(true);
 
       try {
         // Fetch lessons, sections and course info
-        const lessonsRes = await fetch(`/api/student/getLessons?courseId=${courseId}&userId=${user.id}`);
+        // En modo preview, agregar parámetro preview=true y userId opcional
+        const apiUrl = isPreviewMode
+          ? `/api/student/getLessons?courseId=${courseId}&preview=true${user?.id ? `&userId=${user.id}` : ''}`
+          : `/api/student/getLessons?courseId=${courseId}&userId=${user.id}`;
+        const lessonsRes = await fetch(apiUrl);
         if (lessonsRes.ok) {
           const data = await lessonsRes.json();
           setLessons(data.lessons || []);
@@ -1024,11 +1099,13 @@ export default function LessonPlayerPage() {
     };
 
     fetchData();
-  }, [courseId, user]);
+  }, [courseId, user, isPreviewMode]);
 
   // ===== FETCH PROGRESS FROM DB =====
   useEffect(() => {
     const fetchProgress = async () => {
+      // En modo preview, no cargar progreso
+      if (isPreviewMode) return;
       if (!user || !courseId) return;
       if (progressFetchedRef.current) return;
       progressFetchedRef.current = true;
@@ -1066,13 +1143,15 @@ export default function LessonPlayerPage() {
     };
 
     fetchProgress();
-  }, [user, courseId, currentLessonId, router]);
+  }, [user, courseId, currentLessonId, router, isPreviewMode]);
 
   // ===== SYNC COMPLETED LESSONS =====
   // Este efecto verifica si hay lecciones con todas las subsecciones completadas
   // pero que no están marcadas como completadas en la BD, y las sincroniza
   useEffect(() => {
     const syncCompletedLessons = async () => {
+      // En modo preview, no sincronizar progreso
+      if (isPreviewMode) return;
       if (!user || !courseId || lessons.length === 0) return;
       if (Object.keys(completedSubsectionsByLesson).length === 0) return;
       
@@ -1126,7 +1205,7 @@ export default function LessonPlayerPage() {
     };
     
     syncCompletedLessons();
-  }, [user, courseId, lessons, completedSubsectionsByLesson, dbCompletedLessons]);
+  }, [user, courseId, lessons, completedSubsectionsByLesson, dbCompletedLessons, isPreviewMode]);
 
   // Set subsection index when lesson changes or from URL query parameter
   useEffect(() => {
@@ -1252,7 +1331,7 @@ export default function LessonPlayerPage() {
 
   // Fetch notes when lesson changes or tab opens
   const fetchNotes = useCallback(async () => {
-    if (!currentLessonId || !user) return;
+    if (isPreviewMode || !currentLessonId || !user) return;
     setLoadingNotes(true);
     
     try {
@@ -1266,7 +1345,7 @@ export default function LessonPlayerPage() {
     } finally {
       setLoadingNotes(false);
     }
-  }, [currentLessonId, user]);
+  }, [currentLessonId, user, isPreviewMode]);
 
   useEffect(() => {
     if (activeTab === "notes") {
@@ -1276,7 +1355,7 @@ export default function LessonPlayerPage() {
 
   // Fetch questions when lesson changes or tab opens
   const fetchQuestions = useCallback(async () => {
-    if (!currentLessonId) return;
+    if (isPreviewMode || !currentLessonId) return;
     setLoadingQuestions(true);
     
     try {
@@ -1290,7 +1369,7 @@ export default function LessonPlayerPage() {
     } finally {
       setLoadingQuestions(false);
     }
-  }, [currentLessonId, questionSortBy]);
+  }, [currentLessonId, questionSortBy, isPreviewMode]);
 
   useEffect(() => {
     if (activeTab === "questions") {
@@ -1540,190 +1619,202 @@ export default function LessonPlayerPage() {
         </div>
 
         <div className="flex items-center gap-2 md:gap-4 text-white">
-          {/* Progress Indicator */}
-          <div className="hidden md:flex items-center gap-2 text-sm text-gray-300">
-            <button 
-              onClick={() => setIsRatingModalOpen(true)}
-              className="flex items-center gap-1.5 text-yellow-400 cursor-pointer hover:text-yellow-300 transition-colors group"
-              title={userRating ? "Editar calificación" : "Calificar este curso"}
-            >
-              {loadingRating ? (
-                <IconLoader2 size={16} className="animate-spin" />
-              ) : userRating ? (
-                <>
-                  {/* Mostrar estrellas llenas según la calificación */}
-                  <div className="flex items-center gap-0.5">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <IconStar
-                        key={star}
-                        size={14}
-                        className={star <= userRating ? "fill-yellow-400" : "fill-transparent stroke-yellow-400/50"}
-                        strokeWidth={1.5}
-                      />
-                    ))}
-                  </div>
-                  <span className="font-medium text-yellow-400/90 group-hover:text-yellow-300">
-                    Tu calificación
-                  </span>
-                </>
-              ) : (
-                <>
-                  <IconStar size={16} fill="currentColor" />
-                  <span className="font-medium">Calificar</span>
-                </>
-              )}
-            </button>
-            <div className="h-4 w-[1px] bg-gray-700 mx-2"></div>
-            {/* Progress Circle with Tooltip (hover + click to pin) */}
-            <div className="relative group" ref={progressTooltipRef}>
-              <div 
-                className="flex items-center cursor-pointer hover:text-white"
-                onClick={() => setProgressTooltipOpen(!progressTooltipOpen)}
-              >
-                {/* Circle Progress Chart con porcentaje dentro */}
-                <div className="relative w-14 h-14 flex items-center justify-center">
-                  <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                    {/* Background circle */}
-                    <circle 
-                      cx="18" cy="18" r="15.9155"
-                      fill="none" 
-                      stroke="#374151"
-                      strokeWidth="3"
-                    />
-                    {/* Progress circle */}
-                    <circle 
-                      cx="18" cy="18" r="15.9155"
-                      fill="none" 
-                      stroke="#A855F7"
-                      strokeWidth="3"
-                      strokeDasharray={`${visualProgress}, 100`}
-                      strokeLinecap="round"
-                      style={{ transition: 'stroke-dasharray 0.3s ease' }}
-                    />
-                  </svg>
-                  {/* Percentage text inside circle */}
-                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">
-                    {visualProgress}%
-                  </span>
-                </div>
-              </div>
-              
-              {/* Tooltip - appears on hover OR when pinned (clicked) */}
-              <div className={cn(
-                "absolute top-full right-0 mt-2 w-64 transition-all duration-200 z-50",
-                progressTooltipOpen 
-                  ? "opacity-100 visible" 
-                  : "opacity-0 invisible group-hover:opacity-100 group-hover:visible"
-              )}>
-                {/* Arrow */}
-                <div className="absolute -top-2 right-6 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-white"></div>
-                {/* Tooltip content */}
-                <div className="bg-white rounded-lg shadow-xl p-4">
-                  {/* Close button when pinned */}
-                  {progressTooltipOpen && (
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setProgressTooltipOpen(false);
-                      }}
-                      className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
-                    >
-                      <IconX size={14} />
-                    </button>
-                  )}
-                  <p className="text-gray-900 font-bold text-base mb-1 pr-6">
-                    {(() => {
-                      // Calcular total de subsecciones completadas y totales
-                      let totalSubs = 0;
-                      let completedSubs = 0;
-                      sortedLessons.forEach(lesson => {
-                        let subs: Subsection[] = [];
-                        try {
-                          if (lesson.content) {
-                            const parsed = JSON.parse(lesson.content);
-                            subs = parsed.subsections || [];
-                          }
-                        } catch {}
-                        const count = subs.length || 1;
-                        totalSubs += count;
-                        if (dbCompletedLessons.includes(lesson.id)) {
-                          completedSubs += count;
-                        } else {
-                          const idx = completedSubsectionsByLesson[lesson.id] ?? -1;
-                          if (idx >= 0) completedSubs += Math.min(idx + 1, count);
-                        }
-                      });
-                      return `${completedSubs} de ${totalSubs} completados.`;
-                    })()}
-                  </p>
-                  <p className="text-gray-500 text-sm">
-                    Acaba los niveles para obtener una insignia.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <button className="p-2 rounded hover:bg-white/10 transition-colors">
-            <IconShare size={18} />
-          </button>
-          
-          {/* More Options Dropdown */}
-          <div className="relative" ref={moreOptionsRef}>
-            <button 
-              onClick={() => setMoreOptionsOpen(!moreOptionsOpen)}
-              className="p-2 rounded hover:bg-white/10 transition-colors"
-            >
-              <IconDotsVertical size={18} />
-            </button>
-            
-            {/* Dropdown Menu */}
-            {moreOptionsOpen && (
-              <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                {/* Arrow */}
-                <div className="absolute -top-2 right-3 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-white"></div>
-                
-                {/* Marcar como favorito */}
-                <button
-                  onClick={handleToggleFavorite}
-                  disabled={loadingFavorite}
-                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left disabled:opacity-50"
+          {/* Ocultar controles de calificación, progreso, compartir y opciones en modo preview */}
+          {!isPreviewMode && (
+            <>
+              {/* Progress Indicator */}
+              <div className="hidden md:flex items-center gap-2 text-sm text-gray-300">
+                <button 
+                  onClick={() => setIsRatingModalOpen(true)}
+                  className="flex items-center gap-1.5 text-yellow-400 cursor-pointer hover:text-yellow-300 transition-colors group"
+                  title={userRating ? "Editar calificación" : "Calificar este curso"}
                 >
-                  {loadingFavorite ? (
-                    <IconLoader2 size={20} className="text-purple-500 animate-spin" />
-                  ) : isFavorite ? (
-                    <IconHeartFilled size={20} className="text-red-500" />
+                  {loadingRating ? (
+                    <IconLoader2 size={16} className="animate-spin" />
+                  ) : userRating ? (
+                    <>
+                      {/* Mostrar estrellas llenas según la calificación */}
+                      <div className="flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <IconStar
+                            key={star}
+                            size={14}
+                            className={star <= userRating ? "fill-yellow-400" : "fill-transparent stroke-yellow-400/50"}
+                            strokeWidth={1.5}
+                          />
+                        ))}
+                      </div>
+                      <span className="font-medium text-yellow-400/90 group-hover:text-yellow-300">
+                        Tu calificación
+                      </span>
+                    </>
                   ) : (
-                    <IconHeart size={20} className="text-gray-600" />
+                    <>
+                      <IconStar size={16} fill="currentColor" />
+                      <span className="font-medium">Calificar</span>
+                    </>
                   )}
-                  <span className={cn(
-                    "text-sm font-medium",
-                    isFavorite ? "text-red-600" : "text-gray-700"
+                </button>
+                <div className="h-4 w-[1px] bg-gray-700 mx-2"></div>
+                {/* Progress Circle with Tooltip (hover + click to pin) */}
+                <div className="relative group" ref={progressTooltipRef}>
+                  <div 
+                    className="flex items-center cursor-pointer hover:text-white"
+                    onClick={() => setProgressTooltipOpen(!progressTooltipOpen)}
+                  >
+                    {/* Circle Progress Chart con porcentaje dentro */}
+                    <div className="relative w-14 h-14 flex items-center justify-center">
+                      <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                        {/* Background circle */}
+                        <circle 
+                          cx="18" cy="18" r="15.9155"
+                          fill="none" 
+                          stroke="#374151"
+                          strokeWidth="3"
+                        />
+                        {/* Progress circle */}
+                        <circle 
+                          cx="18" cy="18" r="15.9155"
+                          fill="none" 
+                          stroke="#A855F7"
+                          strokeWidth="3"
+                          strokeDasharray={`${visualProgress}, 100`}
+                          strokeLinecap="round"
+                          style={{ transition: 'stroke-dasharray 0.3s ease' }}
+                        />
+                      </svg>
+                      {/* Percentage text inside circle */}
+                      <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">
+                        {visualProgress}%
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Tooltip - appears on hover OR when pinned (clicked) */}
+                  <div className={cn(
+                    "absolute top-full right-0 mt-2 w-64 transition-all duration-200 z-50",
+                    progressTooltipOpen 
+                      ? "opacity-100 visible" 
+                      : "opacity-0 invisible group-hover:opacity-100 group-hover:visible"
                   )}>
-                    {isFavorite ? "Quitar de favoritos" : "Marcar como favorito"}
-                  </span>
-                </button>
-                
-                {/* Separator */}
-                <div className="my-1 border-t border-gray-100"></div>
-                
-                {/* Regalar esta Microcredencial */}
-                <button
-                  onClick={() => {
-                    setMoreOptionsOpen(false);
-                    // TODO: Implementar funcionalidad de regalo
-                    alert('Próximamente: Podrás regalar esta microcredencial a un amigo.');
-                  }}
-                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left"
-                >
-                  <IconGift size={20} className="text-purple-500" />
-                  <span className="text-sm font-medium text-gray-700">
-                    Regalar esta Microcredencial
-                  </span>
-                </button>
+                    {/* Arrow */}
+                    <div className="absolute -top-2 right-6 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-white"></div>
+                    {/* Tooltip content */}
+                    <div className="bg-white rounded-lg shadow-xl p-4">
+                      {/* Close button when pinned */}
+                      {progressTooltipOpen && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setProgressTooltipOpen(false);
+                          }}
+                          className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
+                        >
+                          <IconX size={14} />
+                        </button>
+                      )}
+                      <p className="text-gray-900 font-bold text-base mb-1 pr-6">
+                        {(() => {
+                          // Calcular total de subsecciones completadas y totales
+                          let totalSubs = 0;
+                          let completedSubs = 0;
+                          sortedLessons.forEach(lesson => {
+                            let subs: Subsection[] = [];
+                            try {
+                              if (lesson.content) {
+                                const parsed = JSON.parse(lesson.content);
+                                subs = parsed.subsections || [];
+                              }
+                            } catch {}
+                            const count = subs.length || 1;
+                            totalSubs += count;
+                            if (dbCompletedLessons.includes(lesson.id)) {
+                              completedSubs += count;
+                            } else {
+                              const idx = completedSubsectionsByLesson[lesson.id] ?? -1;
+                              if (idx >= 0) completedSubs += Math.min(idx + 1, count);
+                            }
+                          });
+                          return `${completedSubs} de ${totalSubs} completados.`;
+                        })()}
+                      </p>
+                      <p className="text-gray-500 text-sm">
+                        Acaba los niveles para obtener una insignia.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
+
+              <button className="p-2 rounded hover:bg-white/10 transition-colors">
+                <IconShare size={18} />
+              </button>
+              
+              {/* More Options Dropdown */}
+              <div className="relative" ref={moreOptionsRef}>
+                <button 
+                  onClick={() => setMoreOptionsOpen(!moreOptionsOpen)}
+                  className="p-2 rounded hover:bg-white/10 transition-colors"
+                >
+                  <IconDotsVertical size={18} />
+                </button>
+                
+                {/* Dropdown Menu */}
+                {moreOptionsOpen && (
+                  <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                    {/* Arrow */}
+                    <div className="absolute -top-2 right-3 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-white"></div>
+                    
+                    {/* Marcar como favorito */}
+                    <button
+                      onClick={handleToggleFavorite}
+                      disabled={loadingFavorite}
+                      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left disabled:opacity-50"
+                    >
+                      {loadingFavorite ? (
+                        <IconLoader2 size={20} className="text-purple-500 animate-spin" />
+                      ) : isFavorite ? (
+                        <IconHeartFilled size={20} className="text-red-500" />
+                      ) : (
+                        <IconHeart size={20} className="text-gray-600" />
+                      )}
+                      <span className={cn(
+                        "text-sm font-medium",
+                        isFavorite ? "text-red-600" : "text-gray-700"
+                      )}>
+                        {isFavorite ? "Quitar de favoritos" : "Marcar como favorito"}
+                      </span>
+                    </button>
+                    
+                    {/* Separator */}
+                    <div className="my-1 border-t border-gray-100"></div>
+                    
+                    {/* Regalar esta Microcredencial */}
+                    <button
+                      onClick={() => {
+                        setMoreOptionsOpen(false);
+                        // TODO: Implementar funcionalidad de regalo
+                        alert('Próximamente: Podrás regalar esta microcredencial a un amigo.');
+                      }}
+                      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left"
+                    >
+                      <IconGift size={20} className="text-purple-500" />
+                      <span className="text-sm font-medium text-gray-700">
+                        Regalar esta Microcredencial
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+          
+          {/* Indicador de modo preview */}
+          {isPreviewMode && (
+            <div className="px-3 py-1 bg-yellow-500/20 border border-yellow-500/30 rounded-full text-yellow-300 text-xs font-medium">
+              Vista Previa
+            </div>
+          )}
         </div>
       </header>
 
@@ -1823,42 +1914,53 @@ export default function LessonPlayerPage() {
               {/* ===== QUESTIONS TAB ===== */}
               {activeTab === "questions" && (
                 <div className="max-w-4xl animate-in fade-in duration-200">
-                  {/* New Question Input */}
-                  <div className="mb-6">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-semibold shrink-0">
-                        {user?.email?.charAt(0).toUpperCase() || "U"}
-                      </div>
-                      <div className="flex-1">
-                        <textarea
-                          value={newQuestionText}
-                          onChange={(e) => setNewQuestionText(e.target.value)}
-                          placeholder={`Haz una pregunta en ${formatTimestamp(currentVideoTime)}...`}
-                          className="w-full p-3 border rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                          rows={3}
-                          style={{ borderColor: TOKENS.colors.border }}
-                        />
-                        <div className="flex justify-between items-center mt-2">
-                          <span className="text-xs text-gray-500">
-                            <IconClock size={12} className="inline mr-1" />
-                            {formatTimestamp(currentVideoTime)}
-                          </span>
-                          <button
-                            onClick={handleSubmitQuestion}
-                            disabled={!newQuestionText.trim() || submittingQuestion}
-                            className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700 transition-colors flex items-center gap-2"
-                          >
-                            {submittingQuestion ? (
-                              <IconLoader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <IconSend size={16} />
-                            )}
-                            Publicar pregunta
-                          </button>
+                  {/* New Question Input - Ocultar en modo preview */}
+                  {!isPreviewMode && (
+                    <div className="mb-6">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-semibold shrink-0">
+                          {user?.email?.charAt(0).toUpperCase() || "U"}
+                        </div>
+                        <div className="flex-1">
+                          <textarea
+                            value={newQuestionText}
+                            onChange={(e) => setNewQuestionText(e.target.value)}
+                            placeholder={`Haz una pregunta en ${formatTimestamp(currentVideoTime)}...`}
+                            className="w-full p-3 border rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            rows={3}
+                            style={{ borderColor: TOKENS.colors.border }}
+                          />
+                          <div className="flex justify-between items-center mt-2">
+                            <span className="text-xs text-gray-500">
+                              <IconClock size={12} className="inline mr-1" />
+                              {formatTimestamp(currentVideoTime)}
+                            </span>
+                            <button
+                              onClick={handleSubmitQuestion}
+                              disabled={!newQuestionText.trim() || submittingQuestion}
+                              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700 transition-colors flex items-center gap-2"
+                            >
+                              {submittingQuestion ? (
+                                <IconLoader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <IconSend size={16} />
+                              )}
+                              Publicar pregunta
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
+                  
+                  {/* Mensaje en modo preview */}
+                  {isPreviewMode && (
+                    <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-sm text-yellow-800">
+                        <strong>Modo Vista Previa:</strong> Puedes ver las preguntas existentes, pero no puedes crear nuevas preguntas ni responder.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Sort Options */}
                   <div className="flex gap-4 mb-6 border-b pb-4" style={{ borderColor: TOKENS.colors.border }}>
@@ -1932,25 +2034,28 @@ export default function LessonPlayerPage() {
                               <p className="text-gray-700 mb-3">{question.questionText}</p>
                               
                               <div className="flex items-center gap-4 text-sm">
-                                <button className="flex items-center gap-1 text-gray-500 hover:text-purple-600 transition-colors">
+                                <div className="flex items-center gap-1 text-gray-500">
                                   <IconThumbUp size={16} />
                                   <span>{question.upvotes}</span>
-                                </button>
+                                </div>
                                 <button 
                                   onClick={() => setExpandedQuestionId(expandedQuestionId === question.id ? null : question.id)}
                                   className="text-gray-500 hover:text-purple-600 transition-colors"
+                                  disabled={isPreviewMode}
                                 >
                                   {question.answersCount} respuesta{question.answersCount !== 1 ? 's' : ''}
                                 </button>
-                                <button 
-                                  onClick={() => {
-                                    setReplyingToId(replyingToId === question.id ? null : question.id);
-                                    setExpandedQuestionId(question.id);
-                                  }}
-                                  className="text-purple-600 hover:text-purple-700 font-medium"
-                                >
-                                  Responder
-                                </button>
+                                {!isPreviewMode && (
+                                  <button 
+                                    onClick={() => {
+                                      setReplyingToId(replyingToId === question.id ? null : question.id);
+                                      setExpandedQuestionId(question.id);
+                                    }}
+                                    className="text-purple-600 hover:text-purple-700 font-medium"
+                                  >
+                                    Responder
+                                  </button>
+                                )}
                               </div>
 
                               {/* Answers */}
@@ -1990,8 +2095,8 @@ export default function LessonPlayerPage() {
                                     </div>
                                   ))}
 
-                                  {/* Reply Form */}
-                                  {replyingToId === question.id && (
+                                  {/* Reply Form - Ocultar en modo preview */}
+                                  {!isPreviewMode && replyingToId === question.id && (
                                     <div className="flex gap-3 mt-4">
                                       <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-semibold shrink-0 text-sm">
                                         {user?.email?.charAt(0).toUpperCase() || "U"}
@@ -2041,36 +2146,47 @@ export default function LessonPlayerPage() {
               {/* ===== NOTES TAB ===== */}
               {activeTab === "notes" && (
                 <div className="max-w-4xl animate-in fade-in duration-200">
-                  {/* New Note Input */}
-                  <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2 text-sm text-gray-600">
-                      <IconClock size={14} />
-                      <span>Crear una nueva nota en {formatTimestamp(currentVideoTime)}</span>
+                  {/* New Note Input - Ocultar en modo preview */}
+                  {!isPreviewMode && (
+                    <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2 text-sm text-gray-600">
+                        <IconClock size={14} />
+                        <span>Crear una nueva nota en {formatTimestamp(currentVideoTime)}</span>
+                      </div>
+                      <div className="flex gap-3">
+                        <input
+                          type="text"
+                          value={newNoteContent}
+                          onChange={(e) => setNewNoteContent(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleCreateNote()}
+                          placeholder="Escribe tu nota aquí..."
+                          className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          style={{ borderColor: TOKENS.colors.border }}
+                        />
+                        <button
+                          onClick={handleCreateNote}
+                          disabled={!newNoteContent.trim() || savingNote}
+                          className="px-4 py-2 bg-purple-600 text-white rounded-lg font-medium disabled:opacity-50 hover:bg-purple-700 transition-colors flex items-center gap-2"
+                        >
+                          {savingNote ? (
+                            <IconLoader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <IconNote size={18} />
+                          )}
+                          <span className="hidden sm:inline">Guardar</span>
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex gap-3">
-                      <input
-                        type="text"
-                        value={newNoteContent}
-                        onChange={(e) => setNewNoteContent(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleCreateNote()}
-                        placeholder="Escribe tu nota aquí..."
-                        className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                        style={{ borderColor: TOKENS.colors.border }}
-                      />
-                      <button
-                        onClick={handleCreateNote}
-                        disabled={!newNoteContent.trim() || savingNote}
-                        className="px-4 py-2 bg-purple-600 text-white rounded-lg font-medium disabled:opacity-50 hover:bg-purple-700 transition-colors flex items-center gap-2"
-                      >
-                        {savingNote ? (
-                          <IconLoader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <IconNote size={18} />
-                        )}
-                        <span className="hidden sm:inline">Guardar</span>
-                      </button>
+                  )}
+                  
+                  {/* Mensaje en modo preview */}
+                  {isPreviewMode && (
+                    <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-sm text-yellow-800">
+                        <strong>Modo Vista Previa:</strong> Puedes ver las notas existentes, pero no puedes crear, editar ni eliminar notas.
+                      </p>
                     </div>
-                  </div>
+                  )}
 
                   {/* Notes List */}
                   {loadingNotes ? (
@@ -2131,25 +2247,27 @@ export default function LessonPlayerPage() {
                                   </button>
                                   <p className="text-gray-700">{note.content}</p>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={() => {
-                                      setEditingNoteId(note.id);
-                                      setEditingNoteContent(note.content);
-                                    }}
-                                    className="p-1.5 text-gray-400 hover:text-purple-600 rounded transition-colors"
-                                    title="Editar nota"
-                                  >
-                                    <IconEdit size={16} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteNote(note.id)}
-                                    className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors"
-                                    title="Eliminar nota"
-                                  >
-                                    <IconTrash size={16} />
-                                  </button>
-                                </div>
+                                {!isPreviewMode && (
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      onClick={() => {
+                                        setEditingNoteId(note.id);
+                                        setEditingNoteContent(note.content);
+                                      }}
+                                      className="p-1.5 text-gray-400 hover:text-purple-600 rounded transition-colors"
+                                      title="Editar nota"
+                                    >
+                                      <IconEdit size={16} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteNote(note.id)}
+                                      className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors"
+                                      title="Eliminar nota"
+                                    >
+                                      <IconTrash size={16} />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                               <p className="text-xs text-gray-400 mt-2">
                                 {formatDistanceToNow(new Date(note.created_at), { addSuffix: true, locale: es })}

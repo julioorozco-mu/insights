@@ -118,6 +118,60 @@ export default function RichTextEditor({
       attributes: {
         class: "prose prose-sm max-w-none focus:outline-none min-h-[100px] p-3",
       },
+      handlePaste: (view, event) => {
+        const clipboardData = event.clipboardData;
+        if (!clipboardData) return false;
+        const pastedText = clipboardData.getData('text/plain');
+        
+        // Detectar URLs en el texto pegado y convertirlas automáticamente
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        if (urlRegex.test(pastedText)) {
+          // Permitir el pegado normal, luego procesar las URLs
+          setTimeout(() => {
+            const { state, dispatch } = view;
+            const { doc, selection } = state;
+            const fullText = doc.textContent;
+            const urls = fullText.match(urlRegex);
+            
+            if (urls) {
+              urls.forEach(url => {
+                const urlIndex = fullText.indexOf(url);
+                if (urlIndex !== -1) {
+                  // Encontrar la posición en el documento
+                  let pos = 0;
+                  doc.descendants((node, nodePos) => {
+                    if (node.isText) {
+                      const nodeText = node.text || '';
+                      const relativeIndex = urlIndex - pos;
+                      
+                      if (relativeIndex >= 0 && relativeIndex < nodeText.length) {
+                        const textSlice = nodeText.substring(relativeIndex, relativeIndex + url.length);
+                        if (textSlice === url) {
+                          // Verificar si ya tiene el mark de link
+                          const hasLink = node.marks.some(mark => mark.type.name === 'link');
+                          
+                          if (!hasLink) {
+                            const from = nodePos + relativeIndex;
+                            const to = from + url.length;
+                            
+                            const linkMark = state.schema.marks.link.create({ href: url });
+                            const tr = state.tr.addMark(from, to, linkMark);
+                            dispatch(tr);
+                          }
+                        }
+                      }
+                      
+                      pos += nodeText.length;
+                    }
+                  });
+                }
+              });
+            }
+          }, 50);
+        }
+        
+        return false; // Permitir el comportamiento por defecto
+      },
     },
   });
 

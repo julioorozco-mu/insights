@@ -1285,16 +1285,17 @@ export default function StudentCoursePage() {
                                 border: `1px solid ${COLORS.accent.border}`,
                               };
                               
-                              // En modo preview, mostrar como div sin navegación
+                              // En modo preview, permitir navegación al contenido con parámetro preview
                               if (isPreviewMode) {
                                 return (
-                                  <div
+                                  <Link
+                                    href={`/student/courses/${params.id}/learn/lecture/${lesson.id}?subsection=${subIdx}&preview=true`}
                                     key={`${lesson.id}-${subsection.id || subIdx}`}
-                                    className="flex items-center gap-3 p-3 rounded-xl"
-                                    style={{ ...sharedStyles, cursor: 'default' }}
+                                    className="flex items-center gap-3 p-3 rounded-xl transition-all duration-200 hover:opacity-80"
+                                    style={{ ...sharedStyles, cursor: 'pointer' }}
                                   >
                                     {subsectionContent}
-                                  </div>
+                                  </Link>
                                 );
                               }
                               
