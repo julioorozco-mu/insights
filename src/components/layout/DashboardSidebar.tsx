@@ -400,7 +400,7 @@ export function DashboardSidebar({
         ref={sidebarRef}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        className={`hidden lg:flex bg-brand-primary text-white flex-col py-8 space-y-8 transition-all duration-300 sticky top-0 h-screen flex-shrink-0 relative z-[60] ${
+        className={`hidden lg:flex bg-brand-primary text-white flex-col py-6 transition-all duration-300 sticky top-0 h-screen flex-shrink-0 relative z-[60] ${
           visualCollapsed ? "w-[70px] px-3" : "w-[260px] px-6"
         }`}
       >
@@ -414,7 +414,7 @@ export function DashboardSidebar({
         </button>
 
         {/* Logo */}
-        <div className={`${visualCollapsed ? "flex justify-center" : "text-center"}`}>
+        <div className={`${visualCollapsed ? "flex justify-center" : "text-center"} mb-6`}>
           {visualCollapsed ? (
             <Package className="h-8 w-8" />
           ) : (
@@ -426,7 +426,8 @@ export function DashboardSidebar({
         </div>
 
         {/* Navigation */}
-        <nav className="space-y-1 flex-1">
+        <nav className="flex flex-col flex-1 min-h-0">
+          <div className="space-y-1 flex-1">
           {menuConfig.main.map((section, sectionIndex) => {
             const hasTitle = !!section.title;
             const isExpanded = isSectionExpanded(section);
@@ -489,13 +490,14 @@ export function DashboardSidebar({
             );
           })}
 
-          {/* Divider antes del footer */}
-          <div className="my-4 border-t border-white/10" />
+          </div>
 
-          {/* Footer Links */}
-          <ul className="space-y-1">
-            {menuConfig.footer.map(renderMenuItem)}
-          </ul>
+          {/* Footer Links - Siempre al fondo */}
+          <div className="mt-auto pt-4 border-t border-white/10">
+            <ul className="space-y-1">
+              {menuConfig.footer.map(renderMenuItem)}
+            </ul>
+          </div>
         </nav>
       </aside>
 
@@ -503,7 +505,7 @@ export function DashboardSidebar({
       {isOpen && (
         <aside
           ref={mobileSidebarRef}
-          className="lg:hidden fixed inset-y-0 left-0 w-[260px] bg-brand-primary text-white flex flex-col py-8 px-6 space-y-8 z-50"
+          className="lg:hidden fixed inset-y-0 left-0 w-[260px] bg-brand-primary text-white flex flex-col py-6 px-6 z-50 overflow-y-auto"
         >
           {/* Close Button */}
           <button
@@ -514,13 +516,14 @@ export function DashboardSidebar({
           </button>
 
           {/* Logo */}
-          <div>
-            <div className="text-2xl font-semibold tracking-tight">Marca UNACH</div>
-            <p className="text-sm text-white/70">Microcredenciales</p>
+          <div className="mb-6">
+            <div className="text-2xl font-semibold tracking-tight">MicroCert</div>
+            <p className="text-sm text-white/70">Microcredenciales<br />Marca UNACH</p>
           </div>
 
           {/* Navigation */}
-          <nav className="space-y-1 flex-1">
+          <nav className="flex flex-col flex-1 min-h-0">
+            <div className="space-y-1 flex-1">
             {menuConfig.main.map((section, sectionIndex) => {
               const hasTitle = !!section.title;
               const isExpanded = isSectionExpanded(section);
@@ -570,13 +573,14 @@ export function DashboardSidebar({
               );
             })}
 
-            {/* Divider antes del footer */}
-            <div className="my-4 border-t border-white/10" />
+            </div>
 
-            {/* Footer Links */}
-            <ul className="space-y-1">
-              {menuConfig.footer.map(renderMenuItem)}
-            </ul>
+            {/* Footer Links - Siempre al fondo */}
+            <div className="mt-auto pt-4 border-t border-white/10">
+              <ul className="space-y-1">
+                {menuConfig.footer.map(renderMenuItem)}
+              </ul>
+            </div>
           </nav>
         </aside>
       )}

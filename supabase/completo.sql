@@ -340,6 +340,36 @@ $$;
 ALTER FUNCTION "public"."get_user_role"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."handle_new_student"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+    user_role text;
+BEGIN
+    -- Check if the user role is student
+    SELECT role INTO user_role FROM public.users WHERE id = NEW.id;
+    
+    IF user_role = 'student' THEN
+        INSERT INTO public.students (user_id, enrollment_date, completed_courses, certificates, extra_data)
+        VALUES (
+            NEW.id,
+            NOW(),
+            '{}',
+            '{}',
+            '{}'
+        )
+        ON CONFLICT (user_id) DO NOTHING;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_new_student"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1357,13 +1387,13 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "date_of_birth" "date",
     "gender" "public"."gender_type",
     "state" character varying(100),
-    "municipality" character varying(255),
     "avatar_url" "text",
     "bio" "text",
     "social_links" "jsonb" DEFAULT '{}'::"jsonb",
     "is_verified" boolean DEFAULT false,
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "municipality" character varying(255)
 );
 
 
@@ -2025,6 +2055,10 @@ CREATE OR REPLACE TRIGGER "lesson_questions_updated_at" BEFORE UPDATE ON "public
 
 
 
+CREATE OR REPLACE TRIGGER "on_user_created_create_student" AFTER INSERT ON "public"."users" FOR EACH ROW WHEN (("new"."role" = 'student'::"public"."user_role")) EXECUTE FUNCTION "public"."handle_new_student"();
+
+
+
 CREATE OR REPLACE TRIGGER "on_user_role_change" AFTER INSERT OR UPDATE OF "role" ON "public"."users" FOR EACH ROW EXECUTE FUNCTION "public"."handle_user_role_jwt"();
 
 
@@ -2669,6 +2703,10 @@ CREATE POLICY "Users can view own attachments" ON "public"."file_attachments" FO
 
 
 
+CREATE POLICY "allow_users_insert_own_profile" ON "public"."users" FOR INSERT TO "authenticated" WITH CHECK (("id" = "auth"."uid"()));
+
+
+
 ALTER TABLE "public"."certificate_downloads" ENABLE ROW LEVEL SECURITY;
 
 
@@ -2945,6 +2983,18 @@ ALTER TABLE "public"."student_enrollments" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."students" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "students_insert_own" ON "public"."students" FOR INSERT TO "authenticated" WITH CHECK (("user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "students_select_own" ON "public"."students" FOR SELECT TO "authenticated" USING (("user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "students_update_own" ON "public"."students" FOR UPDATE TO "authenticated" USING (("user_id" = "auth"."uid"())) WITH CHECK (("user_id" = "auth"."uid"()));
+
 
 
 ALTER TABLE "public"."survey_responses" ENABLE ROW LEVEL SECURITY;
@@ -3238,6 +3288,12 @@ GRANT ALL ON FUNCTION "public"."get_user_role"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."handle_new_student"() TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_new_student"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_new_student"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "anon";
 GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
@@ -3460,6 +3516,7 @@ GRANT ALL ON TABLE "public"."student_enrollments" TO "service_role";
 GRANT ALL ON TABLE "public"."students" TO "anon";
 GRANT ALL ON TABLE "public"."students" TO "authenticated";
 GRANT ALL ON TABLE "public"."students" TO "service_role";
+GRANT INSERT,UPDATE ON TABLE "public"."students" TO "supabase_auth_admin";
 
 
 
@@ -3514,7 +3571,7 @@ GRANT ALL ON TABLE "public"."tests" TO "service_role";
 GRANT ALL ON TABLE "public"."users" TO "anon";
 GRANT ALL ON TABLE "public"."users" TO "authenticated";
 GRANT ALL ON TABLE "public"."users" TO "service_role";
-GRANT INSERT ON TABLE "public"."users" TO "supabase_auth_admin";
+GRANT INSERT,UPDATE ON TABLE "public"."users" TO "supabase_auth_admin";
 
 
 
