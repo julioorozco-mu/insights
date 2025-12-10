@@ -1353,6 +1353,21 @@ export default function EditLessonPage() {
     saveToHistory(newSubs);
     setActiveSubsection(newId);
   };
+
+  const deleteSubsection = (subsectionId: string) => {
+    if (subsections.length <= 1) {
+      alert("La lección debe tener al menos una subsección");
+      return;
+    }
+
+    const newSubs = subsections.filter((s) => s.id !== subsectionId);
+    setSubsections(newSubs);
+    saveToHistory(newSubs);
+
+    if (activeSubsection === subsectionId && newSubs.length > 0) {
+      setActiveSubsection(newSubs[0].id);
+    }
+  };
   
   // Subir video a Supabase (hasta 2GB)
   const handleVideoUpload = async (file: File) => {
@@ -1713,6 +1728,9 @@ export default function EditLessonPage() {
               key={sub.id}
               onClick={() => setActiveSubsection(sub.id)}
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
                 padding: "8px 18px",
                 borderRadius: 999,
                 border: "none",
@@ -1725,7 +1743,27 @@ export default function EditLessonPage() {
                 transition: "all 150ms ease-out",
               }}
             >
-              {sub.title}
+              <span>{sub.title}</span>
+              {subsections.length > 1 && (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteSubsection(sub.id);
+                  }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 18,
+                    height: 18,
+                    borderRadius: 999,
+                    backgroundColor: activeSubsection === sub.id ? "rgba(26,33,112,0.08)" : "transparent",
+                    color: activeSubsection === sub.id ? COLORS.accent.primary : COLORS.text.muted,
+                  }}
+                >
+                  <IconX size={12} />
+                </span>
+              )}
             </button>
           ))}
         </div>

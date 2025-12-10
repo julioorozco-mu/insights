@@ -56,6 +56,7 @@ interface SortableSectionItemProps {
   onEditSection: (sectionId: string) => void;
   onEditSubsection: (sectionId: string, subsectionId: string) => void;
   onAddSubsection: (sectionId: string) => void;
+  onDeleteSubsection?: (sectionId: string, subsectionId: string) => void;
   onDelete?: (sectionId: string) => void;
   onDuplicate?: (sectionId: string) => void;
 }
@@ -66,6 +67,7 @@ interface SortableSectionListProps {
   onEditSection: (sectionId: string) => void;
   onEditSubsection: (sectionId: string, subsectionId: string) => void;
   onAddSubsection: (sectionId: string) => void;
+  onDeleteSubsection?: (sectionId: string, subsectionId: string) => void;
   onDeleteSection?: (sectionId: string) => void;
   onDuplicateSection?: (sectionId: string) => void;
   emptyMessage?: string;
@@ -83,6 +85,7 @@ function SortableSectionItem({
   onEditSection,
   onEditSubsection,
   onAddSubsection,
+  onDeleteSubsection,
   onDelete,
   onDuplicate,
 }: SortableSectionItemProps) {
@@ -262,14 +265,26 @@ function SortableSectionItem({
                         {lesson.title}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => onEditSubsection(section.id, lesson.id)}
-                      className="text-xs text-[#A855F7] hover:text-[#9333EA] font-medium flex items-center gap-1"
-                    >
-                      <Edit3 size={12} />
-                      Editar
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onEditSubsection(section.id, lesson.id)}
+                        className="text-xs text-[#A855F7] hover:text-[#9333EA] font-medium flex items-center gap-1"
+                      >
+                        <Edit3 size={12} />
+                        Editar
+                      </button>
+                      {onDeleteSubsection && (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteSubsection(section.id, lesson.id)}
+                          className="text-xs text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
+                        >
+                          <Trash2 size={12} />
+                          Eliminar
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -301,6 +316,7 @@ export default function SortableSectionList({
   onEditSection,
   onEditSubsection,
   onAddSubsection,
+  onDeleteSubsection,
   onDeleteSection,
   onDuplicateSection,
   emptyMessage = "Aún no hay secciones",
@@ -383,6 +399,7 @@ export default function SortableSectionList({
               onEditSection={onEditSection}
               onEditSubsection={onEditSubsection}
               onAddSubsection={onAddSubsection}
+              onDeleteSubsection={onDeleteSubsection}
               onDelete={onDeleteSection}
               onDuplicate={onDuplicateSection}
             />

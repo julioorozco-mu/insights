@@ -959,6 +959,72 @@ export default function EditCoursePage() {
     }
   };
 
+  // Eliminar una subsección (lección interna de una lección)
+  const handleDeleteSubsection = async (sectionId: string, subsectionId: string) => {
+    try {
+      const confirmDelete = window.confirm("¿Seguro que deseas eliminar esta subsección? Esta acción no se puede deshacer.");
+      if (!confirmDelete) return;
+
+      // 1. Obtener la lección completa para leer su contenido actual
+      const lessonRes = await fetch(`/api/admin/getLesson?lessonId=${sectionId}`);
+      if (!lessonRes.ok) {
+        const errorData = await lessonRes.json();
+        throw new Error(errorData.error || "Error al cargar la lección");
+      }
+
+      const lessonData = await lessonRes.json();
+      const lesson = lessonData.lesson;
+
+      // 2. Parsear el contenido y eliminar la subsección
+      let contentData: any = { subsections: [] };
+      if (lesson.content) {
+        try {
+          contentData = typeof lesson.content === "string" ? JSON.parse(lesson.content) : lesson.content;
+        } catch (e) {
+          console.error("Error parsing lesson content while deleting subsection:", e);
+        }
+      }
+
+      const originalSubsections: any[] = Array.isArray(contentData.subsections) ? contentData.subsections : [];
+      const updatedSubsections = originalSubsections.filter((sub) => sub.id !== subsectionId);
+      contentData.subsections = updatedSubsections;
+
+      // 3. Actualizar la lección en BD usando la API admin
+      const updateRes = await fetch("/api/admin/updateLesson", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lessonId: sectionId,
+          title: lesson.title,
+          description: lesson.description,
+          content: JSON.stringify(contentData),
+        }),
+      });
+
+      if (!updateRes.ok) {
+        const errorData = await updateRes.json();
+        throw new Error(errorData.error || "Error al actualizar la lección");
+      }
+
+      // 4. Actualizar estado local de lessons / subsections
+      setLessons((prev) =>
+        prev.map((l) =>
+          l.id === sectionId
+            ? {
+                ...l,
+                subsections: (l.subsections || []).filter((s) => s.id !== subsectionId),
+              }
+            : l
+        )
+      );
+
+      showSnackbarMessage("Subsección eliminada correctamente");
+    } catch (err: any) {
+      console.error("Error eliminando subsección:", err);
+      setError(err.message || "Error al eliminar la subsección");
+    }
+  };
+
   // Función para duplicar una sección (lección)
   const handleDuplicateSection = async (sectionId: string) => {
     try {
@@ -1225,6 +1291,7 @@ export default function EditCoursePage() {
                   onEditSection={(sectionId) => router.push(`/dashboard/lessons/${sectionId}/edit`)}
                   onEditSubsection={(sectionId, subsectionId) => router.push(`/dashboard/lessons/${sectionId}/edit?tab=${subsectionId}`)}
                   onAddSubsection={(sectionId) => router.push(`/dashboard/lessons/${sectionId}/edit?action=add`)}
+                  onDeleteSubsection={handleDeleteSubsection}
                   onDeleteSection={handleDeleteSection}
                   onDuplicateSection={handleDuplicateSection}
                   emptyMessage="Aún no hay secciones"
