@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { supabaseClient } from "@/lib/supabase";
 import { lessonRepository } from "@/lib/repositories/lessonRepository";
+import RichTextEditor from "@/components/ui/RichTextEditor";
 import {
   DndContext,
   DragOverlay,
@@ -111,7 +112,7 @@ const COLORS = {
 };
 
 // Tipos de bloques
-type BlockType = "text" | "heading" | "image" | "video" | "gallery" | "list" | "attachment" | "table" | "quiz" | "case-study";
+type BlockType = "text" | "heading" | "richtext" | "image" | "video" | "gallery" | "list" | "attachment" | "table" | "quiz" | "case-study";
 
 interface ContentBlock {
   id: string;
@@ -130,6 +131,7 @@ interface Subsection {
 const COMPONENTS = [
   { id: "heading", icon: IconBold, label: "Título" },
   { id: "text", icon: IconAlignLeft, label: "Texto" },
+  { id: "richtext", icon: IconFileText, label: "Texto Enriquecido" },
   { id: "image", icon: IconPhoto, label: "Imagen" },
   { id: "gallery", icon: IconLayoutGrid, label: "Galería" },
   { id: "video", icon: IconVideo, label: "Video" },
@@ -301,51 +303,72 @@ function SortableBlock({
         )}
 
         {/* Contenido del bloque */}
-        {block.type === "heading" && (
-          <input
-            type="text"
-            value={block.content || ""}
-            onChange={(e) => onUpdate(e.target.value)}
-            style={{
-              width: "100%",
-              border: "none",
-              outline: "none",
-              fontSize: isSelected && blockStyles ? parseInt(blockStyles.fontSize) + 8 : 24,
-              fontWeight: isSelected && blockStyles?.bold ? 700 : 600,
-              fontStyle: isSelected && blockStyles?.italic ? "italic" : "normal",
-              textDecoration: isSelected ? `${blockStyles?.underline ? "underline" : ""} ${blockStyles?.strikethrough ? "line-through" : ""}`.trim() || "none" : "none",
-              textAlign: isSelected && blockStyles ? blockStyles.textAlign : "left",
-              fontFamily: isSelected && blockStyles ? blockStyles.fontFamily : "inherit",
-              lineHeight: 1.35,
-              color: isSelected && blockStyles ? blockStyles.color : COLORS.text.primary,
-              backgroundColor: "transparent",
-            }}
-            placeholder="Escribe el título..."
-          />
-        )}
+        {block.type === "heading" && (() => {
+          const savedStyles = block.data?.styles;
+          const displayStyles = isSelected && blockStyles ? blockStyles : (savedStyles || {});
+          
+          return (
+            <input
+              type="text"
+              value={block.content || ""}
+              onChange={(e) => onUpdate(e.target.value)}
+              style={{
+                width: "100%",
+                border: "none",
+                outline: "none",
+                fontSize: displayStyles.fontSize ? parseInt(displayStyles.fontSize) + 8 : 24,
+                fontWeight: displayStyles.bold ? 700 : 600,
+                fontStyle: displayStyles.italic ? "italic" : "normal",
+                textDecoration: `${displayStyles.underline ? "underline" : ""} ${displayStyles.strikethrough ? "line-through" : ""}`.trim() || "none",
+                textAlign: displayStyles.textAlign || "left",
+                fontFamily: displayStyles.fontFamily || "inherit",
+                lineHeight: 1.35,
+                color: displayStyles.color || COLORS.text.primary,
+                backgroundColor: "transparent",
+              }}
+              placeholder="Escribe el título..."
+            />
+          );
+        })()}
 
-        {block.type === "text" && (
-          <textarea
-            value={block.content || ""}
-            onChange={(e) => onUpdate(e.target.value)}
-            style={{
-              width: "100%",
-              border: "none",
-              outline: "none",
-              fontSize: isSelected && blockStyles ? parseInt(blockStyles.fontSize) : 14,
-              fontWeight: isSelected && blockStyles?.bold ? 700 : 400,
-              fontStyle: isSelected && blockStyles?.italic ? "italic" : "normal",
-              textDecoration: isSelected ? `${blockStyles?.underline ? "underline" : ""} ${blockStyles?.strikethrough ? "line-through" : ""}`.trim() || "none" : "none",
-              textAlign: isSelected && blockStyles ? blockStyles.textAlign : "left",
-              fontFamily: isSelected && blockStyles ? blockStyles.fontFamily : "inherit",
-              lineHeight: 1.6,
-              color: isSelected && blockStyles ? blockStyles.color : COLORS.text.primary,
-              backgroundColor: "transparent",
-              resize: "none",
-              minHeight: 80,
-            }}
-            placeholder="Escribe el contenido..."
-          />
+        {block.type === "text" && (() => {
+          const savedStyles = block.data?.styles;
+          const displayStyles = isSelected && blockStyles ? blockStyles : (savedStyles || {});
+          
+          return (
+            <textarea
+              value={block.content || ""}
+              onChange={(e) => onUpdate(e.target.value)}
+              style={{
+                width: "100%",
+                border: "none",
+                outline: "none",
+                fontSize: displayStyles.fontSize ? parseInt(displayStyles.fontSize) : 14,
+                fontWeight: displayStyles.bold ? 700 : 400,
+                fontStyle: displayStyles.italic ? "italic" : "normal",
+                textDecoration: `${displayStyles.underline ? "underline" : ""} ${displayStyles.strikethrough ? "line-through" : ""}`.trim() || "none",
+                textAlign: displayStyles.textAlign || "left",
+                fontFamily: displayStyles.fontFamily || "inherit",
+                lineHeight: 1.6,
+                color: displayStyles.color || COLORS.text.primary,
+                backgroundColor: "transparent",
+                resize: "none",
+                minHeight: 80,
+              }}
+              placeholder="Escribe el contenido..."
+            />
+          );
+        })()}
+
+        {block.type === "richtext" && (
+          <div style={{ width: "100%" }}>
+            <RichTextEditor
+              value={block.content || ""}
+              onChange={(html) => onUpdate(html)}
+              placeholder="Escribe texto enriquecido aquí... Puedes formatear el texto y agregar enlaces."
+              className="w-full"
+            />
+          </div>
         )}
 
         {block.type === "video" && (
@@ -438,15 +461,28 @@ function SortableBlock({
         {block.type === "image" && (
           <div>
             {block.content ? (
-              <div style={{ borderRadius: 14, overflow: "hidden", position: "relative" }}>
-                <img
-                  src={block.content}
-                  alt=""
-                  style={{ width: "100%", height: "auto", objectFit: "cover" }}
-                />
-                <div style={{ position: "absolute", top: 8, left: 8, backgroundColor: "rgba(0,0,0,0.5)", color: "white", padding: "4px 8px", borderRadius: 6, fontSize: 11 }}>
-                  {block.data?.fileName || "Imagen"}
+              <div>
+                <div style={{ borderRadius: 14, overflow: "hidden", position: "relative" }}>
+                  <img
+                    src={block.content}
+                    alt={block.data?.description || ""}
+                    style={{ width: "100%", height: "auto", objectFit: "cover" }}
+                  />
+                  <div style={{ position: "absolute", top: 8, left: 8, backgroundColor: "rgba(0,0,0,0.5)", color: "white", padding: "4px 8px", borderRadius: 6, fontSize: 11, maxWidth: "calc(100% - 16px)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {block.data?.description || block.data?.fileName || "Imagen"}
+                  </div>
                 </div>
+                {block.data?.description && (
+                  <p style={{ 
+                    marginTop: 8, 
+                    fontSize: 13, 
+                    color: COLORS.text.secondary, 
+                    fontStyle: "italic",
+                    lineHeight: 1.5
+                  }}>
+                    {block.data.description}
+                  </p>
+                )}
               </div>
             ) : (
               <button
@@ -826,6 +862,7 @@ export default function EditLessonPage() {
   // Image modal states
   const [imageUrl, setImageUrl] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageDescription, setImageDescription] = useState("");
   
   // Table modal states
   const [tableRows, setTableRows] = useState(3);
@@ -1148,6 +1185,50 @@ export default function EditLessonPage() {
   const currentSubsection = subsections.find(s => s.id === activeSubsection);
   const blockIds = currentSubsection?.blocks.map(b => b.id) || [];
   
+  // Ref para evitar loop infinito al cargar estilos
+  const isLoadingStylesRef = useRef(false);
+  
+  // Cargar estilos guardados cuando se selecciona un bloque
+  useEffect(() => {
+    if (!selectedBlockId || !currentSubsection) return;
+    
+    const selectedBlock = currentSubsection.blocks.find(b => b.id === selectedBlockId);
+    if (!selectedBlock) return;
+    
+    // Solo cargar estilos para bloques de texto y heading
+    if (selectedBlock.type !== "text" && selectedBlock.type !== "heading") return;
+    
+    isLoadingStylesRef.current = true;
+    
+    const savedStyles = selectedBlock.data?.styles;
+    if (savedStyles) {
+      setFontFamily(savedStyles.fontFamily || "Inter");
+      setFontWeight(savedStyles.fontWeight || "Regular");
+      setFontSize(savedStyles.fontSize || "16");
+      setTextAlign(savedStyles.textAlign || "left");
+      setSelectedColor(savedStyles.color || COLORS.palettSwatches[0]);
+      setTextStyles({
+        bold: savedStyles.bold || false,
+        italic: savedStyles.italic || false,
+        underline: savedStyles.underline || false,
+        strikethrough: savedStyles.strikethrough || false,
+      });
+    } else {
+      // Reset a valores por defecto si no hay estilos guardados
+      setFontFamily("Inter");
+      setFontWeight("Regular");
+      setFontSize("16");
+      setTextAlign("left");
+      setSelectedColor(COLORS.palettSwatches[0]);
+      setTextStyles({ bold: false, italic: false, underline: false, strikethrough: false });
+    }
+    
+    // Permitir guardar después de un pequeño delay
+    setTimeout(() => {
+      isLoadingStylesRef.current = false;
+    }, 100);
+  }, [selectedBlockId, currentSubsection]);
+
   // Drag handlers
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
@@ -1286,11 +1367,11 @@ export default function EditLessonPage() {
       return;
     }
     
-    // Para otros tipos (heading, text, list)
+    // Para otros tipos (heading, text, richtext, list)
     const newBlock: ContentBlock = {
       id: Date.now().toString(),
       type,
-      content: type === "heading" ? "Nuevo título" : type === "text" ? "Escribe aquí..." : "",
+      content: type === "heading" ? "Nuevo título" : type === "text" ? "Escribe aquí..." : type === "richtext" ? "<p></p>" : "",
       data: type === "list" ? { items: ["Elemento 1", "Elemento 2", "Elemento 3"] } : undefined,
     };
     
@@ -1323,6 +1404,52 @@ export default function EditLessonPage() {
       return newSubs;
     });
   };
+
+  // Guardar estilos cuando cambian y hay un bloque seleccionado
+  useEffect(() => {
+    // No guardar si estamos cargando estilos (evitar loop infinito)
+    if (isLoadingStylesRef.current) return;
+    if (!selectedBlockId || !currentSubsection) return;
+    
+    const selectedBlock = currentSubsection.blocks.find(b => b.id === selectedBlockId);
+    if (!selectedBlock) return;
+    
+    // Solo guardar estilos para bloques de texto y heading
+    if (selectedBlock.type !== "text" && selectedBlock.type !== "heading") return;
+    
+    // Guardar estilos en el bloque
+    const styles = {
+      fontFamily,
+      fontWeight,
+      fontSize,
+      textAlign,
+      color: selectedColor,
+      bold: textStyles.bold,
+      italic: textStyles.italic,
+      underline: textStyles.underline,
+      strikethrough: textStyles.strikethrough,
+    };
+    
+    // Solo guardar si los estilos son diferentes a los guardados
+    const savedStyles = selectedBlock.data?.styles;
+    if (savedStyles && 
+        savedStyles.fontFamily === styles.fontFamily &&
+        savedStyles.fontWeight === styles.fontWeight &&
+        savedStyles.fontSize === styles.fontSize &&
+        savedStyles.textAlign === styles.textAlign &&
+        savedStyles.color === styles.color &&
+        savedStyles.bold === styles.bold &&
+        savedStyles.italic === styles.italic &&
+        savedStyles.underline === styles.underline &&
+        savedStyles.strikethrough === styles.strikethrough) {
+      return; // No hay cambios, no guardar
+    }
+    
+    updateBlockContent(selectedBlockId, selectedBlock.content, {
+      ...selectedBlock.data,
+      styles,
+    });
+  }, [fontFamily, fontWeight, fontSize, textAlign, selectedColor, textStyles, selectedBlockId, currentSubsection, updateBlockContent]);
   
   // Eliminar bloque
   const deleteBlock = (blockId: string) => {
@@ -1805,6 +1932,8 @@ export default function EditLessonPage() {
                       }}
                       onOpenImageModal={() => {
                         setEditingBlockId(block.id);
+                        setImageUrl(block.content || "");
+                        setImageDescription(block.data?.description || "");
                         setShowImageModal(true);
                       }}
                       blockStyles={selectedBlockId === block.id ? {
@@ -2084,6 +2213,59 @@ export default function EditLessonPage() {
                 ))}
             </div>
             </div>
+            
+            {/* Image Description Section - Only show when image is selected */}
+            {(() => {
+              const selectedBlock = currentSubsection?.blocks.find(b => b.id === selectedBlockId);
+              if (selectedBlock?.type === "image" && selectedBlock?.content) {
+                return (
+                  <div>
+                    <h4 style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                      color: COLORS.text.muted,
+                      marginBottom: 12,
+                    }}>
+                      Descripción de la Imagen
+                    </h4>
+                    <textarea
+                      value={selectedBlock.data?.description || ""}
+                      onChange={(e) => {
+                        if (selectedBlockId) {
+                          updateBlockContent(selectedBlockId, selectedBlock.content, {
+                            ...selectedBlock.data,
+                            description: e.target.value
+                          });
+                        }
+                      }}
+                      placeholder="Describe la imagen para accesibilidad y contexto..."
+                      style={{ 
+                        width: "100%", 
+                        minHeight: 80, 
+                        borderRadius: 10, 
+                        border: `1px solid ${COLORS.accent.borderSubtle}`, 
+                        padding: "10px", 
+                        fontSize: 13,
+                        fontFamily: "inherit",
+                        resize: "vertical",
+                        color: COLORS.text.primary,
+                        backgroundColor: "white"
+                      }}
+                    />
+                    <p style={{ 
+                      fontSize: 11, 
+                      color: COLORS.text.muted, 
+                      marginTop: 6 
+                    }}>
+                      Esta descripción se mostrará debajo de la imagen y como texto alternativo (alt).
+                    </p>
+                  </div>
+                );
+              }
+              return null;
+            })()}
             
             {/* Course Guide Card */}
             <div style={{
@@ -2625,8 +2807,12 @@ export default function EditLessonPage() {
                       const filePath = `lessons/images/${Date.now()}_${file.name}`;
                       await supabaseClient.storage.from("covers").upload(filePath, file);
                       const { data } = supabaseClient.storage.from("covers").getPublicUrl(filePath);
-                      if (editingBlockId) updateBlockContent(editingBlockId, data.publicUrl, { fileName: file.name });
+                      if (editingBlockId) updateBlockContent(editingBlockId, data.publicUrl, { 
+                        fileName: file.name,
+                        description: imageDescription || ""
+                      });
                       setShowImageModal(false);
+                      setImageDescription("");
                     } catch (err) { alert("Error al subir imagen"); }
                     setUploadingImage(false);
                   }
@@ -2639,7 +2825,35 @@ export default function EditLessonPage() {
             ) : (
               <>
                 <input key="url-input" type="url" value={imageUrl || ""} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://ejemplo.com/imagen.jpg" style={{ width: "100%", height: 44, borderRadius: 10, border: `1px solid ${COLORS.accent.borderSubtle}`, padding: "0 12px", marginBottom: 16 }} />
-                <button onClick={() => { if (editingBlockId && imageUrl) { updateBlockContent(editingBlockId, imageUrl); setShowImageModal(false); setImageUrl(""); } }} disabled={!imageUrl} style={{ width: "100%", height: 44, borderRadius: 10, backgroundColor: COLORS.accent.primary, color: "white", border: "none", cursor: imageUrl ? "pointer" : "not-allowed", opacity: imageUrl ? 1 : 0.5 }}>Agregar imagen</button>
+                <label style={{ fontSize: 12, color: COLORS.text.secondary, marginBottom: 8, display: "block" }}>
+                  Descripción de la imagen (opcional)
+                </label>
+                <textarea
+                  value={imageDescription}
+                  onChange={(e) => setImageDescription(e.target.value)}
+                  placeholder="Describe la imagen para accesibilidad y contexto..."
+                  style={{ 
+                    width: "100%", 
+                    minHeight: 80, 
+                    borderRadius: 10, 
+                    border: `1px solid ${COLORS.accent.borderSubtle}`, 
+                    padding: "12px", 
+                    fontSize: 14,
+                    fontFamily: "inherit",
+                    resize: "vertical",
+                    marginBottom: 16 
+                  }}
+                />
+                <button onClick={() => { 
+                  if (editingBlockId && imageUrl) { 
+                    updateBlockContent(editingBlockId, imageUrl, { 
+                      description: imageDescription || ""
+                    }); 
+                    setShowImageModal(false); 
+                    setImageUrl(""); 
+                    setImageDescription("");
+                  } 
+                }} disabled={!imageUrl} style={{ width: "100%", height: 44, borderRadius: 10, backgroundColor: COLORS.accent.primary, color: "white", border: "none", cursor: imageUrl ? "pointer" : "not-allowed", opacity: imageUrl ? 1 : 0.5 }}>Agregar imagen</button>
               </>
             )}
           </div>
