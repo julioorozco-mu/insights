@@ -639,6 +639,42 @@ function ContentBlockRenderer({ block }: { block: ContentBlock }) {
   switch (block.type) {
     case 'heading':
       {
+        // Detectar si el contenido contiene HTML
+        const hasHTML = block.content && /<[a-z][\s\S]*>/i.test(block.content);
+        
+        if (hasHTML) {
+          // Si tiene HTML, renderizar con dangerouslySetInnerHTML manteniendo estilos
+          const styles = block.data?.styles || {};
+          const fontSize = styles.fontSize ? `${parseInt(styles.fontSize) + 8}px` : '24px';
+          const fontWeight = styles.bold ? '700' : '600';
+          const fontStyle = styles.italic ? 'italic' : 'normal';
+          const textDecoration = [
+            styles.underline ? 'underline' : '',
+            styles.strikethrough ? 'line-through' : ''
+          ].filter(Boolean).join(' ') || 'none';
+          const textAlign = styles.textAlign || 'left';
+          const fontFamily = styles.fontFamily || 'inherit';
+          const color = styles.color || '#192170';
+          
+          return (
+            <h2 
+              className="mb-4 mt-6 first:mt-0"
+              style={{
+                fontSize,
+                fontWeight,
+                fontStyle,
+                textDecoration,
+                textAlign,
+                fontFamily,
+                color,
+                lineHeight: 1.35,
+              }}
+              dangerouslySetInnerHTML={{ __html: block.content || '' }}
+            />
+          );
+        }
+        
+        // Si no tiene HTML, renderizar con estilos personalizados
         const styles = block.data?.styles || {};
         const fontSize = styles.fontSize ? `${parseInt(styles.fontSize) + 8}px` : '24px';
         const fontWeight = styles.bold ? '700' : '600';
@@ -672,6 +708,19 @@ function ContentBlockRenderer({ block }: { block: ContentBlock }) {
     
     case 'text':
       {
+        // Detectar si el contenido contiene HTML
+        const hasHTML = block.content && /<[a-z][\s\S]*>/i.test(block.content);
+        
+        if (hasHTML) {
+          // Si tiene HTML, usar RichTextContent para mantener estilos consistentes
+          return (
+            <div className="mb-4">
+              <RichTextContent html={block.content || ""} />
+            </div>
+          );
+        }
+        
+        // Si no tiene HTML, renderizar con estilos personalizados
         const styles = block.data?.styles || {};
         const fontSize = styles.fontSize ? `${styles.fontSize}px` : '14px';
         const fontWeight = styles.bold ? '700' : '400';
