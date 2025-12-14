@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -151,6 +152,24 @@ export default function HomePage() {
       {/* Panel derecho: Formulario de login */}
       <div className="w-full lg:w-1/2 flex items-center justify-center bg-white p-4 md:p-8">
         <div className="w-full max-w-md">
+          {/* Logos UNACH */}
+          <div className="flex items-center justify-center gap-4 mb-6">
+            <Image
+              src="/images/logos/logo_unach_azul_sin_fondo.png"
+              alt="Logo UNACH"
+              width={180}
+              height={60}
+              className="h-16 w-auto object-contain"
+            />
+            <Image
+              src="/images/logos/marca_unach.png"
+              alt="Marca UNACH"
+              width={120}
+              height={60}
+              className="h-16 w-auto object-contain"
+            />
+          </div>
+          
           {/* Logo y título */}
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-primary mb-2">{APP_NAME}</h1>

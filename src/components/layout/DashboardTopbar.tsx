@@ -55,7 +55,7 @@ export function DashboardTopbar({ onToggleSidebar, user, onSignOut }: DashboardT
   return (
     <header className="sticky top-0 z-50 bg-white shadow-card-soft">
       <div className="flex items-center justify-between px-6 py-4">
-        {/* Left: Mobile menu + Date */}
+        {/* Left: Mobile menu + Logos + Date */}
         <div className="flex items-center gap-4">
           {/* Botón hamburguesa para móvil */}
           <button
@@ -65,6 +65,24 @@ export function DashboardTopbar({ onToggleSidebar, user, onSignOut }: DashboardT
           >
             <Menu className="h-6 w-6" />
           </button>
+          
+          {/* Logos UNACH */}
+          <div className="hidden md:flex items-center gap-4">
+            <Image
+              src="/images/logos/logo_unach_azul_sin_fondo.png"
+              alt="Logo UNACH"
+              width={180}
+              height={60}
+              className="h-16 w-auto object-contain"
+            />
+            <Image
+              src="/images/logos/marca_unach.png"
+              alt="Marca UNACH"
+              width={120}
+              height={60}
+              className="h-16 w-auto object-contain"
+            />
+          </div>
           
           {/* Date Display */}
           <div>
