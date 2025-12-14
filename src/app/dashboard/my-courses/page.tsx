@@ -61,9 +61,9 @@ export default function MyCoursesPage() {
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-4xl font-bold mb-2">Mis Cursos</h1>
-          <p className="text-base-content/70">
-            Cursos donde eres ponente o co-host
-          </p>
+            <p className="text-base-content/70">
+              Gestiona y administra los cursos que has creado como docente autorizado o colaborador.
+            </p>
         </div>
         <Link href="/dashboard/courses/new" className="btn btn-primary text-white gap-2">
           <IconPlus size={20} />

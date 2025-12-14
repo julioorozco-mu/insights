@@ -3094,6 +3094,10 @@ CREATE POLICY "users_admin_update_all" ON "public"."users" FOR UPDATE TO "authen
 
 
 
+CREATE POLICY "users_public_read_teachers" ON "public"."users" FOR SELECT USING (("role" = 'teacher'::"public"."user_role"));
+
+
+
 CREATE POLICY "users_public_read_verified" ON "public"."users" FOR SELECT USING (("is_verified" = true));
 
 

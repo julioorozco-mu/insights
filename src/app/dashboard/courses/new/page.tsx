@@ -196,6 +196,7 @@ export default function NewCoursePage() {
   
   // Estados para el formulario
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState<string>("");
   const [university, setUniversity] = useState<string>("Cualquier universidad");
   const [specialization, setSpecialization] = useState<string>("Negocios");
   const [courseLevel, setCourseLevel] = useState<string>("Principiante");
@@ -266,6 +267,20 @@ export default function NewCoursePage() {
 
   const removeTag = (tag: string) => {
     setSelectedTags(selectedTags.filter(t => t !== tag));
+  };
+
+  // Manejar input de etiquetas personalizadas
+  const handleTagInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (tagInput.trim()) {
+        addTag(tagInput.trim());
+        setTagInput("");
+      }
+    } else if (e.key === "Backspace" && tagInput === "" && selectedTags.length > 0) {
+      // Eliminar última etiqueta si el input está vacío
+      removeTag(selectedTags[selectedTags.length - 1]);
+    }
   };
 
   // Toggle para expandir/colapsar sección del acordeón
@@ -668,8 +683,11 @@ export default function NewCoursePage() {
                     Etiquetas del curso <span className="text-slate-300">(hasta 10)</span>
                   </label>
                   
-                  {/* Selected Tags */}
-                  <div className="flex flex-wrap gap-2 mb-3">
+                  {/* Selected Tags + Input */}
+                  <div 
+                    className="flex flex-wrap gap-2 p-2.5 min-h-[44px] border border-slate-200 rounded-lg bg-white focus-within:ring-2 focus-within:ring-purple-400 focus-within:border-transparent cursor-text"
+                    onClick={() => document.getElementById("new-course-tag-input")?.focus()}
+                  >
                     {selectedTags.map(tag => (
                       <span
                         key={tag}
@@ -678,28 +696,47 @@ export default function NewCoursePage() {
                         {tag}
                         <button
                           type="button"
-                          onClick={() => removeTag(tag)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeTag(tag);
+                          }}
                           className="hover:text-red-300 transition-colors"
                         >
                           <X size={14} />
                         </button>
                       </span>
                     ))}
+                    <input
+                      id="new-course-tag-input"
+                      type="text"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={handleTagInputKeyDown}
+                      placeholder={selectedTags.length === 0 ? "Escribe una etiqueta..." : selectedTags.length >= 10 ? "" : ""}
+                      disabled={selectedTags.length >= 10}
+                      className="flex-1 min-w-[100px] text-sm outline-none bg-transparent placeholder:text-slate-400 disabled:cursor-not-allowed"
+                    />
                   </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Presiona Enter para agregar
+                  </p>
 
-                  {/* Available Tags */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {AVAILABLE_TAGS.filter(tag => !selectedTags.includes(tag)).map(tag => (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => addTag(tag)}
-                        disabled={selectedTags.length >= 10}
-                        className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-slate-600 px-3 py-1.5 rounded-full text-xs transition-colors"
-                      >
-                        + {tag}
-                      </button>
-                    ))}
+                  {/* Available Tags (Quick Selection) */}
+                  <div className="mt-3">
+                    <p className="text-[10px] text-slate-400 mb-1.5">Selección rápida:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {AVAILABLE_TAGS.filter(tag => !selectedTags.includes(tag)).map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => addTag(tag)}
+                          disabled={selectedTags.length >= 10}
+                          className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-slate-600 px-3 py-1.5 rounded-full text-xs transition-colors"
+                        >
+                          + {tag}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

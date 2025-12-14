@@ -292,6 +292,9 @@ export default function EditCoursePage() {
   const [loadingTests, setLoadingTests] = useState(false);
   const [linkingTest, setLinkingTest] = useState(false);
   
+  // Estado para preservar los teacher_ids originales del curso (evita que Admin sobrescriba al editar)
+  const [originalTeacherIds, setOriginalTeacherIds] = useState<string[]>([]);
+  
   const { uploadFile, uploading: uploadingImage } = useUploadFile();
 
   const {
@@ -360,6 +363,13 @@ export default function EditCoursePage() {
           setCoverImagePreview(course.coverImageUrl);
           setValue("coverImageUrl", course.coverImageUrl);
         }
+        
+        // Preservar los teacher_ids originales del curso
+        // Esto evita que un Admin sobrescriba la propiedad del curso al editarlo
+        // El API devuelve 'speakerIds' (mapeado desde teacher_ids en la DB)
+        const teacherIds = course.speakerIds || course.teacherIds || course.teacher_ids || [];
+        setOriginalTeacherIds(teacherIds);
+        console.log("[EditCourse] Teacher IDs originales cargados:", teacherIds);
         
         setLoading(false);
       } catch (err) {
@@ -601,13 +611,16 @@ export default function EditCoursePage() {
         isHidden,
         university: university !== "Cualquier universidad" ? university : undefined,
         specialization,
-        speakerIds: [user.id],
+        // En modo edición, preservar los teacher_ids originales
+        // Solo asignar user.id si no hay teacher_ids originales (caso borde)
+        speakerIds: originalTeacherIds.length > 0 ? originalTeacherIds : [user.id],
       };
 
       let savedCourseId: string;
       
       if (currentCourseId) {
         // Actualizar curso existente usando API admin
+        // NO enviamos speakerIds para evitar sobrescribir los teacher_ids originales
         const updateRes = await fetch('/api/admin/updateCourse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -624,7 +637,7 @@ export default function EditCoursePage() {
             isHidden: courseData.isHidden,
             university: courseData.university,
             specialization: courseData.specialization,
-            speakerIds: courseData.speakerIds,
+            // No enviamos speakerIds - preservamos los teacher_ids originales
           }),
         });
 
@@ -796,12 +809,16 @@ export default function EditCoursePage() {
         isHidden,
         university: university !== "Cualquier universidad" ? university : undefined,
         specialization,
-        speakerIds: [user.id],
+        // En modo edición, preservar los teacher_ids originales
+        // Solo asignar user.id si no hay teacher_ids originales (caso borde)
+        speakerIds: originalTeacherIds.length > 0 ? originalTeacherIds : [user.id],
       };
       
       console.log("[EditCourse] Datos del curso a guardar:", courseData);
+      console.log("[EditCourse] Teacher IDs originales preservados:", originalTeacherIds);
       
       // Siempre actualizar en esta página de edición usando API admin
+      // NO enviamos speakerIds para evitar sobrescribir los teacher_ids originales
       console.log("[EditCourse] Actualizando curso:", courseId);
       const updateRes = await fetch('/api/admin/updateCourse', {
         method: 'POST',
@@ -819,7 +836,7 @@ export default function EditCoursePage() {
           isHidden: courseData.isHidden,
           university: courseData.university,
           specialization: courseData.specialization,
-          speakerIds: courseData.speakerIds,
+          // No enviamos speakerIds - preservamos los teacher_ids originales
         }),
       });
 

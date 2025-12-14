@@ -163,8 +163,11 @@ export default function StudentCoursePage() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
   
-  // Modo preview para maestros (no requiere inscripción)
-  const isPreviewMode = searchParams.get("preview") === "true";
+  // Modo preview para maestros/admins (no requiere inscripción)
+  // Teachers y admins siempre tienen acceso sin inscripción
+  const isPreviewMode = searchParams.get("preview") === "true" || 
+    user?.role === "teacher" || 
+    user?.role === "admin";
   const [course, setCourse] = useState<FullCourse | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
