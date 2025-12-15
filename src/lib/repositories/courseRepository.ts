@@ -5,15 +5,87 @@ import { Course, CreateCourseData, UpdateCourseData } from "@/types/course";
 export class CourseRepository {
   private table = TABLES.COURSES;
 
+  private sanitizeIdArray(value: any): string[] {
+    const list = Array.isArray(value) ? value : [];
+    const cleaned = list.filter((v: any) => typeof v === "string" && !!v);
+    return Array.from(new Set(cleaned));
+  }
+
+  private async normalizeTeacherIdsForRows(rows: any[]): Promise<any[]> {
+    try {
+      const legacyCandidateIds = new Set<string>();
+      (rows || []).forEach((row: any) => {
+        (row?.teacher_ids || []).forEach((id: any) => {
+          if (id) legacyCandidateIds.add(id);
+        });
+        (row?.co_host_ids || []).forEach((id: any) => {
+          if (id) legacyCandidateIds.add(id);
+        });
+      });
+
+      if (legacyCandidateIds.size === 0) return rows;
+
+      const allCandidateIds = Array.from(legacyCandidateIds);
+
+      const { data: existingUsers, error: existingUsersError } = await supabaseClient
+        .from(TABLES.USERS)
+        .select('id')
+        .in('id', allCandidateIds);
+
+      if (existingUsersError) return rows;
+
+      const userIdSet = new Set((existingUsers || []).map((u: any) => u.id));
+      const remainingIds = allCandidateIds.filter((id) => !userIdSet.has(id));
+
+      const teacherIdToUserId = new Map<string, string>();
+      if (remainingIds.length > 0) {
+        const { data: teachers, error: teachersError } = await supabaseClient
+          .from(TABLES.TEACHERS)
+          .select('id, user_id')
+          .in('id', remainingIds);
+
+        if (teachersError) return rows;
+
+        (teachers || []).forEach((t: any) => {
+          if (t?.id && t?.user_id) {
+            teacherIdToUserId.set(t.id, t.user_id);
+          }
+        });
+      }
+
+      const mapIds = (ids: any) => {
+        const list = Array.isArray(ids) ? ids : [];
+        return Array.from(
+          new Set(list.map((id: any) => teacherIdToUserId.get(id) || id).filter((id: any) => !!id))
+        );
+      };
+
+      return (rows || []).map((row: any) => ({
+        ...row,
+        teacher_ids: mapIds(row?.teacher_ids),
+        co_host_ids: mapIds(row?.co_host_ids),
+      }));
+    } catch {
+      return rows;
+    }
+  }
+
   async create(data: CreateCourseData): Promise<Course> {
+    const teacherIds = this.sanitizeIdArray(data.speakerIds);
+    if (teacherIds.length > 1) {
+      throw new Error("Solo se permite 1 docente por curso");
+    }
+
+    const coHostIds = this.sanitizeIdArray(data.coHostIds);
+
     // Campos básicos que siempre existen
     const courseData: Record<string, unknown> = {
       title: data.title,
       description: data.description || null,
       cover_image_url: data.coverImageUrl || null,
       thumbnail_url: data.thumbnailUrl || null,
-      teacher_ids: data.speakerIds || [],
-      co_host_ids: data.coHostIds || [],
+      teacher_ids: teacherIds,
+      co_host_ids: coHostIds,
       lesson_ids: [],
       tags: data.tags || [],
       difficulty: data.difficulty || null,
@@ -83,7 +155,8 @@ export class CourseRepository {
       .single();
 
     if (error || !data) return null;
-    return this.mapToCourse(data);
+    const normalized = await this.normalizeTeacherIdsForRows([data]);
+    return this.mapToCourse((normalized || [data])[0]);
   }
 
   async findAll(): Promise<Course[]> {
@@ -97,7 +170,8 @@ export class CourseRepository {
       return [];
     }
 
-    return (data || []).map(this.mapToCourse);
+    const normalized = await this.normalizeTeacherIdsForRows(data || []);
+    return (normalized || []).map(this.mapToCourse);
   }
 
   async findByTeacher(teacherId: string): Promise<Course[]> {
@@ -112,7 +186,36 @@ export class CourseRepository {
       return [];
     }
 
-    return (data || []).map(this.mapToCourse);
+    const normalized = await this.normalizeTeacherIdsForRows(data || []);
+    const courses = (normalized || []).map(this.mapToCourse);
+
+    if (courses.length > 0) {
+      return courses;
+    }
+
+    const { data: teacherRow, error: teacherError } = await supabaseClient
+      .from(TABLES.TEACHERS)
+      .select('id')
+      .eq('user_id', teacherId)
+      .maybeSingle();
+
+    if (teacherError || !teacherRow?.id) {
+      return courses;
+    }
+
+    const { data: legacyData, error: legacyError } = await supabaseClient
+      .from(this.table)
+      .select("*")
+      .contains("teacher_ids", [teacherRow.id])
+      .order("created_at", { ascending: false });
+
+    if (legacyError) {
+      console.error("Error fetching courses by legacy teacher id:", legacyError);
+      return courses;
+    }
+
+    const legacyNormalized = await this.normalizeTeacherIdsForRows(legacyData || []);
+    return (legacyNormalized || []).map(this.mapToCourse);
   }
 
   // Alias para compatibilidad
@@ -145,7 +248,8 @@ export class CourseRepository {
       return [];
     }
 
-    return (data || []).map(this.mapToCourse);
+    const normalized = await this.normalizeTeacherIdsForRows(data || []);
+    return (normalized || []).map(this.mapToCourse);
   }
 
   async update(id: string, data: UpdateCourseData): Promise<void> {
@@ -155,8 +259,14 @@ export class CourseRepository {
     if (data.description !== undefined) updateData.description = data.description;
     if (data.coverImageUrl !== undefined) updateData.cover_image_url = data.coverImageUrl;
     if (data.thumbnailUrl !== undefined) updateData.thumbnail_url = data.thumbnailUrl;
-    if (data.speakerIds !== undefined) updateData.teacher_ids = data.speakerIds;
-    if (data.coHostIds !== undefined) updateData.co_host_ids = data.coHostIds;
+    if (data.speakerIds !== undefined) {
+      const teacherIds = this.sanitizeIdArray(data.speakerIds);
+      if (teacherIds.length > 1) {
+        throw new Error("Solo se permite 1 docente por curso");
+      }
+      updateData.teacher_ids = teacherIds;
+    }
+    if (data.coHostIds !== undefined) updateData.co_host_ids = this.sanitizeIdArray(data.coHostIds);
     if (data.lessonIds !== undefined) updateData.lesson_ids = data.lessonIds;
     if (data.tags !== undefined) updateData.tags = data.tags;
     if (data.difficulty !== undefined) updateData.difficulty = data.difficulty;

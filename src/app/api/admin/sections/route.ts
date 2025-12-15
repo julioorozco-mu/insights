@@ -1,10 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { TABLES } from "@/utils/constants";
+import { getApiAuthUser } from "@/lib/auth/apiRouteAuth";
+import { teacherHasAccessToCourse } from '@/lib/auth/coursePermissions';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+async function validateCourseAccess(courseId: string) {
+  const authUser = await getApiAuthUser();
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  if (!authUser) {
+    return { ok: false as const, response: NextResponse.json({ error: "No autenticado" }, { status: 401 }) };
+  }
+
+  const isAdmin =
+    authUser.role === "admin" || authUser.role === "superadmin" || authUser.role === "support";
+
+  if (isAdmin) {
+    return { ok: true as const, authUser, supabaseAdmin: getSupabaseAdmin() };
+  }
+
+  if (authUser.role !== "teacher") {
+    return { ok: false as const, response: NextResponse.json({ error: "No autorizado" }, { status: 403 }) };
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  try {
+    const allowed = await teacherHasAccessToCourse(authUser.id, courseId);
+    if (!allowed) {
+      return { ok: false as const, response: NextResponse.json({ error: "No autorizado" }, { status: 403 }) };
+    }
+  } catch (e) {
+    console.error("[sections API] Error validando curso asignado:", e);
+    return { ok: false as const, response: NextResponse.json({ error: "Error validando permisos" }, { status: 500 }) };
+  }
+
+  return { ok: true as const, authUser, supabaseAdmin };
+}
 
 // GET - Obtener secciones de un curso
 export async function GET(request: NextRequest) {
@@ -19,8 +50,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const access = await validateCourseAccess(courseId);
+    if (!access.ok) return access.response;
+    const supabase = access.supabaseAdmin;
+
     const { data: sections, error } = await supabase
-      .from("course_sections")
+      .from(TABLES.COURSE_SECTIONS)
       .select(`
         *,
         lessons:lessons(id, title, description, order, type, duration_minutes)
@@ -65,11 +100,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const access = await validateCourseAccess(courseId);
+    if (!access.ok) return access.response;
+    const supabase = access.supabaseAdmin;
+
     // Si no se proporciona order, obtener el máximo actual + 1
     let sectionOrder = order;
     if (sectionOrder === undefined) {
       const { data: existingSections } = await supabase
-        .from("course_sections")
+        .from(TABLES.COURSE_SECTIONS)
         .select("order")
         .eq("course_id", courseId)
         .order("order", { ascending: false })
@@ -81,7 +120,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: section, error } = await supabase
-      .from("course_sections")
+      .from(TABLES.COURSE_SECTIONS)
       .insert({
         course_id: courseId,
         title,
@@ -123,6 +162,26 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: existingSection, error: existingSectionError } = await supabaseAdmin
+      .from(TABLES.COURSE_SECTIONS)
+      .select("id, course_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (existingSectionError) {
+      console.error("Error fetching section:", existingSectionError);
+      return NextResponse.json({ error: "Error al obtener sección" }, { status: 500 });
+    }
+
+    if (!existingSection) {
+      return NextResponse.json({ error: "Sección no encontrada" }, { status: 404 });
+    }
+
+    const access = await validateCourseAccess(existingSection.course_id);
+    if (!access.ok) return access.response;
+    const supabase = access.supabaseAdmin;
+
     const updateData: Record<string, unknown> = {};
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
@@ -130,7 +189,7 @@ export async function PUT(request: NextRequest) {
     if (isExpanded !== undefined) updateData.is_expanded = isExpanded;
 
     const { data: section, error } = await supabase
-      .from("course_sections")
+      .from(TABLES.COURSE_SECTIONS)
       .update(updateData)
       .eq("id", id)
       .select()
@@ -167,15 +226,35 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: existingSection, error: existingSectionError } = await supabaseAdmin
+      .from(TABLES.COURSE_SECTIONS)
+      .select("id, course_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (existingSectionError) {
+      console.error("Error fetching section:", existingSectionError);
+      return NextResponse.json({ error: "Error al obtener sección" }, { status: 500 });
+    }
+
+    if (!existingSection) {
+      return NextResponse.json({ error: "Sección no encontrada" }, { status: 404 });
+    }
+
+    const access = await validateCourseAccess(existingSection.course_id);
+    if (!access.ok) return access.response;
+    const supabase = access.supabaseAdmin;
+
     // Primero, desvincular las lecciones de esta sección
     await supabase
-      .from("lessons")
+      .from(TABLES.LESSONS)
       .update({ section_id: null })
       .eq("section_id", id);
 
     // Luego eliminar la sección
     const { error } = await supabase
-      .from("course_sections")
+      .from(TABLES.COURSE_SECTIONS)
       .delete()
       .eq("id", id);
 

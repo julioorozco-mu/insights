@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { TABLES } from '@/utils/constants';
+import { requireApiRoles } from '@/lib/auth/apiRouteAuth';
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireApiRoles(['admin', 'superadmin', 'support']);
+    if (auth instanceof NextResponse) return auth;
+
     const { email, password, name, phone, bio, avatarUrl, expertise, skipTeacherRecord } = await req.json();
     if (!email || !password || !name) {
       return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });

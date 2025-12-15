@@ -565,7 +565,7 @@ export default function SpeakersPage() {
     setSelectedSpeaker(speaker);
     setAssignedCoursesCount(null);
     setShowDeleteModal(true);
-    void fetchAssignedCoursesCount(speaker.id);
+    void fetchAssignedCoursesCount(speaker.userId || speaker.id);
   };
 
   const handleConfirmDelete = async () => {

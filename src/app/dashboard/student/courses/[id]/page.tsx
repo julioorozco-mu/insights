@@ -282,7 +282,7 @@ export default function StudentCoursePage() {
         // Verificar inscripción usando API (bypaseando RLS)
         // En modo preview (para maestros), saltamos esta validación
         if (!isPreviewMode) {
-          const enrollmentRes = await fetch(`/api/student/check-enrollment?userId=${user.id}&courseId=${params.id}`);
+          const enrollmentRes = await fetch(`/api/student/check-enrollment?courseId=${params.id}`);
           
           if (!enrollmentRes.ok) {
             console.error('Error verificando inscripción');
@@ -303,7 +303,7 @@ export default function StudentCoursePage() {
         // En modo preview, agregamos el parámetro para saltar validación de inscripción
         const lessonsUrl = isPreviewMode 
           ? `/api/student/getLessons?courseId=${params.id}&preview=true`
-          : `/api/student/getLessons?courseId=${params.id}&userId=${user.id}`;
+          : `/api/student/getLessons?courseId=${params.id}`;
         const lessonsRes = await fetch(lessonsUrl);
         
         if (lessonsRes.ok) {

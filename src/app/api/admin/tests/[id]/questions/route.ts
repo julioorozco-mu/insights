@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { CreateQuestionDTO } from '@/types/test';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
+import { teacherHasViewAccessToTest, teacherIsTestCreator } from '@/lib/auth/testPermissions';
 
 /**
  * GET /api/admin/tests/[id]/questions
@@ -17,6 +14,27 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+
+    const authUser = await getApiAuthUser();
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin) {
+      if (authUser.role !== 'teacher') {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      const allowed = await teacherHasViewAccessToTest(authUser.id, id);
+      if (!allowed) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
 
     // Verificar que el test existe
     const { data: test, error: testError } = await supabaseAdmin
@@ -85,6 +103,27 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+
+    const authUser = await getApiAuthUser();
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin) {
+      if (authUser.role !== 'teacher') {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      const isCreator = await teacherIsTestCreator(authUser.id, id);
+      if (!isCreator) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
     const body: CreateQuestionDTO = await request.json();
 
     // Validar datos requeridos

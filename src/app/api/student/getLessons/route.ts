@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { TABLES } from '@/utils/constants';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
+import { teacherHasAccessToCourse } from '@/lib/auth/coursePermissions';
 
 export async function GET(req: NextRequest) {
   try {
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
     const supabaseAdmin = getSupabaseAdmin();
     const { searchParams } = new URL(req.url);
     const courseId = searchParams.get('courseId');
-    const userId = searchParams.get('userId');
     const isPreview = searchParams.get('preview') === 'true';
 
     if (!courseId) {
@@ -16,15 +23,15 @@ export async function GET(req: NextRequest) {
 
     // En modo preview (para maestros), no requerimos userId ni validamos inscripción
     if (!isPreview) {
-      if (!userId) {
-        return NextResponse.json({ error: 'userId es requerido' }, { status: 400 });
+      if (authUser.role !== 'student') {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
       }
 
       // 1. Obtener registro de estudiante
       const { data: student, error: studentError } = await supabaseAdmin
         .from(TABLES.STUDENTS)
         .select('id')
-        .eq('user_id', userId)
+        .eq('user_id', authUser.id)
         .maybeSingle();
 
       if (studentError) {
@@ -51,6 +58,25 @@ export async function GET(req: NextRequest) {
 
       if (!enrollment) {
         return NextResponse.json({ error: 'No estás inscrito en este curso' }, { status: 403 });
+      }
+    } else {
+      const isAdmin =
+        authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+      if (!isAdmin) {
+        if (authUser.role !== 'teacher') {
+          return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+        }
+
+        try {
+          const allowed = await teacherHasAccessToCourse(authUser.id, courseId);
+          if (!allowed) {
+            return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+          }
+        } catch (e) {
+          console.error('[getLessons API] Error validando curso asignado:', e);
+          return NextResponse.json({ error: 'Error validando permisos' }, { status: 500 });
+        }
       }
     }
 

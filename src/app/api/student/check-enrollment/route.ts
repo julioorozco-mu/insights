@@ -1,23 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { TABLES } from '@/utils/constants';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
 
 export async function GET(req: NextRequest) {
   try {
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    if (authUser.role !== 'student') {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    }
+
     const supabaseAdmin = getSupabaseAdmin();
     const { searchParams } = new URL(req.url);
-    const userId = searchParams.get('userId');
     const courseId = searchParams.get('courseId');
 
-    if (!userId || !courseId) {
-      return NextResponse.json({ error: 'userId y courseId son requeridos' }, { status: 400 });
+    if (!courseId) {
+      return NextResponse.json({ error: 'courseId es requerido' }, { status: 400 });
     }
 
     // 1. Obtener registro de estudiante
     const { data: student, error: studentError } = await supabaseAdmin
       .from(TABLES.STUDENTS)
       .select('id')
-      .eq('user_id', userId)
+      .eq('user_id', authUser.id)
       .maybeSingle();
 
     if (studentError) {

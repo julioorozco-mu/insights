@@ -35,7 +35,7 @@ export default function StudentCourseDetailPage() {
 
       try {
         // Obtener las lecciones del curso
-        const res = await fetch(`/api/student/getLessons?courseId=${courseId}&userId=${user.id}`);
+        const res = await fetch(`/api/student/getLessons?courseId=${courseId}`);
         
         if (!res.ok) {
           const data = await res.json();

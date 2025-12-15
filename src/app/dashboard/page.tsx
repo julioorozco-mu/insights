@@ -102,10 +102,10 @@ function cleanDescription(html: string | undefined | null, maxLength: number = 1
 // Función para obtener conteo de estudiantes de un curso
 async function getStudentCount(courseId: string): Promise<number> {
   try {
-    const response = await fetch(`/api/admin/getStudentsByCourse?courseId=${courseId}`);
+    const response = await fetch(`/api/student/getCourseStudentCount?courseId=${courseId}`);
     if (response.ok) {
       const data = await response.json();
-      return data.students?.length || 0;
+      return data.count || 0;
     }
   } catch {
     // Silently fail
@@ -197,7 +197,7 @@ export default function DashboardPage() {
     try {
       // 1. Obtener inscripciones del estudiante
       console.log("[Dashboard] Cargando enrollments para usuario:", user.id, user.email);
-      const enrollmentsRes = await fetch(`/api/admin/getEnrollments?userId=${user.id}`);
+      const enrollmentsRes = await fetch(`/api/student/getEnrollments`);
       let enrollments: EnrollmentData[] = [];
 
       if (enrollmentsRes.ok) {
@@ -764,6 +764,8 @@ export default function DashboardPage() {
             },
             lessonsCount: lessonsCount,
             completedLessonsCount: lessonsCount,
+            progressPercent: 100,
+            studyTimeMinutes: 0,
           };
         })
       );

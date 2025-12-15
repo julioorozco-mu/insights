@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-// Cliente de Supabase con service role
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
+import { getTeacherAssignedCourseIds, teacherHasViewAccessToTest } from '@/lib/auth/testPermissions';
 
 /**
  * GET /api/admin/tests/[id]/results
@@ -17,6 +13,27 @@ export async function GET(
 ) {
   try {
     const testId = params.id;
+
+    const authUser = await getApiAuthUser();
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin) {
+      if (authUser.role !== 'teacher') {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      const allowed = await teacherHasViewAccessToTest(authUser.id, testId);
+      if (!allowed) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
 
     // Obtener información del test
     const { data: test, error: testError } = await supabaseAdmin
@@ -33,7 +50,12 @@ export async function GET(
     }
 
     // Obtener todos los intentos de este test
-    const { data: attempts, error: attemptsError } = await supabaseAdmin
+    const teacherAssignedCourseIds =
+      !isAdmin && authUser.role === 'teacher'
+        ? await getTeacherAssignedCourseIds(authUser.id)
+        : null;
+
+    let attemptsQuery = supabaseAdmin
       .from('test_attempts')
       .select(`
         *,
@@ -47,6 +69,20 @@ export async function GET(
       `)
       .eq('test_id', testId)
       .order('created_at', { ascending: false });
+
+    if (teacherAssignedCourseIds) {
+      if (teacherAssignedCourseIds.length === 0) {
+        return NextResponse.json({
+          test: transformTest(test),
+          stats: getEmptyStats(),
+          attempts: [],
+        });
+      }
+
+      attemptsQuery = attemptsQuery.in('course_id', teacherAssignedCourseIds);
+    }
+
+    const { data: attempts, error: attemptsError } = await attemptsQuery;
 
     if (attemptsError) {
       console.error('Error fetching attempts:', attemptsError);

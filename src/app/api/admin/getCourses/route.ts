@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { TABLES } from '@/utils/constants';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
 
 // Función para mapear curso desde la base de datos
 function mapToCourse(row: any) {
@@ -37,15 +38,27 @@ function mapToCourse(row: any) {
 export async function GET(req: NextRequest) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
-    const { searchParams } = new URL(req.url);
-    const role = searchParams.get('role');
-    const userId = searchParams.get('userId');
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const role = authUser.role;
+    const userId = authUser.id;
+
+    const isAdmin = role === 'admin' || role === 'superadmin' || role === 'support';
+    const isTeacher = role === 'teacher';
+
+    if (!isAdmin && !isTeacher) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    }
 
     let coursesData: any[] = [];
 
     // Determinar qué cursos cargar según el rol
-    if (role === 'admin') {
-      // Admin ve todos los cursos
+    if (isAdmin) {
+      // Admin/Superadmin/Support ve todos los cursos
       const { data, error } = await supabaseAdmin
         .from(TABLES.COURSES)
         .select('*')
@@ -57,7 +70,7 @@ export async function GET(req: NextRequest) {
       }
 
       coursesData = data || [];
-    } else if (role === 'teacher' && userId) {
+    } else if (isTeacher && userId) {
       // Teacher ve solo sus cursos
       const { data, error } = await supabaseAdmin
         .from(TABLES.COURSES)
@@ -71,25 +84,88 @@ export async function GET(req: NextRequest) {
       }
 
       coursesData = data || [];
-    } else {
-      // Student o no autenticado ve solo cursos publicados
-      const { data, error } = await supabaseAdmin
-        .from(TABLES.COURSES)
-        .select('*')
-        .eq('is_published', true)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('[getCourses API] Error loading published courses:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+      if (coursesData.length === 0) {
+        const { data: teacherRow, error: teacherError } = await supabaseAdmin
+          .from(TABLES.TEACHERS)
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (!teacherError && teacherRow?.id) {
+          const { data: legacyCourses, error: legacyError } = await supabaseAdmin
+            .from(TABLES.COURSES)
+            .select('*')
+            .contains('teacher_ids', [teacherRow.id])
+            .order('created_at', { ascending: false });
+
+          if (!legacyError && legacyCourses) {
+            coursesData = legacyCourses;
+          }
+        }
       }
-
-      coursesData = data || [];
     }
 
     // Mapear cursos
-    const courses = coursesData.map(mapToCourse);
+    let courses = coursesData.map(mapToCourse);
+
+    const legacyCandidateIds = new Set<string>();
+    courses.forEach((course: any) => {
+      (course.speakerIds || []).forEach((id: string) => legacyCandidateIds.add(id));
+      (course.coHostIds || []).forEach((id: string) => legacyCandidateIds.add(id));
+    });
+
+    if (legacyCandidateIds.size > 0) {
+      const allCandidateIds = Array.from(legacyCandidateIds);
+      const { data: existingUsers, error: existingUsersError } = await supabaseAdmin
+        .from(TABLES.USERS)
+        .select('id')
+        .in('id', allCandidateIds);
+
+      if (existingUsersError) {
+        console.error('[getCourses API] Error validando users:', existingUsersError);
+        return NextResponse.json({ error: 'Error cargando cursos' }, { status: 500 });
+      }
+
+      const userIdSet = new Set((existingUsers || []).map((u: any) => u.id));
+      const remainingIds = allCandidateIds.filter((id) => !userIdSet.has(id));
+
+      const teacherIdToUserId = new Map<string, string>();
+      if (remainingIds.length > 0) {
+        const { data: teachers, error: teachersError } = await supabaseAdmin
+          .from(TABLES.TEACHERS)
+          .select('id, user_id')
+          .in('id', remainingIds);
+
+        if (teachersError) {
+          console.error('[getCourses API] Error cargando teachers:', teachersError);
+          return NextResponse.json({ error: 'Error cargando cursos' }, { status: 500 });
+        }
+
+        (teachers || []).forEach((t: any) => {
+          if (t?.id && t?.user_id) {
+            teacherIdToUserId.set(t.id, t.user_id);
+          }
+        });
+      }
+
+      const mapIds = (ids: any) => {
+        const list = Array.isArray(ids) ? ids : [];
+        return Array.from(
+          new Set(
+            list
+              .map((id: any) => teacherIdToUserId.get(id) || id)
+              .filter((id: any) => !!id)
+          )
+        );
+      };
+
+      courses = courses.map((course: any) => ({
+        ...course,
+        speakerIds: mapIds(course.speakerIds),
+        coHostIds: mapIds(course.coHostIds),
+      }));
+    }
 
     // Recolectar todos los IDs únicos de speakers y lessons
     const allSpeakerIds = new Set<string>();

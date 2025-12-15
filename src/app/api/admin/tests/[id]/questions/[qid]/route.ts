@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { UpdateQuestionDTO } from '@/types/test';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
+import { teacherHasViewAccessToTest, teacherIsTestCreator } from '@/lib/auth/testPermissions';
 
 /**
  * GET /api/admin/tests/[id]/questions/[qid]
@@ -17,6 +14,27 @@ export async function GET(
 ) {
   try {
     const { id, qid } = await params;
+
+    const authUser = await getApiAuthUser();
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin) {
+      if (authUser.role !== 'teacher') {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      const allowed = await teacherHasViewAccessToTest(authUser.id, id);
+      if (!allowed) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
 
     const { data: question, error } = await supabaseAdmin
       .from('test_questions')
@@ -69,6 +87,27 @@ export async function PUT(
 ) {
   try {
     const { id, qid } = await params;
+
+    const authUser = await getApiAuthUser();
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin) {
+      if (authUser.role !== 'teacher') {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      const isCreator = await teacherIsTestCreator(authUser.id, id);
+      if (!isCreator) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
     const body: UpdateQuestionDTO = await request.json();
 
     // Verificar que la pregunta existe
@@ -153,6 +192,27 @@ export async function DELETE(
   try {
     const { id, qid } = await params;
 
+    const authUser = await getApiAuthUser();
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin) {
+      if (authUser.role !== 'teacher') {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      const isCreator = await teacherIsTestCreator(authUser.id, id);
+      if (!isCreator) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+
     // Verificar que la pregunta existe
     const { data: existingQuestion, error: findError } = await supabaseAdmin
       .from('test_questions')
@@ -183,13 +243,15 @@ export async function DELETE(
     }
 
     // Reordenar preguntas restantes
-    await supabaseAdmin.rpc('reorder_questions_after_delete', {
-      p_test_id: id,
-      p_deleted_order: existingQuestion.order,
-    }).catch(() => {
+    try {
+      await supabaseAdmin.rpc('reorder_questions_after_delete', {
+        p_test_id: id,
+        p_deleted_order: existingQuestion.order,
+      });
+    } catch {
       // Si la función RPC no existe, reordenar manualmente
       // Esto es un fallback por si la función no existe
-    });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

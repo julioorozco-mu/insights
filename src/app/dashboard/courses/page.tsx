@@ -67,12 +67,7 @@ export default function CoursesPage() {
     const loadCourses = async () => {
       try {
         // Usar API del servidor para evitar problemas de RLS y timeouts
-        const params = new URLSearchParams({
-          role: user.role || 'student',
-          userId: user.id || '',
-        });
-        
-        const res = await fetch(`/api/admin/getCourses?${params.toString()}`);
+        const res = await fetch('/api/admin/getCourses');
         
         if (!res.ok) {
           const errorData = await res.json();

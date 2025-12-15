@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { requireApiRoles } from '@/lib/auth/apiRouteAuth';
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireApiRoles(['admin', 'superadmin', 'support']);
+    if (auth instanceof NextResponse) return auth;
+
     const { uid, password } = await req.json();
     
     if (!uid || !password) {

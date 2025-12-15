@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { TABLES } from '@/utils/constants';
+import { requireApiRoles } from '@/lib/auth/apiRouteAuth';
 
 // POST - Crear nuevo cuestionario
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireApiRoles(['admin', 'superadmin', 'support']);
+    if (auth instanceof NextResponse) return auth;
+
     const body = await request.json();
     const { title, description, type, questions } = body;
 
@@ -70,6 +74,9 @@ export async function POST(request: NextRequest) {
 // PUT - Actualizar cuestionario existente
 export async function PUT(request: NextRequest) {
   try {
+    const auth = await requireApiRoles(['admin', 'superadmin', 'support']);
+    if (auth instanceof NextResponse) return auth;
+
     const body = await request.json();
     const { id, title, description, type, questions } = body;
 
@@ -145,6 +152,9 @@ export async function PUT(request: NextRequest) {
 // DELETE - Eliminar cuestionario
 export async function DELETE(request: NextRequest) {
   try {
+    const auth = await requireApiRoles(['admin', 'superadmin', 'support']);
+    if (auth instanceof NextResponse) return auth;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
