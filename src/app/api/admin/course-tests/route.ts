@@ -1,20 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-/**
- * Obtiene un cliente de Supabase con la service role.
- * Se valida que las env vars existan para evitar 500 silenciosos.
- */
-function getSupabaseAdmin() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('Faltan variables de entorno NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY');
-  }
-
-  return createClient(supabaseUrl, serviceRoleKey);
-}
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { TABLES } from '@/utils/constants';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
+import { teacherHasAccessToCourse } from '@/lib/auth/coursePermissions';
 
 /**
  * GET /api/admin/course-tests
@@ -22,9 +10,38 @@ function getSupabaseAdmin() {
  */
 export async function GET(request: NextRequest) {
   try {
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
     const supabaseAdmin = getSupabaseAdmin();
     const searchParams = request.nextUrl.searchParams;
     const courseId = searchParams.get('courseId');
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin) {
+      if (authUser.role !== 'teacher') {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      if (!courseId) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      try {
+        const allowed = await teacherHasAccessToCourse(authUser.id, courseId);
+        if (!allowed) {
+          return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+        }
+      } catch (e) {
+        console.error('Error validating assigned course:', e);
+        return NextResponse.json({ error: 'Error validando permisos' }, { status: 500 });
+      }
+    }
 
     let query = supabaseAdmin
       .from('course_tests')
@@ -96,7 +113,7 @@ export async function GET(request: NextRequest) {
     // Errores por falta de variables de entorno
     if (error instanceof Error && error.message.includes('SUPABASE')) {
       return NextResponse.json(
-        { error: 'Faltan variables de entorno para Supabase (NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY)' },
+        { error: 'Faltan variables de entorno para Supabase' },
         { status: 500 }
       );
     }
@@ -113,16 +130,41 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
     const supabaseAdmin = getSupabaseAdmin();
     const body = await request.json();
-    const { testId, courseId, createdBy, isRequired, availableFrom, availableUntil } = body;
+    const { testId, courseId, isRequired, availableFrom, availableUntil } = body;
 
     // Validar datos requeridos
-    if (!testId || !courseId || !createdBy) {
+    if (!testId || !courseId) {
       return NextResponse.json(
-        { error: 'El test, curso y creador son requeridos' },
+        { error: 'El test y curso son requeridos' },
         { status: 400 }
       );
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin) {
+      if (authUser.role !== 'teacher') {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      try {
+        const allowed = await teacherHasAccessToCourse(authUser.id, courseId);
+        if (!allowed) {
+          return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+        }
+      } catch (e) {
+        console.error('Error validating assigned course:', e);
+        return NextResponse.json({ error: 'Error validando permisos' }, { status: 500 });
+      }
     }
 
     // Verificar que el test existe
@@ -174,7 +216,7 @@ export async function POST(request: NextRequest) {
       .insert({
         test_id: testId,
         course_id: courseId,
-        created_by: createdBy,
+        created_by: authUser.id,
         is_required: isRequired ?? true,
         available_from: availableFrom || null,
         available_until: availableUntil || null,
@@ -219,7 +261,7 @@ export async function POST(request: NextRequest) {
 
     if (error instanceof Error && error.message.includes('SUPABASE')) {
       return NextResponse.json(
-        { error: 'Faltan variables de entorno para Supabase (NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY)' },
+        { error: 'Faltan variables de entorno para Supabase' },
         { status: 500 }
       );
     }
@@ -236,11 +278,57 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
     const supabaseAdmin = getSupabaseAdmin();
     const searchParams = request.nextUrl.searchParams;
     const courseTestId = searchParams.get('id');
     const courseId = searchParams.get('courseId');
     const testId = searchParams.get('testId');
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin && authUser.role !== 'teacher') {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    }
+
+    let targetCourseId: string | null = courseId;
+
+    if (courseTestId && !targetCourseId) {
+      const { data: courseTestRow, error: courseTestRowError } = await supabaseAdmin
+        .from('course_tests')
+        .select('course_id')
+        .eq('id', courseTestId)
+        .maybeSingle();
+
+      if (courseTestRowError) {
+        console.error('Error fetching course_test:', courseTestRowError);
+        return NextResponse.json({ error: 'Error validando vinculación' }, { status: 500 });
+      }
+
+      targetCourseId = (courseTestRow as any)?.course_id || null;
+    }
+
+    if (!isAdmin) {
+      if (!targetCourseId) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      try {
+        const allowed = await teacherHasAccessToCourse(authUser.id, targetCourseId);
+        if (!allowed) {
+          return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+        }
+      } catch (e) {
+        console.error('Error validating assigned course:', e);
+        return NextResponse.json({ error: 'Error validando permisos' }, { status: 500 });
+      }
+    }
 
     // Eliminar por ID específico o por combinación course+test
     if (courseTestId) {
@@ -283,7 +371,7 @@ export async function DELETE(request: NextRequest) {
 
     if (error instanceof Error && error.message.includes('SUPABASE')) {
       return NextResponse.json(
-        { error: 'Faltan variables de entorno para Supabase (NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY)' },
+        { error: 'Faltan variables de entorno para Supabase' },
         { status: 500 }
       );
     }

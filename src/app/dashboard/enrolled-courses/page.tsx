@@ -105,8 +105,8 @@ export default function EnrolledCoursesPage() {
       if (!user) return;
 
       try {
-        // Obtener inscripciones del estudiante usando API admin
-        const enrollmentsRes = await fetch(`/api/admin/getEnrollments?userId=${user.id}`);
+        // Obtener inscripciones del estudiante usando API student (sesión)
+        const enrollmentsRes = await fetch(`/api/student/getEnrollments`);
         
         if (!enrollmentsRes.ok) {
           setCourses([]);

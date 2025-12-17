@@ -1,11 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { LinkTestDTO } from '@/types/test';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { TABLES } from '@/utils/constants';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
+import { teacherHasAccessToCourse } from '@/lib/auth/coursePermissions';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+type LinkTestPayload = {
+  testId: string;
+  lessonId?: string | null;
+  sectionId?: string | null;
+  courseId?: string | null;
+  isRequired?: boolean;
+  availableFrom?: string | null;
+  availableUntil?: string | null;
+  order?: number;
+};
+
+async function resolveCourseIdFromTargets(params: {
+  courseId?: string | null;
+  lessonId?: string | null;
+  sectionId?: string | null;
+}) {
+  const supabaseAdmin = getSupabaseAdmin();
+
+  if (params.courseId) return params.courseId;
+
+  if (params.lessonId) {
+    const { data: lesson, error } = await supabaseAdmin
+      .from(TABLES.LESSONS)
+      .select('course_id')
+      .eq('id', params.lessonId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return (lesson as any)?.course_id || null;
+  }
+
+  if (params.sectionId) {
+    const { data: section, error } = await supabaseAdmin
+      .from(TABLES.COURSE_SECTIONS)
+      .select('course_id')
+      .eq('id', params.sectionId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return (section as any)?.course_id || null;
+  }
+
+  return null;
+}
 
 /**
  * GET /api/admin/linked-tests
@@ -13,11 +55,49 @@ const supabaseAdmin = createClient(
  */
 export async function GET(request: NextRequest) {
   try {
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const testId = searchParams.get('testId');
     const lessonId = searchParams.get('lessonId');
     const courseId = searchParams.get('courseId');
     const sectionId = searchParams.get('sectionId');
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin) {
+      if (authUser.role !== 'teacher') {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      // No permitir listados globales para teacher
+      if (!courseId && !lessonId && !sectionId) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      const resolvedCourseId = await resolveCourseIdFromTargets({ courseId, lessonId, sectionId });
+
+      if (!resolvedCourseId) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      try {
+        const allowed = await teacherHasAccessToCourse(authUser.id, resolvedCourseId);
+        if (!allowed) {
+          return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+        }
+      } catch (e) {
+        console.error('Error validating assigned course:', e);
+        return NextResponse.json({ error: 'Error validando permisos' }, { status: 500 });
+      }
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
 
     let query = supabaseAdmin
       .from('linked_tests')
@@ -96,12 +176,19 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const body: LinkTestDTO & { createdBy: string } = await request.json();
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    const body = (await request.json()) as LinkTestPayload;
 
     // Validar datos requeridos
-    if (!body.testId || !body.createdBy) {
+    if (!body.testId) {
       return NextResponse.json(
-        { error: 'Se requiere el ID del test y del creador' },
+        { error: 'Se requiere el ID del test' },
         { status: 400 }
       );
     }
@@ -111,6 +198,35 @@ export async function POST(request: NextRequest) {
         { error: 'Se requiere vincular a una lección, sección o curso' },
         { status: 400 }
       );
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin) {
+      if (authUser.role !== 'teacher') {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      const resolvedCourseId = await resolveCourseIdFromTargets({
+        courseId: body.courseId,
+        lessonId: body.lessonId,
+        sectionId: body.sectionId,
+      });
+
+      if (!resolvedCourseId) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      try {
+        const allowed = await teacherHasAccessToCourse(authUser.id, resolvedCourseId);
+        if (!allowed) {
+          return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+        }
+      } catch (e) {
+        console.error('Error validating assigned course:', e);
+        return NextResponse.json({ error: 'Error validando permisos' }, { status: 500 });
+      }
     }
 
     // Verificar que el test existe
@@ -170,7 +286,7 @@ export async function POST(request: NextRequest) {
       available_from: body.availableFrom || null,
       available_until: body.availableUntil || null,
       order: nextOrder,
-      created_by: body.createdBy,
+      created_by: authUser.id,
     };
 
     const { data: linkedTest, error } = await supabaseAdmin

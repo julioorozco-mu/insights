@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { TABLES } from '@/utils/constants';
+import { requireApiRoles } from '@/lib/auth/apiRouteAuth';
 
 // POST - Clonar cuestionario existente
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireApiRoles(['admin', 'superadmin', 'support']);
+    if (auth instanceof NextResponse) return auth;
+
     const body = await request.json();
     const { surveyId } = body;
 

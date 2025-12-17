@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { requireApiRoles } from '@/lib/auth/apiRouteAuth';
 
 // Buckets públicos (usan getPublicUrl)
 const PUBLIC_BUCKETS: string[] = ['avatars', 'covers', 'certificates', 'files'];
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireApiRoles(['admin', 'superadmin', 'support', 'teacher']);
+    if (auth instanceof NextResponse) return auth;
+
     const formData = await req.formData();
     const file = formData.get('file') as File;
     const bucket = formData.get('bucket') as string || 'covers';

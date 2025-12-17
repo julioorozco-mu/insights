@@ -11,30 +11,25 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
 
-    const isAdmin =
-      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
-
-    if (!isAdmin) {
+    if (authUser.role !== 'student') {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
     }
 
     const supabaseAdmin = getSupabaseAdmin();
-    const { searchParams } = new URL(req.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
-      return NextResponse.json({ enrollments: [] }, { status: 200 });
-    }
 
     // Buscar el registro de estudiante
     const { data: student, error: studentError } = await supabaseAdmin
       .from(TABLES.STUDENTS)
       .select('id')
-      .eq('user_id', userId)
-      .single();
+      .eq('user_id', authUser.id)
+      .maybeSingle();
+
+    if (studentError) {
+      console.error('[student/getEnrollments API] Error:', studentError);
+      return NextResponse.json({ error: 'Error obteniendo registro de estudiante' }, { status: 500 });
+    }
 
     if (!student) {
-      // No hay registro de estudiante, retornar lista vacía
       return NextResponse.json({ enrollments: [] }, { status: 200 });
     }
 
@@ -45,7 +40,7 @@ export async function GET(req: NextRequest) {
       .eq('student_id', student.id);
 
     if (enrollmentsError) {
-      console.error('[getEnrollments API] Error:', enrollmentsError);
+      console.error('[student/getEnrollments API] Error:', enrollmentsError);
       return NextResponse.json({ error: enrollmentsError.message }, { status: 500 });
     }
 
@@ -59,9 +54,8 @@ export async function GET(req: NextRequest) {
     }));
 
     return NextResponse.json({ enrollments }, { status: 200 });
-
   } catch (e: any) {
-    console.error('[getEnrollments API] Error:', e);
+    console.error('[student/getEnrollments API] Error:', e);
     return NextResponse.json({ error: e?.message || 'Error interno' }, { status: 500 });
   }
 }

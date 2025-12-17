@@ -1,10 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { TABLES } from '@/utils/constants';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
+import { teacherHasAccessToCourse } from '@/lib/auth/coursePermissions';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+async function validateLinkedTestAccess(linkedTestId: string) {
+  const authUser = await getApiAuthUser();
+
+  if (!authUser) {
+    return { ok: false as const, response: NextResponse.json({ error: 'No autenticado' }, { status: 401 }) };
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  const { data: linkedTest, error } = await supabaseAdmin
+    .from('linked_tests')
+    .select(
+      `id, course_id, lesson_id, section_id,
+      lesson:lessons(course_id),
+      section:course_sections(course_id)`
+    )
+    .eq('id', linkedTestId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[linked-tests/[id]] Error fetching linked test:', error);
+    return { ok: false as const, response: NextResponse.json({ error: 'Error obteniendo vinculación' }, { status: 500 }) };
+  }
+
+  if (!linkedTest) {
+    return { ok: false as const, response: NextResponse.json({ error: 'Vinculación no encontrada' }, { status: 404 }) };
+  }
+
+  const isAdmin =
+    authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+  if (!isAdmin) {
+    if (authUser.role !== 'teacher') {
+      return { ok: false as const, response: NextResponse.json({ error: 'No autorizado' }, { status: 403 }) };
+    }
+
+    const resolvedCourseId =
+      (linkedTest as any).course_id ||
+      (linkedTest as any).lesson?.course_id ||
+      (linkedTest as any).section?.course_id ||
+      null;
+
+    if (!resolvedCourseId) {
+      return { ok: false as const, response: NextResponse.json({ error: 'No autorizado' }, { status: 403 }) };
+    }
+
+    try {
+      const allowed = await teacherHasAccessToCourse(authUser.id, resolvedCourseId);
+      if (!allowed) {
+        return { ok: false as const, response: NextResponse.json({ error: 'No autorizado' }, { status: 403 }) };
+      }
+    } catch (e) {
+      console.error('[linked-tests/[id]] Error validating assigned course:', e);
+      return { ok: false as const, response: NextResponse.json({ error: 'Error validando permisos' }, { status: 500 }) };
+    }
+  }
+
+  return { ok: true as const, authUser, supabaseAdmin };
+}
 
 /**
  * GET /api/admin/linked-tests/[id]
@@ -16,6 +74,10 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+
+    const access = await validateLinkedTestAccess(id);
+    if (!access.ok) return access.response;
+    const supabaseAdmin = access.supabaseAdmin;
 
     const { data: linkedTest, error } = await supabaseAdmin
       .from('linked_tests')
@@ -93,21 +155,12 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
+
+    const access = await validateLinkedTestAccess(id);
+    if (!access.ok) return access.response;
+    const supabaseAdmin = access.supabaseAdmin;
+
     const body = await request.json();
-
-    // Verificar que existe
-    const { data: existing, error: findError } = await supabaseAdmin
-      .from('linked_tests')
-      .select('id')
-      .eq('id', id)
-      .single();
-
-    if (findError || !existing) {
-      return NextResponse.json(
-        { error: 'Vinculación no encontrada' },
-        { status: 404 }
-      );
-    }
 
     // Preparar datos para actualización
     const updateData: Record<string, unknown> = {};
@@ -168,19 +221,9 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    // Verificar que existe
-    const { data: existing, error: findError } = await supabaseAdmin
-      .from('linked_tests')
-      .select('id')
-      .eq('id', id)
-      .single();
-
-    if (findError || !existing) {
-      return NextResponse.json(
-        { error: 'Vinculación no encontrada' },
-        { status: 404 }
-      );
-    }
+    const access = await validateLinkedTestAccess(id);
+    if (!access.ok) return access.response;
+    const supabaseAdmin = access.supabaseAdmin;
 
     // Eliminar
     const { error } = await supabaseAdmin

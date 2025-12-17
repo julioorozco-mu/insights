@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { Test, CreateTestDTO } from '@/types/test';
-
-// Crear cliente de Supabase con service role para bypass de RLS
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
 
 /**
  * GET /api/admin/tests
@@ -14,9 +9,24 @@ const supabaseAdmin = createClient(
  */
 export async function GET(request: NextRequest) {
   try {
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin && authUser.role !== 'teacher') {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get('status');
-    const createdBy = searchParams.get('createdBy');
+    const createdByParam = searchParams.get('createdBy');
     const search = searchParams.get('search');
     const page = parseInt(searchParams.get('page') || '1');
     const pageSize = parseInt(searchParams.get('pageSize') || '20');
@@ -36,8 +46,12 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status);
     }
 
-    if (createdBy) {
-      query = query.eq('created_by', createdBy);
+    if (isAdmin) {
+      if (createdByParam) {
+        query = query.eq('created_by', createdByParam);
+      }
+    } else {
+      query = query.eq('created_by', authUser.id);
     }
 
     if (search) {
@@ -142,34 +156,28 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const body: CreateTestDTO & { createdBy: string } = await request.json();
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin && authUser.role !== 'teacher') {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+
+    const body: CreateTestDTO = await request.json();
 
     // Validar datos requeridos
-    if (!body.title || !body.createdBy) {
+    if (!body.title) {
       return NextResponse.json(
-        { error: 'El título y el creador son requeridos' },
+        { error: 'El título es requerido' },
         { status: 400 }
-      );
-    }
-
-    // Verificar que el usuario existe y tiene permisos
-    const { data: user, error: userError } = await supabaseAdmin
-      .from('users')
-      .select('id, role')
-      .eq('id', body.createdBy)
-      .single();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        { error: 'Usuario no encontrado' },
-        { status: 404 }
-      );
-    }
-
-    if (!['admin', 'superadmin', 'teacher'].includes(user.role)) {
-      return NextResponse.json(
-        { error: 'No tienes permisos para crear evaluaciones' },
-        { status: 403 }
       );
     }
 
@@ -188,7 +196,7 @@ export async function POST(request: NextRequest) {
       show_results_immediately: body.showResultsImmediately ?? true,
       show_correct_answers: body.showCorrectAnswers ?? true,
       allow_review: body.allowReview ?? true,
-      created_by: body.createdBy,
+      created_by: authUser.id,
       status: 'draft',
       is_active: true,
     };

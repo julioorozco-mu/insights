@@ -1,16 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { TABLES } from '@/utils/constants';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
 
 export async function GET(req: NextRequest) {
   try {
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin && authUser.role !== 'teacher') {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    }
+
     const supabaseAdmin = getSupabaseAdmin();
 
     // Intentar cargar de teacher_resources primero
-    const { data: teacherResData, error: teacherResError } = await supabaseAdmin
+    let teacherResourcesQuery = supabaseAdmin
       .from(TABLES.TEACHER_RESOURCES)
       .select('*')
       .order('created_at', { ascending: false });
+
+    if (!isAdmin && authUser.role === 'teacher') {
+      teacherResourcesQuery = teacherResourcesQuery.eq('owner_id', authUser.id);
+    }
+
+    const { data: teacherResData, error: teacherResError } = await teacherResourcesQuery;
 
     let data: any[] = [];
 
@@ -23,10 +43,16 @@ export async function GET(req: NextRequest) {
       console.log('[getResources API] teacher_resources error, trying file_attachments:', teacherResError);
       
       // Fallback a file_attachments
-      const { data: fileResData, error: fileResError } = await supabaseAdmin
+      let fileAttachmentsQuery = supabaseAdmin
         .from(TABLES.FILE_ATTACHMENTS)
         .select('*')
         .order('created_at', { ascending: false });
+
+      if (!isAdmin && authUser.role === 'teacher') {
+        fileAttachmentsQuery = fileAttachmentsQuery.eq('owner_id', authUser.id);
+      }
+
+      const { data: fileResData, error: fileResError } = await fileAttachmentsQuery;
 
       if (fileResError) {
         console.error('[getResources API] Error loading file_attachments:', fileResError);

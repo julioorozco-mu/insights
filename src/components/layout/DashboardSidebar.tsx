@@ -155,6 +155,7 @@ const adminMenuConfig: RoleMenuConfig = {
       items: [
         { path: "/dashboard/certificates", label: "Insignias", icon: Award, indent: true },
         { path: "/dashboard/courses", label: "Cursos", icon: BookOpen, indent: true },
+        { path: "/dashboard/assignments", label: "Asignaciones", icon: ClipboardCheck, indent: true },
         { path: "/dashboard/resources", label: "Recursos", icon: FolderOpen, indent: true },
       ],
     },

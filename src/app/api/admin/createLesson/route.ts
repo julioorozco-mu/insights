@@ -1,12 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { TABLES } from '@/utils/constants';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
+import { teacherHasAccessToCourse } from '@/lib/auth/coursePermissions';
 
 export async function POST(req: NextRequest) {
   try {
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin && authUser.role !== 'teacher') {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    }
+
     const supabaseAdmin = getSupabaseAdmin();
     const body = await req.json();
-    const { courseId, title, order, type, createdBy } = body;
+    const { courseId, title, order, type } = body;
 
     if (!courseId) {
       return NextResponse.json({ error: 'courseId es requerido' }, { status: 400 });
@@ -14,10 +29,6 @@ export async function POST(req: NextRequest) {
 
     if (!title || !title.trim()) {
       return NextResponse.json({ error: 'El título es requerido' }, { status: 400 });
-    }
-
-    if (!createdBy) {
-      return NextResponse.json({ error: 'createdBy es requerido' }, { status: 400 });
     }
 
     // Verificar que el curso exista y obtener lesson_ids actual
@@ -32,13 +43,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Curso no encontrado' }, { status: 404 });
     }
 
+    if (!isAdmin) {
+      try {
+        const allowed = await teacherHasAccessToCourse(authUser.id, courseId);
+        if (!allowed) {
+          return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+        }
+      } catch (e) {
+        console.error('[createLesson API] Error validando curso asignado:', e);
+        return NextResponse.json({ error: 'Error validando permisos' }, { status: 500 });
+      }
+    }
+
     // Crear la lección
     const lessonData = {
       course_id: courseId,
       title: title.trim(),
       order: order ?? 0,
       type: type || 'video',
-      created_by: createdBy,
+      created_by: authUser.id,
       is_active: true,
       is_published: false,
       is_live: false,

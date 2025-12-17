@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { TABLES } from '@/utils/constants';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
+import { teacherHasAccessToCourse } from '@/lib/auth/coursePermissions';
 
 export async function GET(req: NextRequest) {
   try {
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
     const supabaseAdmin = getSupabaseAdmin();
     const { searchParams } = new URL(req.url);
     const lessonId = searchParams.get('lessonId');
@@ -25,6 +33,27 @@ export async function GET(req: NextRequest) {
 
     if (!data) {
       return NextResponse.json({ error: 'Lección no encontrada' }, { status: 404 });
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin) {
+      if (authUser.role !== 'teacher') {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+      }
+
+      const courseId = data.course_id || '';
+
+      try {
+        const allowed = await teacherHasAccessToCourse(authUser.id, courseId);
+        if (!allowed) {
+          return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+        }
+      } catch (e) {
+        console.error('[getLesson API] Error validando curso asignado:', e);
+        return NextResponse.json({ error: 'Error validando permisos' }, { status: 500 });
+      }
     }
 
     // Mapear lección al formato esperado

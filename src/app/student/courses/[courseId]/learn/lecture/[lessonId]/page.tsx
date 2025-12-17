@@ -301,7 +301,15 @@ interface QuizData {
   questions: QuizQuestion[];
 }
 
-function QuizBlock({ quizId, quizTitle }: { quizId?: string; quizTitle?: string }) {
+function QuizBlock({
+  quizId,
+  quizTitle,
+  courseId,
+}: {
+  quizId?: string;
+  quizTitle?: string;
+  courseId: string;
+}) {
   const [quiz, setQuiz] = useState<QuizData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -320,22 +328,22 @@ function QuizBlock({ quizId, quizTitle }: { quizId?: string; quizTitle?: string 
     const loadQuiz = async () => {
       try {
         setLoading(true);
-        const res = await fetch('/api/admin/getSurveys');
+        const res = await fetch(`/api/student/getSurvey?surveyId=${quizId}&courseId=${courseId}`);
         if (!res.ok) throw new Error('Error al cargar el quiz');
-        
+
         const data = await res.json();
-        const foundQuiz = data.surveys?.find((s: any) => s.id === quizId);
-        
-        if (foundQuiz) {
+        const survey = data.survey;
+
+        if (survey) {
           setQuiz({
-            id: foundQuiz.id,
-            title: foundQuiz.title,
-            description: foundQuiz.description,
-            type: foundQuiz.type,
-            questions: foundQuiz.questions || [],
+            id: survey.id,
+            title: survey.title,
+            description: survey.description,
+            type: survey.type,
+            questions: survey.questions || [],
           });
         } else {
-          setError("Quiz no encontrado");
+          setError('Quiz no encontrado');
         }
       } catch (err: any) {
         console.error("Error loading quiz:", err);
@@ -635,7 +643,7 @@ function QuizBlock({ quizId, quizTitle }: { quizId?: string; quizTitle?: string 
 }
 
 // ===== COMPONENT: Content Block Renderer =====
-function ContentBlockRenderer({ block }: { block: ContentBlock }) {
+function ContentBlockRenderer({ block, courseId }: { block: ContentBlock; courseId: string }) {
   switch (block.type) {
     case 'heading':
       {
@@ -844,7 +852,13 @@ function ContentBlockRenderer({ block }: { block: ContentBlock }) {
       );
     
     case 'quiz':
-      return <QuizBlock quizId={block.data?.quizId} quizTitle={block.data?.quizTitle} />;
+      return (
+        <QuizBlock
+          quizId={block.data?.quizId}
+          quizTitle={block.data?.quizTitle}
+          courseId={courseId}
+        />
+      );
     
     default:
       return null;
@@ -852,7 +866,7 @@ function ContentBlockRenderer({ block }: { block: ContentBlock }) {
 }
 
 // ===== COMPONENT: Subsection Content Viewer =====
-function SubsectionViewer({ subsection }: { subsection: Subsection | null }) {
+function SubsectionViewer({ subsection, courseId }: { subsection: Subsection | null; courseId: string }) {
   if (!subsection) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
@@ -874,7 +888,7 @@ function SubsectionViewer({ subsection }: { subsection: Subsection | null }) {
   return (
     <div className="max-w-4xl mx-auto">
       {blocks.map((block) => (
-        <ContentBlockRenderer key={block.id} block={block} />
+        <ContentBlockRenderer key={block.id} block={block} courseId={courseId} />
       ))}
     </div>
   );
@@ -1110,8 +1124,8 @@ export default function LessonPlayerPage() {
         // Fetch lessons, sections and course info
         // En modo preview, agregar parámetro preview=true y userId opcional
         const apiUrl = isPreviewMode
-          ? `/api/student/getLessons?courseId=${courseId}&preview=true${user?.id ? `&userId=${user.id}` : ''}`
-          : `/api/student/getLessons?courseId=${courseId}&userId=${user.id}`;
+          ? `/api/student/getLessons?courseId=${courseId}&preview=true`
+          : `/api/student/getLessons?courseId=${courseId}`;
         const lessonsRes = await fetch(apiUrl);
         if (lessonsRes.ok) {
           const data = await lessonsRes.json();
@@ -1875,7 +1889,7 @@ export default function LessonPlayerPage() {
           
           {/* Lesson Content Area */}
           <div className="flex-1 bg-white p-6 md:p-8 overflow-y-auto">
-            <SubsectionViewer subsection={activeSubsection} />
+            <SubsectionViewer subsection={activeSubsection} courseId={courseId} />
           </div>
 
           {/* Lower Tabs & Content */}

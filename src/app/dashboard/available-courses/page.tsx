@@ -82,8 +82,8 @@ export default function AvailableCoursesPage() {
         const activeCourses = allCourses.filter(c => c.isActive);
         setCourses(activeCourses);
 
-        // Cargar inscripciones del estudiante usando API admin
-        const enrollmentsRes = await fetch(`/api/admin/getEnrollments?userId=${user.id}`);
+        // Cargar inscripciones del estudiante usando API student (sesión)
+        const enrollmentsRes = await fetch(`/api/student/getEnrollments`);
         if (enrollmentsRes.ok) {
           const enrollmentsData = await enrollmentsRes.json();
           setEnrollments(enrollmentsData.enrollments || []);
@@ -195,12 +195,11 @@ export default function AvailableCoursesPage() {
     try {
       setEnrolling(courseId);
       
-      // Usar API admin para inscribirse
-      const res = await fetch('/api/admin/enrollStudent', {
+      // Usar API student para inscribirse
+      const res = await fetch('/api/student/enrollStudent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: user.id,
           courseId,
         }),
       });

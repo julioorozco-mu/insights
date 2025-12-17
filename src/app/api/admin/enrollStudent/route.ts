@@ -1,9 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { TABLES } from '@/utils/constants';
+import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
 
 export async function POST(req: NextRequest) {
   try {
+    const authUser = await getApiAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const isAdmin =
+      authUser.role === 'admin' || authUser.role === 'superadmin' || authUser.role === 'support';
+
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    }
+
     const supabaseAdmin = getSupabaseAdmin();
     const body = await req.json();
     const { userId, courseId } = body;

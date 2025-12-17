@@ -38,6 +38,7 @@ registerPlugin(
 
 interface Speaker {
   id: string;
+  userId?: string;
   name: string;
   lastName?: string;
   email?: string;
@@ -186,7 +187,8 @@ export default function ManageCoursePage() {
         // Cargar ponentes desde Supabase
         const speakersData = await teacherRepository.findAll();
         setSpeakers(speakersData.map((s: any) => ({
-          id: s.id,
+          id: s.userId || s.user_id || s.id,
+          userId: s.userId || s.user_id,
           name: s.name,
           lastName: s.lastName,
           email: s.email || '',
@@ -350,7 +352,7 @@ export default function ManageCoursePage() {
       if (finalImageUrl) updateData.coverImageUrl = finalImageUrl;
       if (startDateTime) updateData.startDate = startDateTime;
       if (endDateTime) updateData.endDate = endDateTime;
-      if (selectedSpeakers.length > 0) updateData.speakerIds = selectedSpeakers;
+      updateData.speakerIds = selectedSpeakers;
       if (selectedCoHosts.length > 0) updateData.coHostIds = selectedCoHosts;
       if (selectedCertificate) updateData.certificateTemplateId = selectedCertificate;
       if (selectedEntrySurvey) updateData.entrySurveyId = selectedEntrySurvey;
@@ -373,11 +375,7 @@ export default function ManageCoursePage() {
   };
 
   const toggleSpeaker = (speakerId: string) => {
-    setSelectedSpeakers(prev => 
-      prev.includes(speakerId)
-        ? prev.filter(id => id !== speakerId)
-        : [...prev, speakerId]
-    );
+    setSelectedSpeakers(prev => (prev.includes(speakerId) ? [] : [speakerId]));
   };
 
   const toggleCoHost = (speakerId: string) => {

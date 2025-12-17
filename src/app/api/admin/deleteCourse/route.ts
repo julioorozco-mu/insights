@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { TABLES } from "@/utils/constants";
+import { requireApiRoles } from "@/lib/auth/apiRouteAuth";
 
 export async function DELETE(request: NextRequest) {
   try {
+    const auth = await requireApiRoles(["admin", "superadmin", "support"]);
+    if (auth instanceof NextResponse) return auth;
+
+    const supabaseAdmin = getSupabaseAdmin();
+
     const { searchParams } = new URL(request.url);
     const courseId = searchParams.get("courseId");
 
@@ -20,7 +22,7 @@ export async function DELETE(request: NextRequest) {
 
     // Primero eliminar las lecciones asociadas al curso
     const { error: lessonsError } = await supabaseAdmin
-      .from("lessons")
+      .from(TABLES.LESSONS)
       .delete()
       .eq("course_id", courseId);
 
@@ -31,7 +33,7 @@ export async function DELETE(request: NextRequest) {
 
     // Eliminar secciones del curso
     const { error: sectionsError } = await supabaseAdmin
-      .from("course_sections")
+      .from(TABLES.COURSE_SECTIONS)
       .delete()
       .eq("course_id", courseId);
 
@@ -42,7 +44,7 @@ export async function DELETE(request: NextRequest) {
 
     // Eliminar inscripciones al curso
     const { error: enrollmentsError } = await supabaseAdmin
-      .from("enrollments")
+      .from(TABLES.STUDENT_ENROLLMENTS)
       .delete()
       .eq("course_id", courseId);
 
@@ -53,7 +55,7 @@ export async function DELETE(request: NextRequest) {
 
     // Finalmente eliminar el curso
     const { error: courseError } = await supabaseAdmin
-      .from("courses")
+      .from(TABLES.COURSES)
       .delete()
       .eq("id", courseId);
 
