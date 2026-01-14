@@ -281,6 +281,7 @@ export default function StudentCoursePage() {
 
         // Verificar inscripción usando API (bypaseando RLS)
         // En modo preview (para maestros), saltamos esta validación
+        let enrollmentData: any = null;
         if (!isPreviewMode) {
           const enrollmentRes = await fetch(`/api/student/check-enrollment?courseId=${params.id}`);
           
@@ -290,7 +291,7 @@ export default function StudentCoursePage() {
             return;
           }
 
-          const enrollmentData = await enrollmentRes.json();
+          enrollmentData = await enrollmentRes.json();
           
           if (!enrollmentData.isEnrolled) {
             alert('No estás inscrito en este curso');
@@ -299,21 +300,30 @@ export default function StudentCoursePage() {
           }
 
           // Cargar progreso de lecciones completadas desde la BD
+          const completedLessonsSet = new Set<string>();
           if (enrollmentData.completedLessons && Array.isArray(enrollmentData.completedLessons)) {
-            setCompletedLessons(new Set(enrollmentData.completedLessons));
+            enrollmentData.completedLessons.forEach((lessonId: string) => {
+              completedLessonsSet.add(lessonId);
+            });
+            setCompletedLessons(completedLessonsSet);
           }
           
           // Cargar progreso de subsecciones
+          // Primero cargar desde subsectionProgress
+          const subsectionSet = new Set<string>();
           if (enrollmentData.subsectionProgress) {
-            const subsectionSet = new Set<string>();
             Object.entries(enrollmentData.subsectionProgress).forEach(([lessonId, maxIndex]) => {
               // Marcar todas las subsecciones hasta maxIndex como completadas
               for (let i = 0; i <= (maxIndex as number); i++) {
                 subsectionSet.add(`${lessonId}-sub-${i}`);
               }
             });
-            setCompletedSubsections(subsectionSet);
           }
+          
+          // Si una lección está en completedLessons, todas sus subsecciones están completadas
+          // Esto se actualizará después de cargar las lecciones, pero por ahora marcamos un placeholder
+          // que se resolverá cuando se carguen las lecciones
+          setCompletedSubsections(subsectionSet);
         }
 
         // Cargar lecciones usando API (bypaseando RLS)
@@ -351,6 +361,27 @@ export default function StudentCoursePage() {
               .sort((a: Lesson, b: Lesson) => a.order - b.order);
             
             setLessons(lessonsData);
+
+          // Actualizar completedSubsections: si una lección está completada, marcar todas sus subsecciones
+          if (enrollmentData && enrollmentData.completedLessons) {
+            setCompletedSubsections(prev => {
+              const updated = new Set(prev);
+              const completedLessonsArray = Array.isArray(enrollmentData.completedLessons) 
+                ? enrollmentData.completedLessons 
+                : [];
+              lessonsData.forEach((lesson: Lesson) => {
+                if (completedLessonsArray.includes(lesson.id)) {
+                  const lessonContent = parseLessonContent(lesson.content);
+                  const subsectionsCount = lessonContent?.subsections.length || 0;
+                  // Marcar todas las subsecciones como completadas
+                  for (let i = 0; i < subsectionsCount; i++) {
+                    updated.add(`${lesson.id}-sub-${i}`);
+                  }
+                }
+              });
+              return updated;
+            });
+          }
 
           // Cargar encuestas/respuestas por lección y calcular gating
           const map: Record<string, any> = {};
@@ -1150,8 +1181,13 @@ export default function StudentCoursePage() {
                 const subsectionsCount = lessonContent?.subsections.length || 0;
                 
                 // Calcular progreso de la sección
+                // Si la lección está marcada como completada en la BD, todas las subsecciones están completadas
                 let completedSubsectionsCount = 0;
-                if (lessonContent && lessonContent.subsections.length > 0) {
+                if (isCompleted) {
+                  // Si la lección está completada, todas las subsecciones están completadas
+                  completedSubsectionsCount = subsectionsCount;
+                } else if (lessonContent && lessonContent.subsections.length > 0) {
+                  // Contar subsecciones completadas individualmente
                   lessonContent.subsections.forEach((subsection, subIdx) => {
                     if (completedSubsections.has(`${lesson.id}-sub-${subIdx}`)) {
                       completedSubsectionsCount++;
