@@ -17,7 +17,9 @@ import {
   IconPlayerPlay,
   IconCalendar,
   IconStar,
-  IconStarFilled
+  IconStarFilled,
+  IconHeart,
+  IconHeartFilled
 } from "@tabler/icons-react";
 import { userRepository } from "@/lib/repositories/userRepository";
 import CoursePreviewSideSheet from "@/components/course/CoursePreviewSideSheet";
@@ -55,7 +57,60 @@ export default function AvailableCoursesPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [enrolledCourseId, setEnrolledCourseId] = useState<string | null>(null);
   const [previewCourseId, setPreviewCourseId] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [loadingFavorite, setLoadingFavorite] = useState<string | null>(null);
   const { user } = useAuth();
+
+  // Función para cargar favoritos
+  const fetchFavorites = async () => {
+    if (!user) return;
+    try {
+      const response = await fetch(`/api/student/favorites?userId=${user.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        const favIds = new Set<string>((data.favorites || []).map((f: any) => f.course_id));
+        setFavorites(favIds);
+      }
+    } catch (error) {
+      console.error('Error fetching favorites:', error);
+    }
+  };
+
+  // Función para toggle de favorito
+  const handleToggleFavorite = async (courseId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!user || loadingFavorite) return;
+    
+    setLoadingFavorite(courseId);
+    try {
+      if (favorites.has(courseId)) {
+        const response = await fetch(
+          `/api/student/favorites?courseId=${courseId}&userId=${user.id}`,
+          { method: 'DELETE' }
+        );
+        if (response.ok) {
+          setFavorites(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(courseId);
+            return newSet;
+          });
+        }
+      } else {
+        const response = await fetch('/api/student/favorites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ courseId, userId: user.id }),
+        });
+        if (response.ok) {
+          setFavorites(prev => new Set([...prev, courseId]));
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    } finally {
+      setLoadingFavorite(null);
+    }
+  };
 
   // Función para obtener el rating de un curso
   const fetchCourseRating = async (courseId: string): Promise<CourseRating> => {
@@ -123,6 +178,9 @@ export default function AvailableCoursesPage() {
           })
         );
         setCourseRatings(ratingsMap);
+
+        // Cargar favoritos
+        await fetchFavorites();
       } catch (error) {
         console.error("Error loading courses:", error);
       } finally {
@@ -317,7 +375,7 @@ export default function AvailableCoursesPage() {
                 className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow cursor-pointer"
                 onClick={() => setPreviewCourseId(course.id)}
               >
-                <figure className="h-48 bg-base-300">
+                <figure className="h-48 bg-base-300 relative">
                   {course.coverImageUrl ? (
                     <img 
                       src={course.coverImageUrl} 
@@ -329,6 +387,21 @@ export default function AvailableCoursesPage() {
                       <IconBook size={64} stroke={2} />
                     </div>
                   )}
+                  {/* Botón de favorito */}
+                  <button
+                    onClick={(e) => handleToggleFavorite(course.id, e)}
+                    disabled={loadingFavorite === course.id}
+                    className="absolute top-3 right-3 p-2 rounded-full bg-white/90 hover:bg-white shadow-md transition-all hover:scale-110"
+                    title={favorites.has(course.id) ? "Quitar de favoritos" : "Agregar a favoritos"}
+                  >
+                    {loadingFavorite === course.id ? (
+                      <span className="loading loading-spinner loading-xs"></span>
+                    ) : favorites.has(course.id) ? (
+                      <IconHeartFilled size={20} className="text-red-500" />
+                    ) : (
+                      <IconHeart size={20} className="text-gray-600 hover:text-red-500" />
+                    )}
+                  </button>
                 </figure>
                 <div className="card-body">
                   <h2 className="card-title">{course.title}</h2>

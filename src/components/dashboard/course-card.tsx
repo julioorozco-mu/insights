@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { Bookmark, Star } from "lucide-react";
+import { Bookmark, Star, Heart } from "lucide-react";
 import { cn, stripHtmlAndTruncate } from "@/lib/utils";
 
 interface CourseCardProps {
@@ -13,6 +13,10 @@ interface CourseCardProps {
   mentor: string;
   thumbnail: string;
   priority?: boolean;
+  courseId?: string;
+  isFavorite?: boolean;
+  loadingFavorite?: boolean;
+  onToggleFavorite?: (e: React.MouseEvent) => void;
 }
 
 const levelStyles: Record<string, string> = {
@@ -40,8 +44,19 @@ export function CourseCard(props: CourseCardProps) {
         />
         <div className="absolute inset-x-4 top-4 flex items-center justify-between">
           <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", levelClass)}>{props.level}</span>
-          <button className="rounded-2xl bg-white/90 p-2 shadow-card-soft">
-            <Bookmark className="h-4 w-4 text-brand-primary" />
+          <button 
+            onClick={props.onToggleFavorite}
+            disabled={props.loadingFavorite}
+            className="rounded-2xl bg-white/90 p-2 shadow-card-soft hover:bg-white hover:scale-110 transition-all"
+            title={props.isFavorite ? "Quitar de favoritos" : "Agregar a favoritos"}
+          >
+            {props.loadingFavorite ? (
+              <span className="block w-4 h-4 border-2 border-brand-primary border-t-transparent rounded-full animate-spin" />
+            ) : props.isFavorite ? (
+              <Heart className="h-4 w-4 fill-red-500 text-red-500" />
+            ) : (
+              <Heart className="h-4 w-4 text-gray-500 hover:text-red-500" />
+            )}
           </button>
         </div>
       </div>

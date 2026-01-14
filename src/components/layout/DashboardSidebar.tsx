@@ -7,9 +7,7 @@ import {
   LayoutDashboard,
   BookOpen,
   Users,
-  MessageCircle,
   BarChart3,
-  CreditCard,
   HelpCircle,
   Settings,
   CalendarDays,
@@ -84,12 +82,6 @@ const studentMenuConfig: RoleMenuConfig = {
         { path: "/dashboard/explore-teachers", label: "Docentes", icon: GraduationCap },
       ],
     },
-    {
-      items: [
-        { path: "/dashboard/messages", label: "Mensajes", icon: MessageCircle, badge: 8 },
-        { path: "/dashboard/payments", label: "Pagos", icon: CreditCard },
-      ],
-    },
   ],
   footer: [
     { path: "/dashboard/support", label: "Soporte", icon: HelpCircle },
@@ -122,7 +114,6 @@ const teacherMenuConfig: RoleMenuConfig = {
       items: [
         { path: "/dashboard/my-students", label: "Estudiantes", icon: Users },
         { path: "/dashboard/analytics", label: "Analíticas", icon: BarChart3 },
-        { path: "/dashboard/messages", label: "Mensajes", icon: MessageCircle, badge: 8 },
       ],
     },
   ],

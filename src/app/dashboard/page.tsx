@@ -164,6 +164,8 @@ export default function DashboardPage() {
   // Estados para datos dinámicos
   const [enrolledCourses, setEnrolledCourses] = useState<EnrolledCourseData[]>([]);
   const [recommendedCourses, setRecommendedCourses] = useState<RecommendedCourse[]>([]);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [loadingFavorite, setLoadingFavorite] = useState<string | null>(null);
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
   const [stats, setStats] = useState<StatItem[]>([]);
   const [productivityData, setProductivityData] = useState<{ day: string; clases: number; autoestudio: number; tareas: number }[]>([]);
@@ -180,6 +182,58 @@ export default function DashboardPage() {
     eventDays: new Set(),
     lessonsPerDay: {},
   });
+
+  // Función para cargar favoritos
+  const fetchFavorites = useCallback(async () => {
+    if (!user) return;
+    try {
+      const response = await fetch(`/api/student/favorites?userId=${user.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        const favIds = new Set<string>((data.favorites || []).map((f: any) => f.course_id));
+        setFavorites(favIds);
+      }
+    } catch (error) {
+      console.error('Error fetching favorites:', error);
+    }
+  }, [user]);
+
+  // Función para toggle de favorito
+  const handleToggleFavorite = useCallback(async (courseId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!user || loadingFavorite) return;
+    
+    setLoadingFavorite(courseId);
+    try {
+      if (favorites.has(courseId)) {
+        const response = await fetch(
+          `/api/student/favorites?courseId=${courseId}&userId=${user.id}`,
+          { method: 'DELETE' }
+        );
+        if (response.ok) {
+          setFavorites(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(courseId);
+            return newSet;
+          });
+        }
+      } else {
+        const response = await fetch('/api/student/favorites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ courseId, userId: user.id }),
+        });
+        if (response.ok) {
+          setFavorites(prev => new Set([...prev, courseId]));
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    } finally {
+      setLoadingFavorite(null);
+    }
+  }, [user, loadingFavorite, favorites]);
 
   // Cargar datos del estudiante
   const loadStudentData = useCallback(async () => {
@@ -870,12 +924,13 @@ export default function DashboardPage() {
         await loadTeacherData();
       } else {
         await loadStudentData();
+        await fetchFavorites();
       }
       setDataLoaded(true);
     };
 
     loadData();
-  }, [user, currentUserId, dataLoaded, loadStudentData, loadTeacherData]);
+  }, [user, currentUserId, dataLoaded, loadStudentData, loadTeacherData, fetchFavorites]);
 
   // Get current date info
   const now = new Date();
@@ -942,7 +997,14 @@ export default function DashboardPage() {
               <div className="grid gap-6 md:grid-cols-2">
                 {recommendedCourses.map((course, idx) => (
                   <Link key={course.courseId} href={`/dashboard/available-courses`} className="block h-full">
-                    <CourseCard {...course} priority={idx === 0} />
+                    <CourseCard 
+                      {...course} 
+                      priority={idx === 0}
+                      courseId={course.courseId}
+                      isFavorite={favorites.has(course.courseId)}
+                      loadingFavorite={loadingFavorite === course.courseId}
+                      onToggleFavorite={(e) => handleToggleFavorite(course.courseId, e)}
+                    />
                   </Link>
                 ))}
               </div>

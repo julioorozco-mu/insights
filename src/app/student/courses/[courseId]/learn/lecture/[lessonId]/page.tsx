@@ -1183,6 +1183,9 @@ export default function LessonPlayerPage() {
     subIndex: number;
   } | null>(null);
   
+  // Quiz scores state - stores quiz scores by lessonId-subIndex
+  const [quizScores, setQuizScores] = useState<Map<string, { correct: number; total: number }>>(new Map());
+  
   // Subsection State (para navegación dentro de una lección)
   // Inicializa con el valor del query parameter si existe
   const [activeSubsectionIndex, setActiveSubsectionIndex] = useState(initialSubsectionIndex);
@@ -1594,6 +1597,98 @@ export default function LessonPlayerPage() {
     subsectionHasQuiz,
     updateProgressInBackground
   ]);
+
+  // ===== LOAD QUIZ SCORES =====
+  // Cargar las calificaciones de quizzes completados
+  useEffect(() => {
+    if (isPreviewMode || !user || sortedLessons.length === 0) return;
+    
+    const loadQuizScores = async () => {
+      const scoresMap = new Map<string, { correct: number; total: number }>();
+      
+      // Recorrer todas las lecciones y subsecciones para encontrar quizzes
+      for (const lesson of sortedLessons) {
+        let subsections: Subsection[] = [];
+        try {
+          if (lesson.content) {
+            const parsed = JSON.parse(lesson.content);
+            subsections = parsed.subsections || [];
+          }
+        } catch {}
+        
+        for (let subIndex = 0; subIndex < subsections.length; subIndex++) {
+          const subsection = subsections[subIndex];
+          // Buscar bloques de tipo quiz
+          const quizBlock = subsection.blocks?.find((b: any) => b.type === 'quiz');
+          if (quizBlock?.data?.quizId) {
+            try {
+              const res = await fetch(
+                `/api/student/getQuizResponse?surveyId=${quizBlock.data.quizId}&userId=${user.id}`
+              );
+              if (res.ok) {
+                const data = await res.json();
+                if (data.response?.answers) {
+                  // Obtener el quiz para calcular el score
+                  const quizRes = await fetch(
+                    `/api/student/getSurvey?surveyId=${quizBlock.data.quizId}&courseId=${courseId}`
+                  );
+                  if (quizRes.ok) {
+                    const quizData = await quizRes.json();
+                    const questions = quizData.survey?.questions || [];
+                    
+                    // Calcular score
+                    let correct = 0;
+                    const savedAnswers: Record<string, any> = {};
+                    data.response.answers.forEach((ans: any) => {
+                      savedAnswers[ans.questionId] = ans.answer;
+                    });
+                    
+                    questions.forEach((q: any) => {
+                      const userAnswer = savedAnswers[q.id];
+                      if (q.options?.some((o: any) => o.isCorrect)) {
+                        const correctOptions = q.options.filter((o: any) => o.isCorrect).map((o: any) => o.value);
+                        if (q.type === 'multiple_choice') {
+                          const userAnswers = Array.isArray(userAnswer) ? userAnswer : [];
+                          if (correctOptions.length === userAnswers.length &&
+                              correctOptions.every((c: string) => userAnswers.includes(c))) {
+                            correct++;
+                          }
+                        } else {
+                          if (correctOptions.includes(userAnswer)) {
+                            correct++;
+                          }
+                        }
+                      } else if (q.correctAnswer) {
+                        if (Array.isArray(q.correctAnswer)) {
+                          if (Array.isArray(userAnswer) && 
+                              userAnswer.length === q.correctAnswer.length &&
+                              userAnswer.every((a: string) => q.correctAnswer?.includes(a))) {
+                            correct++;
+                          }
+                        } else if (userAnswer === q.correctAnswer) {
+                          correct++;
+                        }
+                      }
+                    });
+                    
+                    scoresMap.set(`${lesson.id}-${subIndex}`, { correct, total: questions.length });
+                  }
+                }
+              }
+            } catch (err) {
+              // Silenciar errores, simplemente no mostrar calificación
+            }
+          }
+        }
+      }
+      
+      if (scoresMap.size > 0) {
+        setQuizScores(scoresMap);
+      }
+    };
+    
+    loadQuizScores();
+  }, [isPreviewMode, user, sortedLessons, courseId]);
 
   // ===== VERIFY LESSON UNLOCK STATUS =====
   // Verificar si la lección actual está desbloqueada y redirigir si no lo está
@@ -3003,10 +3098,15 @@ export default function LessonPlayerPage() {
                           {lesson.title}
                         </h4>
                         {isSectionCompleted && (
-                          <span className="text-xs font-semibold px-1.5 py-0.5 rounded" style={{ 
-                            backgroundColor: '#D1FAE5', 
-                            color: '#059669' 
-                          }}>
+                          <span 
+                            className="text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse"
+                            style={{ 
+                              backgroundColor: 'rgba(16, 185, 129, 0.15)', 
+                              color: '#059669',
+                              boxShadow: '0 0 8px rgba(16, 185, 129, 0.3)',
+                            }}
+                          >
+                            <IconCheck size={12} />
                             100%
                           </span>
                         )}
@@ -3295,6 +3395,23 @@ export default function LessonPlayerPage() {
                                 )}>
                                   <IconVideo size={12} />
                                   <span>5 min</span>
+                                  {/* Quiz score badge */}
+                                  {quizScores.has(`${lesson.id}-${subIndex}`) && (() => {
+                                    const score = quizScores.get(`${lesson.id}-${subIndex}`)!;
+                                    const percentage = Math.round((score.correct / score.total) * 100);
+                                    const isGood = percentage >= 70;
+                                    return (
+                                      <span 
+                                        className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                                        style={{
+                                          backgroundColor: isGood ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                          color: isGood ? '#059669' : '#D97706',
+                                        }}
+                                      >
+                                        {score.correct}/{score.total} ({percentage}%)
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             </div>
