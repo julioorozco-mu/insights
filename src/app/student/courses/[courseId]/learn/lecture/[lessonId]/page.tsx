@@ -305,10 +305,20 @@ function QuizBlock({
   quizId,
   quizTitle,
   courseId,
+  lessonId,
+  subsectionIndex,
+  totalSubsections,
+  onProgressUpdate,
+  userId,
 }: {
   quizId?: string;
   quizTitle?: string;
   courseId: string;
+  lessonId?: string;
+  subsectionIndex?: number;
+  totalSubsections?: number;
+  onProgressUpdate?: (subsectionIndex: number, isCompleted: boolean) => void;
+  userId?: string;
 }) {
   const [quiz, setQuiz] = useState<QuizData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -317,6 +327,7 @@ function QuizBlock({
   const [submitted, setSubmitted] = useState(false);
   const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
   const [showResults, setShowResults] = useState(false);
+  const [savingAnswers, setSavingAnswers] = useState(false);
 
   useEffect(() => {
     if (!quizId) {
@@ -335,13 +346,82 @@ function QuizBlock({
         const survey = data.survey;
 
         if (survey) {
-          setQuiz({
+          const quizData = {
             id: survey.id,
             title: survey.title,
             description: survey.description,
             type: survey.type,
             questions: survey.questions || [],
-          });
+          };
+          setQuiz(quizData);
+
+          // Cargar respuestas guardadas si existen
+          if (userId && survey.id) {
+            try {
+              const savedAnswersRes = await fetch(
+                `/api/student/getQuizResponse?surveyId=${survey.id}&userId=${userId}`
+              );
+              if (savedAnswersRes.ok) {
+                const savedData = await savedAnswersRes.json();
+                if (savedData.response && savedData.response.answers) {
+                  // Restaurar respuestas guardadas
+                  const savedAnswers: Record<string, string | string[]> = {};
+                  savedData.response.answers.forEach((ans: any) => {
+                    savedAnswers[ans.questionId] = ans.answer;
+                  });
+                  setAnswers(savedAnswers);
+                  // Si hay respuestas guardadas, marcar como enviado y calcular score
+                  if (Object.keys(savedAnswers).length > 0) {
+                    setSubmitted(true);
+                    setShowResults(true);
+                    // Calcular score
+                    let correctCount = 0;
+                    quizData.questions.forEach((q: any) => {
+                      const userAnswer = savedAnswers[q.id];
+                      if (q.options && q.options.some((o: any) => o.isCorrect)) {
+                        const correctOptions = q.options.filter((o: any) => o.isCorrect).map((o: any) => o.value);
+                        if (q.type === 'multiple_choice') {
+                          const userAnswers = Array.isArray(userAnswer) ? userAnswer : [];
+                          if (correctOptions.length === userAnswers.length &&
+                              correctOptions.every((c: string) => userAnswers.includes(c))) {
+                            correctCount++;
+                          }
+                        } else {
+                          if (correctOptions.includes(userAnswer as string)) {
+                            correctCount++;
+                          }
+                        }
+                      } else if (q.correctAnswer) {
+                        if (Array.isArray(q.correctAnswer)) {
+                          if (Array.isArray(userAnswer) && 
+                              userAnswer.length === q.correctAnswer.length &&
+                              userAnswer.every((a: string) => q.correctAnswer?.includes(a))) {
+                            correctCount++;
+                          }
+                        } else if (userAnswer === q.correctAnswer) {
+                          correctCount++;
+                        }
+                      }
+                    });
+                    setScore({ correct: correctCount, total: quizData.questions.length });
+                  }
+                  
+                  // SIEMPRE actualizar progreso cuando hay respuestas guardadas
+                  // Esto asegura que el sidebar refleje el progreso correcto y habilite la siguiente lección
+                  if (onProgressUpdate && subsectionIndex !== undefined && totalSubsections !== undefined) {
+                    const isLastSubsection = subsectionIndex === totalSubsections - 1;
+                    // Usar setTimeout para asegurar que el estado se actualice después del render
+                    setTimeout(() => {
+                      onProgressUpdate(subsectionIndex, isLastSubsection);
+                    }, 100);
+                  }
+                }
+              }
+            } catch (err) {
+              console.error('Error loading saved answers:', err);
+              // Continuar sin respuestas guardadas
+            }
+          }
         } else {
           setError('Quiz no encontrado');
         }
@@ -354,60 +434,117 @@ function QuizBlock({
     };
 
     loadQuiz();
-  }, [quizId]);
+  }, [quizId, courseId, userId]);
 
   const handleAnswerChange = (questionId: string, value: string | string[]) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
   };
 
-  const handleSubmit = () => {
-    if (!quiz) return;
+  const handleSubmit = async () => {
+    if (!quiz || !quizId || !userId) return;
     
-    let correctCount = 0;
-    quiz.questions.forEach(q => {
-      const userAnswer = answers[q.id];
-      
-      // Verificar usando isCorrect en las opciones
-      if (q.options && q.options.some(o => o.isCorrect)) {
-        const correctOptions = q.options.filter(o => o.isCorrect).map(o => o.value);
+    setSavingAnswers(true);
+    
+    try {
+      // Calcular score
+      let correctCount = 0;
+      quiz.questions.forEach(q => {
+        const userAnswer = answers[q.id];
         
-        if (q.type === 'multiple_choice') {
-          // Para multiple choice, todas las correctas deben estar seleccionadas
-          const userAnswers = Array.isArray(userAnswer) ? userAnswer : [];
-          if (correctOptions.length === userAnswers.length &&
-              correctOptions.every(c => userAnswers.includes(c))) {
-            correctCount++;
+        // Verificar usando isCorrect en las opciones
+        if (q.options && q.options.some(o => o.isCorrect)) {
+          const correctOptions = q.options.filter(o => o.isCorrect).map(o => o.value);
+          
+          if (q.type === 'multiple_choice') {
+            // Para multiple choice, todas las correctas deben estar seleccionadas
+            const userAnswers = Array.isArray(userAnswer) ? userAnswer : [];
+            if (correctOptions.length === userAnswers.length &&
+                correctOptions.every(c => userAnswers.includes(c))) {
+              correctCount++;
+            }
+          } else {
+            // Para single choice
+            if (correctOptions.includes(userAnswer as string)) {
+              correctCount++;
+            }
           }
-        } else {
-          // Para single choice
-          if (correctOptions.includes(userAnswer as string)) {
+        } else if (q.correctAnswer) {
+          // Fallback a correctAnswer si no hay isCorrect
+          if (Array.isArray(q.correctAnswer)) {
+            if (Array.isArray(userAnswer) && 
+                userAnswer.length === q.correctAnswer.length &&
+                userAnswer.every(a => q.correctAnswer?.includes(a))) {
+              correctCount++;
+            }
+          } else if (userAnswer === q.correctAnswer) {
             correctCount++;
           }
         }
-      } else if (q.correctAnswer) {
-        // Fallback a correctAnswer si no hay isCorrect
-        if (Array.isArray(q.correctAnswer)) {
-          if (Array.isArray(userAnswer) && 
-              userAnswer.length === q.correctAnswer.length &&
-              userAnswer.every(a => q.correctAnswer?.includes(a))) {
-            correctCount++;
-          }
-        } else if (userAnswer === q.correctAnswer) {
-          correctCount++;
-        }
+      });
+      
+      // Preparar respuestas para guardar
+      const answersToSave = quiz.questions.map((q) => ({
+        questionId: q.id,
+        answer: answers[q.id] || '',
+      }));
+
+      // Guardar respuestas en la base de datos
+      const saveRes = await fetch('/api/student/submitQuiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          surveyId: quizId,
+          courseId,
+          lessonId: lessonId || null,
+          answers: answersToSave,
+        }),
+      });
+
+      if (!saveRes.ok) {
+        console.error('Error saving quiz answers');
+        // Continuar de todas formas para mostrar el resultado
       }
-    });
-    
-    setScore({ correct: correctCount, total: quiz.questions.length });
-    setSubmitted(true);
-    setShowResults(true);
+
+      setScore({ correct: correctCount, total: quiz.questions.length });
+      setSubmitted(true);
+      setShowResults(true);
+      
+      // Actualizar progreso cuando se completa el quiz
+      if (onProgressUpdate && subsectionIndex !== undefined && totalSubsections !== undefined) {
+        // Marcar esta subsección como completada
+        const isLastSubsection = subsectionIndex === totalSubsections - 1;
+        onProgressUpdate(subsectionIndex, isLastSubsection);
+      }
+    } catch (err) {
+      console.error('Error submitting quiz:', err);
+    } finally {
+      setSavingAnswers(false);
+    }
   };
 
-  const handleRetry = () => {
+  const handleRetry = async () => {
+    // Resetear respuestas localmente
     setAnswers({});
     setSubmitted(false);
     setScore(null);
     setShowResults(false);
+    
+    // Eliminar respuestas guardadas de la base de datos
+    if (quizId && userId) {
+      try {
+        await fetch('/api/student/deleteQuizResponse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            surveyId: quizId,
+            userId,
+          }),
+        });
+      } catch (err) {
+        console.error('Error deleting quiz response:', err);
+        // Continuar de todas formas
+      }
+    }
   };
 
   if (loading) {
@@ -610,11 +747,20 @@ function QuizBlock({
           {!submitted ? (
             <button
               onClick={handleSubmit}
-              disabled={Object.keys(answers).length === 0}
+              disabled={Object.keys(answers).length === 0 || savingAnswers}
               className="px-6 py-3 bg-[#192170] text-white rounded-lg font-semibold hover:bg-[#141a5a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              <IconCheck className="w-5 h-5" />
-              Enviar respuestas
+              {savingAnswers ? (
+                <>
+                  <IconLoader2 className="w-5 h-5 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                <>
+                  <IconCheck className="w-5 h-5" />
+                  Enviar respuestas
+                </>
+              )}
             </button>
           ) : (
             <button
@@ -643,7 +789,23 @@ function QuizBlock({
 }
 
 // ===== COMPONENT: Content Block Renderer =====
-function ContentBlockRenderer({ block, courseId }: { block: ContentBlock; courseId: string }) {
+function ContentBlockRenderer({ 
+  block, 
+  courseId,
+  lessonId,
+  subsectionIndex,
+  totalSubsections,
+  userId,
+  onProgressUpdate
+}: { 
+  block: ContentBlock; 
+  courseId: string;
+  lessonId?: string;
+  subsectionIndex?: number;
+  totalSubsections?: number;
+  userId?: string;
+  onProgressUpdate?: (subsectionIndex: number, isCompleted: boolean) => void;
+}) {
   switch (block.type) {
     case 'heading':
       {
@@ -857,6 +1019,11 @@ function ContentBlockRenderer({ block, courseId }: { block: ContentBlock; course
           quizId={block.data?.quizId}
           quizTitle={block.data?.quizTitle}
           courseId={courseId}
+          lessonId={lessonId}
+          subsectionIndex={subsectionIndex}
+          totalSubsections={totalSubsections}
+          onProgressUpdate={onProgressUpdate}
+          userId={userId}
         />
       );
     
@@ -866,7 +1033,23 @@ function ContentBlockRenderer({ block, courseId }: { block: ContentBlock; course
 }
 
 // ===== COMPONENT: Subsection Content Viewer =====
-function SubsectionViewer({ subsection, courseId }: { subsection: Subsection | null; courseId: string }) {
+function SubsectionViewer({ 
+  subsection, 
+  courseId,
+  lessonId,
+  subsectionIndex,
+  totalSubsections,
+  userId,
+  onProgressUpdate
+}: { 
+  subsection: Subsection | null; 
+  courseId: string;
+  lessonId?: string;
+  subsectionIndex?: number;
+  totalSubsections?: number;
+  userId?: string;
+  onProgressUpdate?: (subsectionIndex: number, isCompleted: boolean) => void;
+}) {
   if (!subsection) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
@@ -888,7 +1071,16 @@ function SubsectionViewer({ subsection, courseId }: { subsection: Subsection | n
   return (
     <div className="max-w-4xl mx-auto">
       {blocks.map((block) => (
-        <ContentBlockRenderer key={block.id} block={block} courseId={courseId} />
+        <ContentBlockRenderer 
+          key={block.id} 
+          block={block} 
+          courseId={courseId}
+          lessonId={lessonId}
+          subsectionIndex={subsectionIndex}
+          totalSubsections={totalSubsections}
+          userId={userId}
+          onProgressUpdate={onProgressUpdate}
+        />
       ))}
     </div>
   );
@@ -976,6 +1168,21 @@ export default function LessonPlayerPage() {
   const [isFavorite, setIsFavorite] = useState(false);
   const [loadingFavorite, setLoadingFavorite] = useState(false);
   
+  // Confirmation modal state for completing lessons
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [completionModalType, setCompletionModalType] = useState<'confirm' | 'error'>('confirm');
+  const [completionModalMessage, setCompletionModalMessage] = useState<string>('');
+  const [pendingNavigation, setPendingNavigation] = useState<{
+    lessonId: string;
+    fromSubIndex: number;
+    toSubIndex: number;
+    subsectionsLength: number;
+  } | null>(null);
+  const [pendingNavigationToSection, setPendingNavigationToSection] = useState<{
+    lessonId: string;
+    subIndex: number;
+  } | null>(null);
+  
   // Subsection State (para navegación dentro de una lección)
   // Inicializa con el valor del query parameter si existe
   const [activeSubsectionIndex, setActiveSubsectionIndex] = useState(initialSubsectionIndex);
@@ -1062,6 +1269,25 @@ export default function LessonPlayerPage() {
     return Math.round((completedSubsections / totalSubsections) * 100);
   }, [sortedLessons, dbCompletedLessons, completedSubsectionsByLesson]);
 
+  // ===== HELPER: Check if subsection has quiz =====
+  const subsectionHasQuiz = useCallback((lessonId: string, subIndex: number): boolean => {
+    const lesson = sortedLessons.find(l => l.id === lessonId);
+    if (!lesson?.content) return false;
+    
+    try {
+      const parsed = JSON.parse(lesson.content);
+      const subsections = parsed.subsections || [];
+      const subsection = subsections[subIndex];
+      
+      if (!subsection?.blocks) return false;
+      
+      // Verificar si algún bloque es de tipo quiz
+      return subsection.blocks.some((block: any) => block.type === 'quiz');
+    } catch {
+      return false;
+    }
+  }, [sortedLessons]);
+
   // ===== HELPER: Update progress in background =====
   const updateProgressInBackground = useCallback(async (
     lessonId: string,
@@ -1070,8 +1296,8 @@ export default function LessonPlayerPage() {
     totalSubsections: number
   ) => {
     // En modo preview, no actualizar progreso
-    if (isPreviewMode) return;
-    if (!user || !courseId || isUpdatingProgressRef.current) return;
+    if (isPreviewMode) return null;
+    if (!user || !courseId || isUpdatingProgressRef.current) return null;
     
     isUpdatingProgressRef.current = true;
     
@@ -1102,13 +1328,99 @@ export default function LessonPlayerPage() {
             ...data.subsectionProgress,
           }));
         }
+        
+        // Devolver los datos actualizados
+        return {
+          progress: data.progress || 0,
+          completedLessons: data.completedLessons || [],
+          subsectionProgress: data.subsectionProgress || {},
+        };
       }
     } catch (error) {
       console.error('[updateProgressInBackground] Error:', error);
     } finally {
       isUpdatingProgressRef.current = false;
     }
+    
+    return null;
   }, [user, courseId, isPreviewMode]);
+
+  // ===== HELPER: Handle completion confirmation =====
+  const handleConfirmCompletion = useCallback(() => {
+    if (!pendingNavigation) return;
+    
+    const { lessonId, fromSubIndex, toSubIndex, subsectionsLength } = pendingNavigation;
+    
+    // Marcar la subsección como completada
+    setCompletedSubsectionsByLesson((prev) => {
+      const currentMax = prev[lessonId] ?? -1;
+      const newMax = Math.max(currentMax, fromSubIndex);
+      return {
+        ...prev,
+        [lessonId]: newMax,
+      };
+    });
+
+    // Verificar si es la última subsección o si estamos completando toda la sección
+    const isLastSubsection = fromSubIndex >= subsectionsLength - 1 || toSubIndex >= subsectionsLength - 1;
+    
+    // Si es la última, marcar la lección como completada
+    if (isLastSubsection) {
+      // Marcar todas las subsecciones como completadas
+      setCompletedSubsectionsByLesson((prev) => ({
+        ...prev,
+        [lessonId]: subsectionsLength - 1,
+      }));
+      
+      setDbCompletedLessons((prev) => {
+        if (prev.includes(lessonId)) return prev;
+        return [...prev, lessonId];
+      });
+    }
+    
+    // Guardar progreso en segundo plano
+    updateProgressInBackground(
+      lessonId,
+      isLastSubsection ? subsectionsLength - 1 : fromSubIndex,
+      isLastSubsection,
+      subsectionsLength
+    );
+
+    // Si hay navegación pendiente a otra sección, navegar ahí
+    if (pendingNavigationToSection) {
+      setActiveSubsectionIndex(pendingNavigationToSection.subIndex);
+      // Actualizar last_accessed_lesson_id y navegar
+      if (user && courseId) {
+        fetch('/api/student/progress', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            courseId,
+            userId: user.id,
+            lessonId: pendingNavigationToSection.lessonId,
+            subsectionIndex: 0,
+            isCompleted: false,
+            totalSubsections: 1,
+          }),
+        }).catch(err => console.error('[handleConfirmCompletion] Error updating progress:', err));
+      }
+      router.push(`/student/courses/${courseId}/learn/lecture/${pendingNavigationToSection.lessonId}`);
+    } else {
+      // Navegar a la siguiente subsección en la misma lección
+      setActiveSubsectionIndex(toSubIndex);
+    }
+    
+    // Cerrar modal y limpiar estado
+    setShowCompletionModal(false);
+    setPendingNavigation(null);
+    setPendingNavigationToSection(null);
+  }, [pendingNavigation, pendingNavigationToSection, updateProgressInBackground, user, courseId, router]);
+
+  const handleCancelCompletion = useCallback(() => {
+    setShowCompletionModal(false);
+    setPendingNavigation(null);
+    setPendingNavigationToSection(null);
+  }, []);
 
   // ===== FETCH DATA =====
   useEffect(() => {
@@ -1207,6 +1519,185 @@ export default function LessonPlayerPage() {
 
     fetchProgress();
   }, [user, courseId, currentLessonId, router, isPreviewMode]);
+
+  // ===== AUTO-COMPLETE LAST LESSON IF READING =====
+  // Si es la última lección de la última sección y es de lectura, completarla automáticamente
+  useEffect(() => {
+    if (isPreviewMode || !user || !currentLessonId || sortedLessons.length === 0) return;
+    
+    // Verificar si es la última sección
+    const currentLessonIndex = sortedLessons.findIndex(l => l.id === currentLessonId);
+    const isLastSection = currentLessonIndex === sortedLessons.length - 1;
+    
+    if (!isLastSection) return;
+    
+    // Obtener subsecciones de la lección actual
+    const currentLesson = sortedLessons[currentLessonIndex];
+    let currentSubsections: Subsection[] = [];
+    try {
+      if (currentLesson?.content) {
+        const parsed = JSON.parse(currentLesson.content);
+        currentSubsections = parsed.subsections || [];
+      }
+    } catch {}
+    
+    if (currentSubsections.length === 0) return;
+    
+    // Verificar si estamos en la última subsección
+    const isLastSubsection = activeSubsectionIndex === currentSubsections.length - 1;
+    if (!isLastSubsection) return;
+    
+    // Verificar si ya está completada
+    const highestCompleted = completedSubsectionsByLesson[currentLessonId] ?? -1;
+    const isAlreadyCompleted = dbCompletedLessons.includes(currentLessonId) || 
+      highestCompleted >= currentSubsections.length - 1;
+    
+    if (isAlreadyCompleted) return;
+    
+    // Verificar si es de lectura (no tiene quiz)
+    const hasQuiz = subsectionHasQuiz(currentLessonId, activeSubsectionIndex);
+    
+    if (!hasQuiz) {
+      // Es la última lección, última subsección, y es de lectura
+      // Completar automáticamente después de un breve delay
+      const timer = setTimeout(() => {
+        // Marcar como completada
+        setCompletedSubsectionsByLesson(prev => ({
+          ...prev,
+          [currentLessonId]: currentSubsections.length - 1,
+        }));
+        
+        setDbCompletedLessons(prev => {
+          if (prev.includes(currentLessonId)) return prev;
+          return [...prev, currentLessonId];
+        });
+        
+        // Guardar en BD
+        updateProgressInBackground(
+          currentLessonId,
+          currentSubsections.length - 1,
+          true,
+          currentSubsections.length
+        );
+      }, 1000); // Esperar 1 segundo antes de marcar como completada
+      
+      return () => clearTimeout(timer);
+    }
+  }, [
+    isPreviewMode, 
+    user, 
+    currentLessonId, 
+    sortedLessons, 
+    activeSubsectionIndex, 
+    completedSubsectionsByLesson, 
+    dbCompletedLessons,
+    subsectionHasQuiz,
+    updateProgressInBackground
+  ]);
+
+  // ===== VERIFY LESSON UNLOCK STATUS =====
+  // Verificar si la lección actual está desbloqueada y redirigir si no lo está
+  useEffect(() => {
+    if (isPreviewMode) return; // En modo preview, permitir acceso a todas las lecciones
+    if (lessons.length === 0 || !currentLessonId) return;
+    if (!dbCompletedLessons.length && Object.keys(completedSubsectionsByLesson).length === 0) {
+      // Si no hay progreso cargado aún, esperar
+      return;
+    }
+
+    const currentLessonIndex = sortedLessons.findIndex(l => l.id === currentLessonId);
+    if (currentLessonIndex === -1) return;
+
+    // Verificar si la lección está desbloqueada
+    let isUnlocked = false;
+    if (currentLessonIndex === 0) {
+      // Primera lección: siempre desbloqueada
+      isUnlocked = true;
+    } else {
+      // Verificar que la lección anterior esté completamente completada
+      const previousLesson = sortedLessons[currentLessonIndex - 1];
+      if (previousLesson) {
+        const prevHighestIndex = completedSubsectionsByLesson[previousLesson.id] ?? -1;
+        const prevIsCompleted = dbCompletedLessons.includes(previousLesson.id);
+        let prevSubsections: Subsection[] = [];
+        try {
+          if (previousLesson.content) {
+            const parsed = JSON.parse(previousLesson.content);
+            prevSubsections = parsed.subsections || [];
+          }
+        } catch (e) {}
+        const prevTotalSubsections = prevSubsections.length || 1;
+        // La lección anterior debe estar completamente completada
+        isUnlocked = prevIsCompleted || (prevHighestIndex >= 0 && prevHighestIndex >= prevTotalSubsections - 1);
+      }
+    }
+
+      // Verificar también si la lección actual ya está completada (si es así, permitir acceso)
+      const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
+      const isCurrentLessonCompleted = currentLesson ? dbCompletedLessons.includes(currentLessonId) : false;
+      
+      if (!isUnlocked && !isCurrentLessonCompleted) {
+        // Encontrar la primera lección desbloqueada
+        let firstUnlockedLesson = sortedLessons[0];
+        for (let i = 0; i < sortedLessons.length; i++) {
+          const lesson = sortedLessons[i];
+          if (i === 0) {
+            firstUnlockedLesson = lesson;
+            break;
+          }
+          const prevLesson = sortedLessons[i - 1];
+          const prevHighestIndex = completedSubsectionsByLesson[prevLesson.id] ?? -1;
+          const prevIsCompleted = dbCompletedLessons.includes(prevLesson.id);
+          let prevSubsections: Subsection[] = [];
+          try {
+            if (prevLesson.content) {
+              const parsed = JSON.parse(prevLesson.content);
+              prevSubsections = parsed.subsections || [];
+            }
+          } catch (e) {}
+          const prevTotalSubsections = prevSubsections.length || 1;
+          const prevIsCompletedFully = prevIsCompleted || (prevHighestIndex >= 0 && prevHighestIndex >= prevTotalSubsections - 1);
+          
+          if (prevIsCompletedFully) {
+            firstUnlockedLesson = lesson;
+            break;
+          } else {
+            break; // No hay más lecciones desbloqueadas
+          }
+        }
+        
+        // Redirigir a la primera lección desbloqueada
+        router.replace(`/student/courses/${courseId}/learn/lecture/${firstUnlockedLesson.id}?subsection=0`);
+        return;
+      }
+
+      // Verificar también que la subsección actual esté desbloqueada o completada
+      if (currentLesson && initialSubsectionIndex !== undefined) {
+        let subsections: Subsection[] = [];
+        try {
+          if (currentLesson.content) {
+            const parsed = JSON.parse(currentLesson.content);
+            subsections = parsed.subsections || [];
+          }
+        } catch (e) {}
+
+        if (subsections.length > 0 && initialSubsectionIndex > 0) {
+          const highestCompletedIndex = completedSubsectionsByLesson[currentLessonId] ?? -1;
+          const isLessonFullyCompleted = dbCompletedLessons.includes(currentLessonId);
+          // Verificar si la subsección ya está completada
+          const isSubsectionCompleted = isLessonFullyCompleted || initialSubsectionIndex <= highestCompletedIndex;
+          // Verificar si está desbloqueada (la anterior está completada)
+          const isSubsectionUnlocked = isLessonFullyCompleted || initialSubsectionIndex <= highestCompletedIndex + 1;
+
+          // Si no está completada ni desbloqueada, redirigir
+          if (!isSubsectionCompleted && !isSubsectionUnlocked) {
+            // Redirigir a la primera subsección desbloqueada
+            const firstUnlockedIndex = isLessonFullyCompleted ? 0 : Math.max(0, highestCompletedIndex + 1);
+            router.replace(`/student/courses/${courseId}/learn/lecture/${currentLessonId}?subsection=${firstUnlockedIndex}`);
+          }
+        }
+      }
+  }, [lessons, currentLessonId, dbCompletedLessons, completedSubsectionsByLesson, sortedLessons, isPreviewMode, courseId, router, initialSubsectionIndex]);
 
   // ===== SYNC COMPLETED LESSONS =====
   // Este efecto verifica si hay lecciones con todas las subsecciones completadas
@@ -1889,7 +2380,74 @@ export default function LessonPlayerPage() {
           
           {/* Lesson Content Area */}
           <div className="flex-1 bg-white p-6 md:p-8 overflow-y-auto">
-            <SubsectionViewer subsection={activeSubsection} courseId={courseId} />
+            <SubsectionViewer 
+              subsection={activeSubsection} 
+              courseId={courseId}
+              lessonId={currentLessonId}
+              subsectionIndex={activeSubsectionIndex}
+              totalSubsections={(() => {
+                const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
+                if (!currentLesson?.content) return 0;
+                try {
+                  const parsed = JSON.parse(currentLesson.content);
+                  return parsed.subsections?.length || 0;
+                } catch {
+                  return 0;
+                }
+              })()}
+              userId={user?.id}
+              onProgressUpdate={async (subIndex: number, isCompleted: boolean) => {
+                if (!currentLessonId || !user || isPreviewMode) return;
+                
+                // Actualizar estado local optimista - marcar esta subsección como completada
+                setCompletedSubsectionsByLesson((prev) => {
+                  const currentMax = prev[currentLessonId] ?? -1;
+                  const newMax = Math.max(currentMax, subIndex);
+                  return {
+                    ...prev,
+                    [currentLessonId]: newMax,
+                  };
+                });
+                
+                // Si es la última subsección, actualizar dbCompletedLessons de forma optimista
+                if (isCompleted) {
+                  setDbCompletedLessons((prev) => {
+                    if (prev.includes(currentLessonId)) return prev;
+                    return [...prev, currentLessonId];
+                  });
+                }
+                
+                // Actualizar progreso en segundo plano
+                const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
+                if (currentLesson?.content) {
+                  try {
+                    const parsed = JSON.parse(currentLesson.content);
+                    const totalSubs = parsed.subsections?.length || 0;
+                    const result = await updateProgressInBackground(
+                      currentLessonId,
+                      subIndex,
+                      isCompleted,
+                      totalSubs
+                    );
+                    
+                    // Si la lección se completó, actualizar dbCompletedLessons con datos del servidor
+                    if (result?.completedLessons) {
+                      setDbCompletedLessons(result.completedLessons);
+                    }
+                    
+                    // Actualizar subsection progress desde la respuesta
+                    if (result?.subsectionProgress) {
+                      setCompletedSubsectionsByLesson(prev => ({
+                        ...prev,
+                        ...result.subsectionProgress,
+                      }));
+                    }
+                  } catch (e) {
+                    console.error('Error updating progress:', e);
+                  }
+                }
+              }}
+            />
           </div>
 
           {/* Lower Tabs & Content */}
@@ -2365,7 +2923,7 @@ export default function LessonPlayerPage() {
 
           {/* Sections & Lessons List */}
           <div className="flex-1 overflow-y-auto">
-            {sortedLessons.map((lesson) => {
+            {sortedLessons.map((lesson, lessonIndex) => {
               // Parsear subsecciones del content JSON
               let subsections: Subsection[] = [];
               try {
@@ -2396,6 +2954,38 @@ export default function LessonPlayerPage() {
                 ? Math.round((completedCount / totalSubsections) * 100)
                 : 0;
               const isSectionCompleted = sectionProgress === 100;
+              
+              // Verificar si la sección está desbloqueada (para visualización)
+              // La sección se muestra habilitada si:
+              // 1. Es la primera sección
+              // 2. La sección anterior está completada
+              // 3. Es la sección siguiente a la actual (para permitir navegación con validación)
+              const previousLesson = lessonIndex > 0 ? sortedLessons[lessonIndex - 1] : null;
+              const prevHighestIndex = previousLesson ? (completedSubsectionsByLesson[previousLesson.id] ?? -1) : -1;
+              const prevIsCompleted = previousLesson ? dbCompletedLessons.includes(previousLesson.id) : true;
+              let prevSubsections: Subsection[] = [];
+              let prevTotalSubsections = 1;
+              if (previousLesson) {
+                try {
+                  if (previousLesson.content) {
+                    const parsed = JSON.parse(previousLesson.content);
+                    prevSubsections = parsed.subsections || [];
+                    prevTotalSubsections = prevSubsections.length || 1;
+                  }
+                } catch (e) {}
+              }
+              
+              // La sección está completamente desbloqueada si la anterior está completa
+              const isSectionFullyUnlocked = lessonIndex === 0 || prevIsCompleted || 
+                (prevHighestIndex >= 0 && prevHighestIndex >= prevTotalSubsections - 1);
+              
+              // La sección está parcialmente habilitada si es la siguiente a la actual
+              // (permite clic pero muestra modal de validación)
+              const currentLessonIndex = sortedLessons.findIndex(l => l.id === currentLessonId);
+              const isNextSection = lessonIndex === currentLessonIndex + 1;
+              
+              // Para visualización: habilitar si está completamente desbloqueada o es la siguiente sección
+              const isSectionUnlocked = isSectionFullyUnlocked || isNextSection;
 
               return (
                 <div key={lesson.id} className="border-b" style={{ borderColor: TOKENS.colors.border }}>
@@ -2477,42 +3067,175 @@ export default function LessonPlayerPage() {
                           const highestCompletedIndexForLesson = completedSubsectionsByLesson[lesson.id] ?? -1;
                           const isLessonFullyCompleted = dbCompletedLessons.includes(lesson.id);
                           const isCompleted = isLessonFullyCompleted || subIndex <= highestCompletedIndexForLesson;
-
+                          
+                          // Verificar si la subsección está desbloqueada visualmente
+                          let isSubsectionUnlocked = false;
+                          
+                          if (isCompleted || isLessonFullyCompleted) {
+                            // Si ya está completada, siempre desbloqueada
+                            isSubsectionUnlocked = true;
+                          } else if (lesson.id === currentLessonId) {
+                            // Estamos en la sección actual
+                            // Habilitar la actual y la siguiente
+                            const isCurrentlyActive = subIndex === activeSubsectionIndex;
+                            const isNextToActive = subIndex === activeSubsectionIndex + 1;
+                            isSubsectionUnlocked = subIndex <= highestCompletedIndexForLesson + 1 || isCurrentlyActive || isNextToActive;
+                          } else if (isNextSection && isSectionFullyUnlocked) {
+                            // Sección siguiente ya desbloqueada completamente
+                            isSubsectionUnlocked = subIndex <= highestCompletedIndexForLesson + 1 || subIndex === 0;
+                          } else if (isNextSection && !isSectionFullyUnlocked) {
+                            // Sección siguiente pero la actual no está completa
+                            // Solo habilitar la primera subsección (para mostrar modal de validación)
+                            isSubsectionUnlocked = subIndex === 0;
+                          } else if (isSectionFullyUnlocked) {
+                            // Sección completamente desbloqueada (anterior completada)
+                            isSubsectionUnlocked = subIndex === 0 || subIndex <= highestCompletedIndexForLesson + 1;
+                          } else {
+                            // Sección bloqueada
+                            isSubsectionUnlocked = false;
+                          }
+                          
                           const handleSubsectionClick = () => {
+                            // No permitir navegación si está completamente bloqueada
+                            if (!isSubsectionUnlocked) {
+                              // Mostrar modal de error indicando qué falta
+                              const currentSubIndex = activeSubsectionIndex;
+                              const currentSubCompleted = currentSubIndex <= highestCompletedIndexForLesson;
+                              
+                              if (!currentSubCompleted) {
+                                const currentHasQuiz = subsectionHasQuiz(lesson.id, currentSubIndex);
+                                const currentSubsection = subsections[currentSubIndex];
+                                
+                                if (currentHasQuiz) {
+                                  setCompletionModalType('error');
+                                  setCompletionModalMessage(`Debes completar el cuestionario de la lección "${currentSubsection?.title || 'actual'}" antes de poder avanzar.`);
+                                } else {
+                                  setCompletionModalType('error');
+                                  setCompletionModalMessage(`Debes completar la lección "${currentSubsection?.title || 'actual'}" antes de poder avanzar a esta sección.`);
+                                }
+                                setShowCompletionModal(true);
+                              }
+                              return;
+                            }
+                            
                             if (lesson.id === currentLessonId) {
                               // Si ya estamos en esta misma lección
                               const previousIndex = activeSubsectionIndex;
                               const nextIndex = subIndex;
 
-                              // Si el alumno avanza de forma consecutiva (ej. 0 -> 1, 1 -> 2)
-                              if (nextIndex === previousIndex + 1) {
-                                // Actualización optimista del estado local
-                                setCompletedSubsectionsByLesson((prev) => {
-                                  const currentMax = prev[lesson.id] ?? -1;
-                                  const newMax = Math.max(currentMax, previousIndex);
-                                  return {
-                                    ...prev,
-                                    [lesson.id]: newMax,
-                                  };
-                                });
-
-                                // Verificar si es la última subsección (lección completada)
-                                const isLastSubsection = nextIndex === subsections.length - 1;
-                                
-                                // Guardar progreso en segundo plano (sin bloquear UI)
-                                updateProgressInBackground(
-                                  lesson.id,
-                                  previousIndex, // Guardamos el índice que acabamos de completar
-                                  isLastSubsection,
-                                  subsections.length
-                                );
+                              // Si hace clic en la misma subsección, no hacer nada
+                              if (nextIndex === previousIndex) {
+                                return;
                               }
 
-                              setActiveSubsectionIndex(nextIndex);
+                              // Si va a una subsección anterior (ya completada), navegar directamente
+                              if (nextIndex < previousIndex) {
+                                setActiveSubsectionIndex(nextIndex);
+                                return;
+                              }
+
+                              // Si la subsección actual ya está completada, navegar directamente
+                              const currentSubCompleted = previousIndex <= highestCompletedIndexForLesson;
+                              if (currentSubCompleted) {
+                                setActiveSubsectionIndex(nextIndex);
+                                return;
+                              }
+
+                              // Verificar si la subsección actual tiene quiz
+                              const currentHasQuiz = subsectionHasQuiz(lesson.id, previousIndex);
+                              const currentSubsection = subsections[previousIndex];
+                              
+                              if (currentHasQuiz) {
+                                // Si tiene quiz, mostrar modal de error indicando que debe completar el quiz
+                                setCompletionModalType('error');
+                                setCompletionModalMessage(`Debes completar el cuestionario de la lección "${currentSubsection?.title || 'actual'}" antes de avanzar a la siguiente lección.`);
+                                setShowCompletionModal(true);
+                                return;
+                              }
+
+                              // Si es una lección de lectura (sin quiz), mostrar modal de confirmación
+                              setCompletionModalType('confirm');
+                              setCompletionModalMessage('');
+                              setPendingNavigation({
+                                lessonId: lesson.id,
+                                fromSubIndex: previousIndex,
+                                toSubIndex: nextIndex,
+                                subsectionsLength: subsections.length,
+                              });
+                              setShowCompletionModal(true);
                             } else {
-                              // Navegar a otra lección y establecer subsección inicial
-                              setActiveSubsectionIndex(subIndex);
-                              goToLesson(lesson.id);
+                              // Navegar a otra lección/sección
+                              if (!isSectionUnlocked) {
+                                return;
+                              }
+                              
+                              // Si la sección está completamente desbloqueada, navegar directamente
+                              if (isSectionFullyUnlocked) {
+                                setActiveSubsectionIndex(subIndex);
+                                goToLesson(lesson.id);
+                                return;
+                              }
+                              
+                              // Si es la siguiente sección pero la actual no está completa,
+                              // mostrar modal de validación
+                              const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
+                              if (!currentLesson) return;
+                              
+                              let currentSubsections: Subsection[] = [];
+                              try {
+                                if (currentLesson.content) {
+                                  const parsed = JSON.parse(currentLesson.content);
+                                  currentSubsections = parsed.subsections || [];
+                                }
+                              } catch {}
+                              
+                              const currentHighestIndex = completedSubsectionsByLesson[currentLessonId] ?? -1;
+                              const currentIsFullyCompleted = dbCompletedLessons.includes(currentLessonId) || 
+                                (currentHighestIndex >= currentSubsections.length - 1);
+                              
+                              if (currentIsFullyCompleted) {
+                                // La sección actual está completa, navegar
+                                setActiveSubsectionIndex(subIndex);
+                                goToLesson(lesson.id);
+                              } else {
+                                // La sección actual no está completa, mostrar modal
+                                const activeSubIndex = activeSubsectionIndex;
+                                const currentSubCompleted = activeSubIndex <= currentHighestIndex;
+                                
+                                if (!currentSubCompleted) {
+                                  const currentHasQuiz = subsectionHasQuiz(currentLessonId, activeSubIndex);
+                                  const currentSubsection = currentSubsections[activeSubIndex];
+                                  
+                                  if (currentHasQuiz) {
+                                    setCompletionModalType('error');
+                                    setCompletionModalMessage(`Debes completar el cuestionario de la lección "${currentSubsection?.title || 'actual'}" antes de avanzar a la siguiente sección.`);
+                                    setShowCompletionModal(true);
+                                  } else {
+                                    // Mostrar modal de confirmación para completar la sección actual
+                                    setCompletionModalType('confirm');
+                                    setCompletionModalMessage('');
+                                    setPendingNavigation({
+                                      lessonId: currentLessonId,
+                                      fromSubIndex: activeSubIndex,
+                                      toSubIndex: currentSubsections.length - 1, // Marcar hasta el final
+                                      subsectionsLength: currentSubsections.length,
+                                    });
+                                    // Guardar la navegación pendiente a la nueva sección
+                                    setPendingNavigationToSection({
+                                      lessonId: lesson.id,
+                                      subIndex: subIndex,
+                                    });
+                                    setShowCompletionModal(true);
+                                  }
+                                } else {
+                                  // La subsección actual está completa pero no la sección completa
+                                  // Mostrar mensaje indicando cuántas faltan
+                                  const remaining = currentSubsections.length - currentHighestIndex - 1;
+                                  setCompletionModalType('error');
+                                  setCompletionModalMessage(`Debes completar ${remaining} lección${remaining > 1 ? 'es' : ''} más de la sección "${currentLesson.title}" antes de avanzar a la siguiente sección.`);
+                                  setShowCompletionModal(true);
+                                }
+                              }
                             }
                           };
 
@@ -2521,10 +3244,11 @@ export default function LessonPlayerPage() {
                               key={subsection.id}
                               onClick={handleSubsectionClick}
                               className={cn(
-                                "pl-6 pr-4 py-2.5 flex gap-3 cursor-pointer transition-colors",
-                                isActiveSubsection 
-                                  ? "bg-purple-100" 
-                                  : "hover:bg-gray-50"
+                                "pl-6 pr-4 py-2.5 flex gap-3 transition-colors",
+                                isSubsectionUnlocked 
+                                  ? "cursor-pointer hover:bg-gray-50" 
+                                  : "cursor-not-allowed opacity-60",
+                                isActiveSubsection && "bg-purple-100"
                               )}
                             >
                               {/* Checkbox */}
@@ -2536,7 +3260,9 @@ export default function LessonPlayerPage() {
                                       ? "bg-purple-600 border-purple-600"
                                       : isCompleted
                                         ? "bg-purple-50 border-purple-600"
-                                        : "border-gray-400 bg-white"
+                                        : isSubsectionUnlocked
+                                          ? "border-gray-400 bg-white"
+                                          : "border-gray-300 bg-gray-100"
                                   )}
                                 >
                                   {(isActiveSubsection || isCompleted) && (
@@ -2545,6 +3271,9 @@ export default function LessonPlayerPage() {
                                       className={isActiveSubsection ? "text-white" : "text-purple-600"}
                                     />
                                   )}
+                                  {!isSubsectionUnlocked && !isActiveSubsection && !isCompleted && (
+                                    <IconX size={8} className="text-gray-400" />
+                                  )}
                                 </div>
                               </div>
                               
@@ -2552,11 +3281,18 @@ export default function LessonPlayerPage() {
                               <div className="flex-1 min-w-0">
                                 <p className={cn(
                                   "text-sm leading-tight",
-                                  isActiveSubsection ? "text-gray-900 font-medium" : "text-gray-700"
+                                  isActiveSubsection ? "text-gray-900 font-medium" : 
+                                  isSubsectionUnlocked ? "text-gray-700" : "text-gray-400"
                                 )}>
                                   {subIndex + 1}. {subsection.title}
+                                  {!isSubsectionUnlocked && (
+                                    <span className="ml-2 text-xs text-gray-400">(Bloqueada)</span>
+                                  )}
                                 </p>
-                                <div className="flex items-center gap-1.5 mt-1 text-xs text-gray-500">
+                                <div className={cn(
+                                  "flex items-center gap-1.5 mt-1 text-xs",
+                                  isSubsectionUnlocked ? "text-gray-500" : "text-gray-400"
+                                )}>
                                   <IconVideo size={12} />
                                   <span>5 min</span>
                                 </div>
@@ -2638,6 +3374,67 @@ export default function LessonPlayerPage() {
             setUserRating(null);
           }}
         />
+      )}
+
+      {/* Modal de confirmación/error para completar lección */}
+      {showCompletionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="p-6">
+              {completionModalType === 'confirm' ? (
+                <>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                      <IconCheck className="w-6 h-6 text-purple-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900">
+                      ¿Completar lección?
+                    </h3>
+                  </div>
+                  <p className="text-gray-600 mb-6">
+                    ¿Estás seguro de que deseas marcar la lección actual como completada y avanzar a la siguiente?
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleCancelCompletion}
+                      className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                    >
+                      No, continuar aquí
+                    </button>
+                    <button
+                      onClick={handleConfirmCompletion}
+                      className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors"
+                    >
+                      Sí, completar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                      <IconX className="w-6 h-6 text-amber-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900">
+                      Lección incompleta
+                    </h3>
+                  </div>
+                  <p className="text-gray-600 mb-6">
+                    {completionModalMessage || 'Debes completar la lección actual antes de avanzar.'}
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleCancelCompletion}
+                      className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors"
+                    >
+                      Entendido
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1337,6 +1337,44 @@ export default function StudentCoursePage() {
                             {lessonContent.subsections.map((subsection, subIdx) => {
                               // Verificar si la subsección está completada usando el índice (formato: lessonId-sub-index)
                               const isSubCompleted = completedSubsections.has(`${lesson.id}-sub-${subIdx}`);
+                              
+                              // Verificar si la subsección está desbloqueada (progreso secuencial)
+                              // Si ya está completada, siempre está desbloqueada
+                              let isUnlocked = false;
+                              if (isSubCompleted || completedLessons.has(lesson.id)) {
+                                // Si ya está completada, siempre desbloqueada
+                                isUnlocked = true;
+                              } else if (index === 0 && subIdx === 0) {
+                                // Primera subsección de la primera sección: siempre desbloqueada
+                                isUnlocked = true;
+                              } else if (subIdx === 0) {
+                                // Primera subsección de otra sección: verificar que la sección anterior esté completa
+                                const previousLesson = lessons[index - 1];
+                                if (previousLesson) {
+                                  // Si la sección anterior está completamente completada, está desbloqueada
+                                  if (completedLessons.has(previousLesson.id)) {
+                                    isUnlocked = true;
+                                  } else {
+                                    const prevLessonContent = parseLessonContent(previousLesson.content);
+                                    const prevSubsectionsCount = prevLessonContent?.subsections.length || 0;
+                                    // Verificar que todas las subsecciones de la sección anterior estén completadas
+                                    let allPrevCompleted = true;
+                                    for (let i = 0; i < prevSubsectionsCount; i++) {
+                                      if (!completedSubsections.has(`${previousLesson.id}-sub-${i}`)) {
+                                        allPrevCompleted = false;
+                                        break;
+                                      }
+                                    }
+                                    isUnlocked = allPrevCompleted;
+                                  }
+                                }
+                              } else {
+                                // Subsección dentro de la misma sección: la anterior debe estar completada
+                                const prevSubCompleted = completedSubsections.has(`${lesson.id}-sub-${subIdx - 1}`) ||
+                                                         completedLessons.has(lesson.id);
+                                isUnlocked = prevSubCompleted;
+                              }
+                              
                               const blockTypes = subsection.blocks.map(b => b.type);
                               const hasVideo = blockTypes.includes('video');
                               const hasQuiz = blockTypes.includes('quiz');
@@ -1382,8 +1420,9 @@ export default function StudentCoursePage() {
                               );
                               
                               const sharedStyles = {
-                                backgroundColor: isSubCompleted ? '#D1FAE5' : '#F9FAFB',
-                                border: `1px solid ${COLORS.accent.border}`,
+                                backgroundColor: isSubCompleted ? '#D1FAE5' : isUnlocked ? '#F9FAFB' : '#F3F4F6',
+                                border: `1px solid ${isUnlocked ? COLORS.accent.border : '#D1D5DB'}`,
+                                opacity: isUnlocked ? 1 : 0.6,
                               };
                               
                               // En modo preview, permitir navegación al contenido con parámetro preview
@@ -1397,6 +1436,22 @@ export default function StudentCoursePage() {
                                   >
                                     {subsectionContent}
                                   </Link>
+                                );
+                              }
+                              
+                              // Si está bloqueada, mostrar como div no clickeable
+                              if (!isUnlocked) {
+                                return (
+                                  <div
+                                    key={`${lesson.id}-${subsection.id || subIdx}`}
+                                    className="flex items-center gap-3 p-3 rounded-xl"
+                                    style={{ ...sharedStyles, cursor: 'not-allowed' }}
+                                  >
+                                    {subsectionContent}
+                                    <span className="text-xs text-gray-400 ml-auto">
+                                      Bloqueada
+                                    </span>
+                                  </div>
                                 );
                               }
                               

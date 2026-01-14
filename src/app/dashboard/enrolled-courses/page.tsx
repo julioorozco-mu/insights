@@ -7,7 +7,7 @@ import { courseRepository } from "@/lib/repositories/courseRepository";
 import { lessonRepository } from "@/lib/repositories/lessonRepository";
 import { userRepository } from "@/lib/repositories/userRepository";
 import { Loader } from "@/components/common/Loader";
-import { IconBook, IconPlayerPlay, IconClock, IconUsers, IconStar, IconStarFilled, IconCalendar } from "@tabler/icons-react";
+import { IconBook, IconPlayerPlay, IconClock, IconUsers, IconStar, IconStarFilled, IconCalendar, IconChevronDown } from "@tabler/icons-react";
 import { stripHtmlAndTruncate } from "@/lib/utils";
 
 interface Speaker {
@@ -16,6 +16,14 @@ interface Speaker {
   lastName?: string;
   email: string;
   avatarUrl?: string;
+}
+
+interface LessonProgress {
+  id: string;
+  title: string;
+  totalSubsections: number;
+  completedSubsections: number;
+  isCompleted: boolean;
 }
 
 interface Course {
@@ -27,6 +35,14 @@ interface Course {
   lessonCount: number;
   createdAt: any;
   startDate?: string;
+}
+
+interface CourseProgress {
+  progress: number;
+  completedLessons: string[];
+  subsectionProgress: Record<string, number>;
+  totalLessons: number;
+  lessons: LessonProgress[];
 }
 
 interface Enrollment {
@@ -45,8 +61,25 @@ export default function EnrolledCoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [speakers, setSpeakers] = useState<Map<string, Speaker>>(new Map());
   const [courseRatings, setCourseRatings] = useState<Map<string, CourseRating>>(new Map());
+  const [courseProgress, setCourseProgress] = useState<Map<string, CourseProgress>>(new Map());
+  const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+
+  // Toggle para expandir/colapsar secciones de un curso
+  const toggleCourseExpand = (courseId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setExpandedCourses(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(courseId)) {
+        newSet.delete(courseId);
+      } else {
+        newSet.add(courseId);
+      }
+      return newSet;
+    });
+  };
 
   // Función para obtener el rating de un curso
   const fetchCourseRating = async (courseId: string): Promise<CourseRating> => {
@@ -96,6 +129,64 @@ export default function EnrolledCoursesPage() {
 
   const getCourseRating = (courseId: string): CourseRating => {
     return courseRatings.get(courseId) || { averageRating: 0, reviewsCount: 0 };
+  };
+
+  // Función para obtener el progreso de un curso
+  const fetchCourseProgress = async (courseId: string): Promise<CourseProgress | null> => {
+    if (!user) return null;
+    
+    try {
+      // Obtener progreso del estudiante
+      const progressRes = await fetch(`/api/student/progress?courseId=${courseId}&userId=${user.id}`);
+      if (!progressRes.ok) return null;
+      
+      const progressData = await progressRes.json();
+      
+      // Obtener lecciones del curso
+      const lessonsRes = await fetch(`/api/student/getLessons?courseId=${courseId}`);
+      if (!lessonsRes.ok) return null;
+      
+      const lessonsData = await lessonsRes.json();
+      const lessons = lessonsData.lessons || [];
+      
+      // Calcular progreso por lección
+      const lessonProgressList: LessonProgress[] = lessons.map((lesson: any) => {
+        let totalSubsections = 1;
+        try {
+          if (lesson.content) {
+            const parsed = JSON.parse(lesson.content);
+            totalSubsections = parsed.subsections?.length || 1;
+          }
+        } catch {}
+        
+        const isCompleted = progressData.completedLessons?.includes(lesson.id) || false;
+        const highestIndex = progressData.subsectionProgress?.[lesson.id] ?? -1;
+        const completedSubsections = isCompleted ? totalSubsections : Math.max(0, highestIndex + 1);
+        
+        return {
+          id: lesson.id,
+          title: lesson.title,
+          totalSubsections,
+          completedSubsections: Math.min(completedSubsections, totalSubsections),
+          isCompleted,
+        };
+      });
+      
+      return {
+        progress: progressData.progress || 0,
+        completedLessons: progressData.completedLessons || [],
+        subsectionProgress: progressData.subsectionProgress || {},
+        totalLessons: progressData.totalLessons || lessons.length,
+        lessons: lessonProgressList,
+      };
+    } catch (error) {
+      console.error(`Error fetching progress for course ${courseId}:`, error);
+      return null;
+    }
+  };
+
+  const getProgress = (courseId: string): CourseProgress | null => {
+    return courseProgress.get(courseId) || null;
   };
 
   useEffect(() => {
@@ -178,6 +269,18 @@ export default function EnrolledCoursesPage() {
           })
         );
         setCourseRatings(ratingsMap);
+
+        // Cargar progreso de todos los cursos
+        const progressMap = new Map<string, CourseProgress>();
+        await Promise.all(
+          coursesData.map(async (course) => {
+            const progress = await fetchCourseProgress(course.id);
+            if (progress) {
+              progressMap.set(course.id, progress);
+            }
+          })
+        );
+        setCourseProgress(progressMap);
       } catch (error) {
         console.error("Error loading enrolled courses:", error);
       } finally {
@@ -244,96 +347,185 @@ export default function EnrolledCoursesPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {courses.map((course) => (
-            <Link
-              key={course.id}
-              href={`/dashboard/student/courses/${course.id}`}
-              className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow"
-            >
-              <figure className="h-48 bg-base-300">
-                {course.coverImageUrl ? (
-                  <img
-                    src={course.coverImageUrl}
-                    alt={course.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="flex items-center justify-center w-full h-full text-primary">
-                    <IconBook size={64} stroke={2} />
-                  </div>
-                )}
-              </figure>
-              <div className="card-body">
-                <h2 className="card-title">{course.title}</h2>
-                <p className="text-sm text-base-content/70 line-clamp-2">
-                  {stripHtmlAndTruncate(course.description, 120)}
-                </p>
-                
-                {/* Instructor */}
-                {(() => {
-                  const speaker = getCourseSpeaker(course);
-                  return speaker ? (
-                    <div className="flex items-center gap-2 mt-2">
-                      <div className="avatar">
-                        <div className="w-8 h-8 rounded-full">
-                          {speaker.avatarUrl ? (
-                            <img src={speaker.avatarUrl} alt={speaker.name} />
-                          ) : (
-                            <div className="bg-primary text-primary-content flex items-center justify-center w-full h-full text-xs font-semibold">
-                              {speaker.name.charAt(0)}{speaker.lastName?.charAt(0) || ''}
+          {courses.map((course) => {
+            const progress = getProgress(course.id);
+            const isExpanded = expandedCourses.has(course.id);
+            
+            return (
+              <div
+                key={course.id}
+                className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow"
+              >
+                <Link href={`/dashboard/student/courses/${course.id}`}>
+                  <figure className="h-48 bg-base-300 relative">
+                    {course.coverImageUrl ? (
+                      <img
+                        src={course.coverImageUrl}
+                        alt={course.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center w-full h-full text-primary">
+                        <IconBook size={64} stroke={2} />
+                      </div>
+                    )}
+                    {/* Badge de progreso total */}
+                    {progress && (
+                      <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 shadow-lg">
+                        <span className={`text-sm font-bold ${progress.progress === 100 ? 'text-green-600' : 'text-purple-600'}`}>
+                          {progress.progress}%
+                        </span>
+                      </div>
+                    )}
+                  </figure>
+                </Link>
+                <div className="card-body">
+                  <Link href={`/dashboard/student/courses/${course.id}`}>
+                    <h2 className="card-title hover:text-primary transition-colors">{course.title}</h2>
+                  </Link>
+                  <p className="text-sm text-base-content/70 line-clamp-2">
+                    {stripHtmlAndTruncate(course.description, 120)}
+                  </p>
+                  
+                  {/* Barra de progreso total */}
+                  {progress && (
+                    <div className="mt-3">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-medium text-base-content/70">Progreso del curso</span>
+                        <span className={`text-xs font-bold ${progress.progress === 100 ? 'text-green-600' : 'text-purple-600'}`}>
+                          {progress.progress}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div 
+                          className={`h-2.5 rounded-full transition-all duration-300 ${progress.progress === 100 ? 'bg-green-500' : 'bg-purple-600'}`}
+                          style={{ width: `${progress.progress}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-base-content/60 mt-1">
+                        {progress.completedLessons.length} de {progress.totalLessons} secciones completadas
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Botón para expandir secciones */}
+                  {progress && progress.lessons.length > 0 && (
+                    <button
+                      onClick={(e) => toggleCourseExpand(course.id, e)}
+                      className="flex items-center justify-between w-full mt-2 py-2 px-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      <span className="text-sm font-medium text-gray-700">
+                        Ver progreso por sección
+                      </span>
+                      <IconChevronDown 
+                        size={18} 
+                        className={`text-gray-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                  )}
+
+                  {/* Lista de secciones expandida */}
+                  {isExpanded && progress && progress.lessons.length > 0 && (
+                    <div className="mt-2 space-y-2 max-h-60 overflow-y-auto">
+                      {progress.lessons.map((lesson, index) => {
+                        const lessonProgress = lesson.totalSubsections > 0 
+                          ? Math.round((lesson.completedSubsections / lesson.totalSubsections) * 100)
+                          : 0;
+                        
+                        return (
+                          <div key={lesson.id} className="bg-gray-50 rounded-lg p-3">
+                            <div className="flex justify-between items-start mb-1">
+                              <span className="text-xs font-medium text-gray-700 line-clamp-1 flex-1 pr-2">
+                                {index + 1}. {lesson.title}
+                              </span>
+                              <span className={`text-xs font-bold shrink-0 ${lessonProgress === 100 ? 'text-green-600' : 'text-purple-600'}`}>
+                                {lessonProgress}%
+                              </span>
                             </div>
-                          )}
+                            <div className="w-full bg-gray-200 rounded-full h-1.5">
+                              <div 
+                                className={`h-1.5 rounded-full transition-all duration-300 ${lessonProgress === 100 ? 'bg-green-500' : 'bg-purple-500'}`}
+                                style={{ width: `${lessonProgress}%` }}
+                              />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {lesson.completedSubsections}/{lesson.totalSubsections} lecciones
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  
+                  {/* Instructor */}
+                  {(() => {
+                    const speaker = getCourseSpeaker(course);
+                    return speaker ? (
+                      <div className="flex items-center gap-2 mt-2">
+                        <div className="avatar">
+                          <div className="w-8 h-8 rounded-full">
+                            {speaker.avatarUrl ? (
+                              <img src={speaker.avatarUrl} alt={speaker.name} />
+                            ) : (
+                              <div className="bg-primary text-primary-content flex items-center justify-center w-full h-full text-xs font-semibold">
+                                {speaker.name.charAt(0)}{speaker.lastName?.charAt(0) || ''}
+                              </div>
+                            )}
+                          </div>
                         </div>
+                        <span className="text-sm font-medium">
+                          {speaker.name} {speaker.lastName || ''}
+                        </span>
                       </div>
-                      <span className="text-sm font-medium">
-                        {speaker.name} {speaker.lastName || ''}
-                      </span>
-                    </div>
-                  ) : null;
-                })()}
+                    ) : null;
+                  })()}
 
-                {/* Rating del curso */}
-                {(() => {
-                  const rating = getCourseRating(course.id);
-                  return (
-                    <div className="flex items-center gap-2 mt-2">
-                      <div className="flex items-center gap-0.5">
-                        {renderStars(rating.averageRating)}
+                  {/* Rating del curso */}
+                  {(() => {
+                    const rating = getCourseRating(course.id);
+                    return (
+                      <div className="flex items-center gap-2 mt-2">
+                        <div className="flex items-center gap-0.5">
+                          {renderStars(rating.averageRating)}
+                        </div>
+                        <span className="text-sm font-medium">
+                          {rating.averageRating > 0 ? rating.averageRating.toFixed(1) : '—'}
+                        </span>
+                        <span className="text-xs text-base-content/60">
+                          ({rating.reviewsCount} {rating.reviewsCount === 1 ? 'reseña' : 'reseñas'})
+                        </span>
                       </div>
-                      <span className="text-sm font-medium">
-                        {rating.averageRating > 0 ? rating.averageRating.toFixed(1) : '—'}
-                      </span>
-                      <span className="text-xs text-base-content/60">
-                        ({rating.reviewsCount} {rating.reviewsCount === 1 ? 'reseña' : 'reseñas'})
-                      </span>
+                    );
+                  })()}
+
+                  {/* Fecha de inicio del curso */}
+                  {formatCourseDateTime(course) && (
+                    <div className="flex items-center gap-2 mt-2 text-sm text-base-content/70">
+                      <IconCalendar size={16} />
+                      <span>{formatCourseDateTime(course)}</span>
                     </div>
-                  );
-                })()}
+                  )}
 
-                {/* Fecha de inicio del curso */}
-                {formatCourseDateTime(course) && (
-                  <div className="flex items-center gap-2 mt-2 text-sm text-base-content/70">
-                    <IconCalendar size={16} />
-                    <span>{formatCourseDateTime(course)}</span>
+                  {/* Fecha de creación del curso */}
+                  {course.createdAt && (
+                    <div className="flex items-center gap-2 mt-2 text-sm text-base-content/60">
+                      <IconClock size={14} />
+                      <span>Creado: {formatCreatedDate(course.createdAt)}</span>
+                    </div>
+                  )}
+
+                  <div className="card-actions mt-4">
+                    <Link 
+                      href={`/dashboard/student/courses/${course.id}`}
+                      className="btn btn-primary text-white w-full"
+                    >
+                      {progress && progress.progress === 100 ? 'Revisar curso' : 'Continuar'} →
+                    </Link>
                   </div>
-                )}
-
-                {/* Fecha de creación del curso */}
-                {course.createdAt && (
-                  <div className="flex items-center gap-2 mt-2 text-sm text-base-content/60">
-                    <IconClock size={14} />
-                    <span>Creado: {formatCreatedDate(course.createdAt)}</span>
-                  </div>
-                )}
-
-                <div className="card-actions mt-4">
-                  <button className="btn btn-primary text-white w-full">
-                    Continuar →
-                  </button>
                 </div>
               </div>
-            </Link>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
