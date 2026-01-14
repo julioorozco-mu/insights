@@ -20,6 +20,7 @@ import {
   IconStarFilled
 } from "@tabler/icons-react";
 import { userRepository } from "@/lib/repositories/userRepository";
+import CoursePreviewSideSheet from "@/components/course/CoursePreviewSideSheet";
 
 interface Enrollment {
   id: string;
@@ -53,6 +54,7 @@ export default function AvailableCoursesPage() {
   const [enrolling, setEnrolling] = useState<string | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [enrolledCourseId, setEnrolledCourseId] = useState<string | null>(null);
+  const [previewCourseId, setPreviewCourseId] = useState<string | null>(null);
   const { user } = useAuth();
 
   // Función para obtener el rating de un curso
@@ -140,8 +142,8 @@ export default function AvailableCoursesPage() {
     return speakers.get(course.speakerIds[0]) || null;
   };
 
-  const formatCourseDateTime = (course: Course): string => {
-    if (!course.startDate) return 'Fecha por confirmar';
+  const formatCourseDateTime = (course: Course): string | null => {
+    if (!course.startDate) return null;
     const date = new Date(course.startDate);
     const dateStr = date.toLocaleDateString('es-MX', { 
       day: 'numeric', 
@@ -226,6 +228,9 @@ export default function AvailableCoursesPage() {
         completedLessons: [],
       }]);
 
+      // Cerrar el side sheet
+      setPreviewCourseId(null);
+
       // Mostrar modal de éxito
       setEnrolledCourseId(courseId);
       setShowSuccessModal(true);
@@ -240,6 +245,15 @@ export default function AvailableCoursesPage() {
     } finally {
       setEnrolling(null);
     }
+  };
+
+  const formatCreatedDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-MX', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
   };
 
   if (loading) {
@@ -298,7 +312,11 @@ export default function AvailableCoursesPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {availableCourses.map((course) => (
-              <div key={course.id} className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
+              <div 
+                key={course.id} 
+                className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow cursor-pointer"
+                onClick={() => setPreviewCourseId(course.id)}
+              >
                 <figure className="h-48 bg-base-300">
                   {course.coverImageUrl ? (
                     <img 
@@ -359,19 +377,31 @@ export default function AvailableCoursesPage() {
                     );
                   })()}
 
-                  {/* Fecha del curso */}
-                  <div className="flex items-center gap-2 mt-2 text-sm text-base-content/70">
-                    <IconCalendar size={16} />
-                    <span>{formatCourseDateTime(course)}</span>
-                  </div>
+                  {/* Fecha de inicio del curso */}
+                  {formatCourseDateTime(course) && (
+                    <div className="flex items-center gap-2 mt-2 text-sm text-base-content/70">
+                      <IconCalendar size={16} />
+                      <span>{formatCourseDateTime(course)}</span>
+                    </div>
+                  )}
+
+                  {/* Fecha de creación del curso */}
+                  {course.createdAt && (
+                    <div className="flex items-center gap-2 mt-2 text-sm text-base-content/60">
+                      <IconClock size={14} />
+                      <span>Creado: {formatCreatedDate(course.createdAt)}</span>
+                    </div>
+                  )}
 
                   <div className="card-actions mt-4">
                     <button
-                      onClick={() => handleEnroll(course.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPreviewCourseId(course.id);
+                      }}
                       className="btn btn-primary text-white w-full"
-                      disabled={enrolling === course.id}
                     >
-                      {enrolling === course.id ? 'Inscribiendo...' : 'Inscribirse'}
+                      Ver detalles
                     </button>
                   </div>
                 </div>
@@ -409,6 +439,15 @@ export default function AvailableCoursesPage() {
           </div>
         </div>
       )}
+
+      {/* Course Preview Side Sheet */}
+      <CoursePreviewSideSheet
+        courseId={previewCourseId}
+        isOpen={!!previewCourseId}
+        onClose={() => setPreviewCourseId(null)}
+        onEnroll={handleEnroll}
+        enrolling={!!enrolling}
+      />
     </div>
   );
 }

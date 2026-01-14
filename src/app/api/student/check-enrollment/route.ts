@@ -39,10 +39,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ isEnrolled: false, reason: 'no_student_record' });
     }
 
-    // 2. Verificar inscripción
+    // 2. Verificar inscripción e incluir progreso
     const { data: enrollment, error: enrollmentError } = await supabaseAdmin
       .from(TABLES.STUDENT_ENROLLMENTS)
-      .select('id')
+      .select('id, progress, completed_lessons, subsection_progress, last_accessed_lesson_id')
       .eq('course_id', courseId)
       .eq('student_id', student.id)
       .maybeSingle();
@@ -52,7 +52,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: enrollmentError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ isEnrolled: !!enrollment });
+    if (!enrollment) {
+      return NextResponse.json({ isEnrolled: false });
+    }
+
+    return NextResponse.json({ 
+      isEnrolled: true,
+      progress: enrollment.progress || 0,
+      completedLessons: enrollment.completed_lessons || [],
+      subsectionProgress: enrollment.subsection_progress || {},
+      lastAccessedLessonId: enrollment.last_accessed_lesson_id || null,
+    });
 
   } catch (error: any) {
     console.error('Check enrollment API error:', error);
