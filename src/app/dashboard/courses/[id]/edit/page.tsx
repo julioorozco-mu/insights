@@ -277,6 +277,8 @@ export default function EditCoursePage() {
   const [description, setDescription] = useState<string>("");
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [currentCourseId, setCurrentCourseId] = useState<string | null>(courseId || null);
+  const [hasStartDate, setHasStartDate] = useState<boolean>(false);
+  const [startDate, setStartDate] = useState<string>("");
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -357,6 +359,22 @@ export default function EditCoursePage() {
         setPrice(course.price?.toFixed(2) || "0.00");
         setSalePercentage(course.salePercentage || 0);
         setCurrentCourseId(courseId);
+        
+        // Cargar fecha de inicio si existe
+        if (course.startDate) {
+          setHasStartDate(true);
+          // Convertir la fecha ISO a formato datetime-local (YYYY-MM-DDTHH:mm)
+          const date = new Date(course.startDate);
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const hours = String(date.getHours()).padStart(2, '0');
+          const minutes = String(date.getMinutes()).padStart(2, '0');
+          setStartDate(`${year}-${month}-${day}T${hours}:${minutes}`);
+        } else {
+          setHasStartDate(false);
+          setStartDate("");
+        }
         
         // Cargar imagen de portada si existe
         if (course.coverImageUrl) {
@@ -637,6 +655,7 @@ export default function EditCoursePage() {
             isHidden: courseData.isHidden,
             university: courseData.university,
             specialization: courseData.specialization,
+            startDate: hasStartDate && startDate ? new Date(startDate).toISOString() : null,
             // No enviamos speakerIds - preservamos los teacher_ids originales
           }),
         });
@@ -834,11 +853,12 @@ export default function EditCoursePage() {
           salePercentage: courseData.salePercentage,
           isPublished: courseData.isPublished,
           isHidden: courseData.isHidden,
-          university: courseData.university,
-          specialization: courseData.specialization,
-          // No enviamos speakerIds - preservamos los teacher_ids originales
-        }),
-      });
+            university: courseData.university,
+            specialization: courseData.specialization,
+            startDate: hasStartDate && startDate ? new Date(startDate).toISOString() : null,
+            // No enviamos speakerIds - preservamos los teacher_ids originales
+          }),
+        });
 
       if (!updateRes.ok) {
         const errorData = await updateRes.json();
@@ -1649,6 +1669,44 @@ export default function EditCoursePage() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Start Date Card */}
+            <div className="bg-white rounded-2xl p-4 shadow-card">
+              <h3 className="text-[15px] font-semibold text-brand-primary mb-4">
+                Fecha de inicio
+              </h3>
+              
+              <div className="flex flex-col gap-4">
+                <label className="flex items-center gap-3 cursor-pointer text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={hasStartDate}
+                    onChange={(e) => {
+                      setHasStartDate(e.target.checked);
+                      if (!e.target.checked) {
+                        setStartDate("");
+                      }
+                    }}
+                    className="w-5 h-5 cursor-pointer accent-[#A855F7] rounded"
+                  />
+                  ¿Tiene una fecha de inicio?
+                </label>
+
+                {hasStartDate && (
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1.5 block">
+                      Fecha y hora de inicio
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full h-10 px-3 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                    />
+                  </div>
+                )}
               </div>
             </div>
 

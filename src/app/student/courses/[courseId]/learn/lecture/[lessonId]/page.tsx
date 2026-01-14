@@ -2389,6 +2389,13 @@ export default function LessonPlayerPage() {
               const completedCount = isLessonCompletedInDb 
                 ? (subsections.length || 1) 
                 : (highestCompletedIndex >= 0 ? highestCompletedIndex + 1 : 0);
+              
+              // Calcular porcentaje de progreso
+              const totalSubsections = subsections.length || 1;
+              const sectionProgress = totalSubsections > 0 
+                ? Math.round((completedCount / totalSubsections) * 100)
+                : 0;
+              const isSectionCompleted = sectionProgress === 100;
 
               return (
                 <div key={lesson.id} className="border-b" style={{ borderColor: TOKENS.colors.border }}>
@@ -2401,11 +2408,51 @@ export default function LessonPlayerPage() {
                     )}
                   >
                     <div className="flex-1 min-w-0 pr-2">
-                      <h4 className="font-bold text-sm text-gray-900 leading-tight">
-                        {lesson.title}
-                      </h4>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {completedCount} / {subsections.length || 1} | {totalDuration} min
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <h4 className="font-bold text-sm text-gray-900 leading-tight">
+                          {lesson.title}
+                        </h4>
+                        {isSectionCompleted && (
+                          <span className="text-xs font-semibold px-1.5 py-0.5 rounded" style={{ 
+                            backgroundColor: '#D1FAE5', 
+                            color: '#059669' 
+                          }}>
+                            100%
+                          </span>
+                        )}
+                      </div>
+                      
+                      {/* Barra de progreso */}
+                      {totalSubsections > 0 && (
+                        <div className="space-y-1 mb-1.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-500">
+                              {completedCount} de {totalSubsections} lecciones
+                            </span>
+                            <span 
+                              className="font-semibold"
+                              style={{ color: isSectionCompleted ? '#059669' : TOKENS.colors.accent }}
+                            >
+                              {sectionProgress}%
+                            </span>
+                          </div>
+                          <div 
+                            className="w-full h-1.5 rounded-full overflow-hidden"
+                            style={{ backgroundColor: '#E5E7EB' }}
+                          >
+                            <div 
+                              className="h-full rounded-full transition-all duration-300"
+                              style={{ 
+                                width: `${sectionProgress}%`,
+                                backgroundColor: isSectionCompleted ? '#10B981' : TOKENS.colors.accent,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      
+                      <p className="text-xs text-gray-500">
+                        {totalDuration} min
                       </p>
                     </div>
                     <IconChevronDown 

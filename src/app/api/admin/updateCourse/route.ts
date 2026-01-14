@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
       isHidden, 
       university, 
       specialization,
-      speakerIds 
+      speakerIds,
+      startDate
     } = body;
 
     if (!courseId) {
@@ -73,6 +74,10 @@ export async function POST(req: NextRequest) {
     if (isHidden !== undefined) updateData.is_hidden = isHidden;
     if (university !== undefined) updateData.university = university;
     if (specialization !== undefined) updateData.specialization = specialization;
+    if (startDate !== undefined) {
+      // Si startDate es null, undefined o string vacío, establecerlo como null
+      updateData.start_date = startDate && startDate.trim() !== '' ? startDate : null;
+    }
     if (speakerIds !== undefined) {
       const ids = sanitizeIdArray(speakerIds);
 

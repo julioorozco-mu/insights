@@ -5,21 +5,17 @@ import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { courseRepository } from "@/lib/repositories/courseRepository";
 import { lessonRepository } from "@/lib/repositories/lessonRepository";
+import { userRepository } from "@/lib/repositories/userRepository";
 import { Loader } from "@/components/common/Loader";
-import { IconBook, IconPlayerPlay, IconClock, IconUsers, IconStar, IconStarFilled } from "@tabler/icons-react";
+import { IconBook, IconPlayerPlay, IconClock, IconUsers, IconStar, IconStarFilled, IconCalendar } from "@tabler/icons-react";
+import { stripHtmlAndTruncate } from "@/lib/utils";
 
-// Función para extraer texto plano de HTML (para previews)
-function stripHtml(html: string): string {
-  if (!html) return "";
-  // Reemplazar tags de bloque y saltos de línea por espacios
-  let text = html
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, " ")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return text;
+interface Speaker {
+  id: string;
+  name: string;
+  lastName?: string;
+  email: string;
+  avatarUrl?: string;
 }
 
 interface Course {
@@ -27,9 +23,10 @@ interface Course {
   title: string;
   description?: string;
   coverImageUrl?: string;
-  speakerName?: string;
+  speakerIds?: string[];
   lessonCount: number;
   createdAt: any;
+  startDate?: string;
 }
 
 interface Enrollment {
@@ -46,6 +43,7 @@ interface CourseRating {
 
 export default function EnrolledCoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
+  const [speakers, setSpeakers] = useState<Map<string, Speaker>>(new Map());
   const [courseRatings, setCourseRatings] = useState<Map<string, CourseRating>>(new Map());
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
@@ -135,8 +133,10 @@ export default function EnrolledCoursesPage() {
               title: course.title,
               description: course.description,
               coverImageUrl: course.coverImageUrl,
+              speakerIds: course.speakerIds,
               lessonCount: activeLessons.length,
               createdAt: course.createdAt,
+              startDate: course.startDate,
             } as Course;
           }
           return null;
@@ -147,6 +147,27 @@ export default function EnrolledCoursesPage() {
         );
 
         setCourses(coursesData);
+
+        // Cargar información de los speakers
+        const speakerIds = new Set<string>();
+        coursesData.forEach(course => {
+          course.speakerIds?.forEach(id => speakerIds.add(id));
+        });
+
+        const speakersMap = new Map<string, Speaker>();
+        for (const speakerId of speakerIds) {
+          const userData = await userRepository.findById(speakerId);
+          if (userData) {
+            speakersMap.set(speakerId, {
+              id: userData.id,
+              name: userData.name,
+              lastName: '',
+              email: userData.email,
+              avatarUrl: userData.avatarUrl,
+            });
+          }
+        }
+        setSpeakers(speakersMap);
 
         // Cargar ratings de todos los cursos
         const ratingsMap = new Map<string, CourseRating>();
@@ -166,6 +187,36 @@ export default function EnrolledCoursesPage() {
 
     loadEnrolledCourses();
   }, [user]);
+
+  const getCourseSpeaker = (course: Course): Speaker | null => {
+    if (!course.speakerIds || course.speakerIds.length === 0) return null;
+    return speakers.get(course.speakerIds[0]) || null;
+  };
+
+  const formatCourseDateTime = (course: Course): string | null => {
+    if (!course.startDate) return null;
+    const date = new Date(course.startDate);
+    const dateStr = date.toLocaleDateString('es-MX', { 
+      day: 'numeric', 
+      month: 'short', 
+      year: 'numeric' 
+    });
+    const timeStr = date.toLocaleTimeString('es-MX', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true
+    });
+    return `${dateStr} • ${timeStr}`;
+  };
+
+  const formatCreatedDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-MX', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
 
   if (loading) {
     return <Loader />;
@@ -199,7 +250,7 @@ export default function EnrolledCoursesPage() {
               href={`/dashboard/student/courses/${course.id}`}
               className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow"
             >
-              <figure className="aspect-video bg-base-300">
+              <figure className="h-48 bg-base-300">
                 {course.coverImageUrl ? (
                   <img
                     src={course.coverImageUrl}
@@ -207,19 +258,40 @@ export default function EnrolledCoursesPage() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="flex items-center justify-center h-full">
-                    <IconBook size={64} className="opacity-50" />
+                  <div className="flex items-center justify-center w-full h-full text-primary">
+                    <IconBook size={64} stroke={2} />
                   </div>
                 )}
               </figure>
               <div className="card-body">
                 <h2 className="card-title">{course.title}</h2>
-                {course.description && (
-                  <p className="text-sm text-base-content/70 line-clamp-2">
-                    {stripHtml(course.description)}
-                  </p>
-                )}
+                <p className="text-sm text-base-content/70 line-clamp-2">
+                  {stripHtmlAndTruncate(course.description, 120)}
+                </p>
                 
+                {/* Instructor */}
+                {(() => {
+                  const speaker = getCourseSpeaker(course);
+                  return speaker ? (
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="avatar">
+                        <div className="w-8 h-8 rounded-full">
+                          {speaker.avatarUrl ? (
+                            <img src={speaker.avatarUrl} alt={speaker.name} />
+                          ) : (
+                            <div className="bg-primary text-primary-content flex items-center justify-center w-full h-full text-xs font-semibold">
+                              {speaker.name.charAt(0)}{speaker.lastName?.charAt(0) || ''}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-sm font-medium">
+                        {speaker.name} {speaker.lastName || ''}
+                      </span>
+                    </div>
+                  ) : null;
+                })()}
+
                 {/* Rating del curso */}
                 {(() => {
                   const rating = getCourseRating(course.id);
@@ -238,22 +310,24 @@ export default function EnrolledCoursesPage() {
                   );
                 })()}
 
-                <div className="flex items-center gap-2 text-sm text-base-content/60 mt-2">
-                  {course.speakerName && (
-                    <div className="flex items-center gap-1">
-                      <IconUsers size={16} />
-                      <span>{course.speakerName}</span>
-                    </div>
-                  )}
-                  {course.lessonCount > 0 && (
-                    <div className="flex items-center gap-1">
-                      <IconPlayerPlay size={16} />
-                      <span>{course.lessonCount} {course.lessonCount === 1 ? 'lección' : 'lecciones'}</span>
-                    </div>
-                  )}
-                </div>
-                <div className="card-actions justify-end mt-4">
-                  <button className="btn btn-primary btn-sm text-white">
+                {/* Fecha de inicio del curso */}
+                {formatCourseDateTime(course) && (
+                  <div className="flex items-center gap-2 mt-2 text-sm text-base-content/70">
+                    <IconCalendar size={16} />
+                    <span>{formatCourseDateTime(course)}</span>
+                  </div>
+                )}
+
+                {/* Fecha de creación del curso */}
+                {course.createdAt && (
+                  <div className="flex items-center gap-2 mt-2 text-sm text-base-content/60">
+                    <IconClock size={14} />
+                    <span>Creado: {formatCreatedDate(course.createdAt)}</span>
+                  </div>
+                )}
+
+                <div className="card-actions mt-4">
+                  <button className="btn btn-primary text-white w-full">
                     Continuar →
                   </button>
                 </div>

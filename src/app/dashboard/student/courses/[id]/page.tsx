@@ -290,12 +290,29 @@ export default function StudentCoursePage() {
             return;
           }
 
-          const { isEnrolled } = await enrollmentRes.json();
+          const enrollmentData = await enrollmentRes.json();
           
-          if (!isEnrolled) {
+          if (!enrollmentData.isEnrolled) {
             alert('No estás inscrito en este curso');
             router.push('/dashboard/enrolled-courses');
             return;
+          }
+
+          // Cargar progreso de lecciones completadas desde la BD
+          if (enrollmentData.completedLessons && Array.isArray(enrollmentData.completedLessons)) {
+            setCompletedLessons(new Set(enrollmentData.completedLessons));
+          }
+          
+          // Cargar progreso de subsecciones
+          if (enrollmentData.subsectionProgress) {
+            const subsectionSet = new Set<string>();
+            Object.entries(enrollmentData.subsectionProgress).forEach(([lessonId, maxIndex]) => {
+              // Marcar todas las subsecciones hasta maxIndex como completadas
+              for (let i = 0; i <= (maxIndex as number); i++) {
+                subsectionSet.add(`${lessonId}-sub-${i}`);
+              }
+            });
+            setCompletedSubsections(subsectionSet);
           }
         }
 
@@ -1132,6 +1149,20 @@ export default function StudentCoursePage() {
                 const isCompleted = completedLessons.has(lesson.id);
                 const subsectionsCount = lessonContent?.subsections.length || 0;
                 
+                // Calcular progreso de la sección
+                let completedSubsectionsCount = 0;
+                if (lessonContent && lessonContent.subsections.length > 0) {
+                  lessonContent.subsections.forEach((subsection, subIdx) => {
+                    if (completedSubsections.has(`${lesson.id}-sub-${subIdx}`)) {
+                      completedSubsectionsCount++;
+                    }
+                  });
+                }
+                const sectionProgress = subsectionsCount > 0 
+                  ? Math.round((completedSubsectionsCount / subsectionsCount) * 100)
+                  : 0;
+                const isSectionCompleted = sectionProgress === 100;
+                
                 return (
                   <div key={lesson.id}>
                     {/* Accordion Header */}
@@ -1158,7 +1189,7 @@ export default function StudentCoursePage() {
                       
                       {/* Título y meta */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap mb-2">
                           <span 
                             className="text-xs font-medium px-2 py-0.5 rounded"
                             style={{ 
@@ -1177,25 +1208,55 @@ export default function StudentCoursePage() {
                               EN VIVO
                             </span>
                           )}
-                          {isCompleted && (
+                          {isSectionCompleted && (
                             <span 
                               className="text-xs font-medium px-2 py-0.5 rounded flex items-center gap-1"
                               style={{ backgroundColor: '#D1FAE5', color: COLORS.success }}
                             >
                               <IconCheck size={12} />
-                              Completada
+                              100% Completado
                             </span>
                           )}
                         </div>
                         <h3 
-                          className="font-semibold mt-1 truncate"
+                          className="font-semibold mb-2 truncate"
                           style={{ color: COLORS.text.primary }}
                         >
                           {lesson.title}
                         </h3>
+                        
+                        {/* Barra de progreso */}
+                        {subsectionsCount > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <span style={{ color: COLORS.text.muted }}>
+                                {completedSubsectionsCount} de {subsectionsCount} lecciones completadas
+                              </span>
+                              <span 
+                                className="font-semibold"
+                                style={{ color: isSectionCompleted ? COLORS.success : COLORS.primary }}
+                              >
+                                {sectionProgress}%
+                              </span>
+                            </div>
+                            <div 
+                              className="w-full h-2 rounded-full overflow-hidden"
+                              style={{ backgroundColor: COLORS.accent.primarySoft }}
+                            >
+                              <div 
+                                className="h-full rounded-full transition-all duration-300"
+                                style={{ 
+                                  width: `${sectionProgress}%`,
+                                  backgroundColor: isSectionCompleted ? COLORS.success : COLORS.primary,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        
                         {lesson.description && !isExpanded && (
                           <p 
-                            className="text-sm mt-1 truncate"
+                            className="text-sm mt-2 truncate"
                             style={{ color: COLORS.text.muted }}
                           >
                             {lesson.description}
@@ -1236,9 +1297,10 @@ export default function StudentCoursePage() {
 
                         {/* Lista de Subsecciones */}
                         {lessonContent && lessonContent.subsections.length > 0 && (
-                          <div className="pl-12 mb-4 space-y-2">
+                          <div className="pl-12 mb-4 mt-4 space-y-2">
                             {lessonContent.subsections.map((subsection, subIdx) => {
-                              const isSubCompleted = completedSubsections.has(`${lesson.id}-${subsection.id}`);
+                              // Verificar si la subsección está completada usando el índice (formato: lessonId-sub-index)
+                              const isSubCompleted = completedSubsections.has(`${lesson.id}-sub-${subIdx}`);
                               const blockTypes = subsection.blocks.map(b => b.type);
                               const hasVideo = blockTypes.includes('video');
                               const hasQuiz = blockTypes.includes('quiz');
