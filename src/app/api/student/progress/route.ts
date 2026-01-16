@@ -78,10 +78,10 @@ export async function GET(request: NextRequest) {
       throw enrollmentError;
     }
 
-    // Get total number of lessons for this course
-    const { count: totalLessons, error: lessonsError } = await supabase
+    // Get all lessons with content to calculate progress based on subsections
+    const { data: allLessons, error: lessonsError } = await supabase
       .from("lessons")
-      .select("id", { count: "exact", head: true })
+      .select("id, content")
       .eq("course_id", courseId)
       .eq("is_active", true);
 
@@ -89,12 +89,51 @@ export async function GET(request: NextRequest) {
       throw lessonsError;
     }
 
+    // Recalculate progress based on subsections (not just completed lessons)
+    // This ensures consistency with the POST calculation and handles legacy data
+    const completedLessons: string[] = enrollment.completed_lessons || [];
+    const subsectionProgress: Record<string, number> = enrollment.subsection_progress || {};
+
+    let totalSubsections = 0;
+    let completedSubsections = 0;
+
+    for (const lesson of allLessons || []) {
+      let subsectionCount = 1; // Default to 1 if no subsections found
+      try {
+        if (lesson.content) {
+          const parsed = JSON.parse(lesson.content);
+          subsectionCount = parsed.subsections?.length || 1;
+        }
+      } catch {
+        // If JSON parse fails, count as 1 subsection
+      }
+
+      totalSubsections += subsectionCount;
+
+      if (completedLessons.includes(lesson.id)) {
+        // Lesson is fully completed = all its subsections are complete
+        completedSubsections += subsectionCount;
+      } else {
+        // Count partially completed subsections
+        const highestIndex = subsectionProgress[lesson.id] ?? -1;
+        if (highestIndex >= 0) {
+          // +1 because index is 0-based
+          completedSubsections += Math.min(highestIndex + 1, subsectionCount);
+        }
+      }
+    }
+
+    // Calculate progress percentage
+    const calculatedProgress = totalSubsections > 0
+      ? Math.round((completedSubsections / totalSubsections) * 100)
+      : 0;
+
     const response: ProgressResponse = {
-      progress: enrollment.progress || 0,
-      completedLessons: enrollment.completed_lessons || [],
-      subsectionProgress: enrollment.subsection_progress || {},
+      progress: Math.min(calculatedProgress, 100), // Cap at 100%
+      completedLessons,
+      subsectionProgress,
       lastAccessedLessonId: enrollment.last_accessed_lesson_id || null,
-      totalLessons: totalLessons || 0,
+      totalLessons: allLessons?.length || 0,
     };
 
     return NextResponse.json(response);
@@ -178,9 +217,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare update data
-    const currentSubsectionProgress: Record<string, number> = 
+    const currentSubsectionProgress: Record<string, number> =
       enrollment.subsection_progress || {};
-    const currentCompletedLessons: string[] = 
+    const currentCompletedLessons: string[] =
       enrollment.completed_lessons || [];
 
     // 1. Always update last_accessed_lesson_id
@@ -201,21 +240,55 @@ export async function POST(request: NextRequest) {
     if (isCompleted && !currentCompletedLessons.includes(lessonId)) {
       newCompletedLessons.push(lessonId);
       updates.completed_lessons = newCompletedLessons;
+    }
 
-      // 4. Recalculate progress percentage
-      // Get total lessons count for this course
-      const { count: totalLessons, error: countError } = await supabase
-        .from("lessons")
-        .select("id", { count: "exact", head: true })
-        .eq("course_id", courseId)
-        .eq("is_active", true);
+    // 4. Recalculate progress percentage based on SUBSECTIONS (not just lessons)
+    // This provides more granular progress tracking
+    const { data: allLessons, error: lessonsError } = await supabase
+      .from("lessons")
+      .select("id, content")
+      .eq("course_id", courseId)
+      .eq("is_active", true);
 
-      if (!countError && totalLessons && totalLessons > 0) {
-        const newProgress = Math.round(
-          (newCompletedLessons.length / totalLessons) * 100
-        );
-        updates.progress = Math.min(newProgress, 100); // Cap at 100%
+    if (!lessonsError && allLessons && allLessons.length > 0) {
+      let totalSubsections = 0;
+      let completedSubsections = 0;
+
+      // Use the updated subsection progress (including the current update)
+      const updatedSubsectionProgress = updates.subsection_progress || currentSubsectionProgress;
+      const updatedCompletedLessons = updates.completed_lessons || newCompletedLessons;
+
+      for (const lesson of allLessons) {
+        let subsectionCount = 1; // Default to 1 if no subsections found
+        try {
+          if (lesson.content) {
+            const parsed = JSON.parse(lesson.content);
+            subsectionCount = parsed.subsections?.length || 1;
+          }
+        } catch {
+          // If JSON parse fails, count as 1 subsection
+        }
+
+        totalSubsections += subsectionCount;
+
+        if (updatedCompletedLessons.includes(lesson.id)) {
+          // Lesson is fully completed = all its subsections are complete
+          completedSubsections += subsectionCount;
+        } else {
+          // Count partially completed subsections
+          const highestIndex = updatedSubsectionProgress[lesson.id] ?? -1;
+          if (highestIndex >= 0) {
+            // +1 because index is 0-based
+            completedSubsections += Math.min(highestIndex + 1, subsectionCount);
+          }
+        }
       }
+
+      const newProgress = totalSubsections > 0
+        ? Math.round((completedSubsections / totalSubsections) * 100)
+        : 0;
+
+      updates.progress = Math.min(newProgress, 100); // Cap at 100%
     }
 
     // Perform the update

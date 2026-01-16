@@ -224,7 +224,7 @@ function AttachmentBlock({ block }: { block: ContentBlock }) {
       console.log('[AttachmentBlock] URL original:', block.content);
       const storageInfo = extractStoragePath(block.content);
       console.log('[AttachmentBlock] Storage info:', storageInfo);
-      
+
       if (!storageInfo) {
         // Si no es URL de Supabase Storage, abrir directamente
         console.log('[AttachmentBlock] No es URL de Supabase, abriendo directamente');
@@ -237,7 +237,7 @@ function AttachmentBlock({ block }: { block: ContentBlock }) {
       console.log('[AttachmentBlock] Llamando API:', apiUrl);
       const res = await fetch(apiUrl);
       console.log('[AttachmentBlock] Response status:', res.status);
-      
+
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Error al obtener acceso al archivo');
@@ -265,7 +265,7 @@ function AttachmentBlock({ block }: { block: ContentBlock }) {
         {fileSize && <p className="text-xs text-gray-500">{fileSize}</p>}
         {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
       </div>
-      <button 
+      <button
         onClick={handleDownload}
         disabled={loading}
         className="px-4 py-2 text-sm font-medium text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -383,7 +383,7 @@ function QuizBlock({
                         if (q.type === 'multiple_choice') {
                           const userAnswers = Array.isArray(userAnswer) ? userAnswer : [];
                           if (correctOptions.length === userAnswers.length &&
-                              correctOptions.every((c: string) => userAnswers.includes(c))) {
+                            correctOptions.every((c: string) => userAnswers.includes(c))) {
                             correctCount++;
                           }
                         } else {
@@ -393,9 +393,9 @@ function QuizBlock({
                         }
                       } else if (q.correctAnswer) {
                         if (Array.isArray(q.correctAnswer)) {
-                          if (Array.isArray(userAnswer) && 
-                              userAnswer.length === q.correctAnswer.length &&
-                              userAnswer.every((a: string) => q.correctAnswer?.includes(a))) {
+                          if (Array.isArray(userAnswer) &&
+                            userAnswer.length === q.correctAnswer.length &&
+                            userAnswer.every((a: string) => q.correctAnswer?.includes(a))) {
                             correctCount++;
                           }
                         } else if (userAnswer === q.correctAnswer) {
@@ -405,7 +405,7 @@ function QuizBlock({
                     });
                     setScore({ correct: correctCount, total: quizData.questions.length });
                   }
-                  
+
                   // SIEMPRE actualizar progreso cuando hay respuestas guardadas
                   // Esto asegura que el sidebar refleje el progreso correcto y habilite la siguiente lección
                   if (onProgressUpdate && subsectionIndex !== undefined && totalSubsections !== undefined) {
@@ -442,24 +442,24 @@ function QuizBlock({
 
   const handleSubmit = async () => {
     if (!quiz || !quizId || !userId) return;
-    
+
     setSavingAnswers(true);
-    
+
     try {
       // Calcular score
       let correctCount = 0;
       quiz.questions.forEach(q => {
         const userAnswer = answers[q.id];
-        
+
         // Verificar usando isCorrect en las opciones
         if (q.options && q.options.some(o => o.isCorrect)) {
           const correctOptions = q.options.filter(o => o.isCorrect).map(o => o.value);
-          
+
           if (q.type === 'multiple_choice') {
             // Para multiple choice, todas las correctas deben estar seleccionadas
             const userAnswers = Array.isArray(userAnswer) ? userAnswer : [];
             if (correctOptions.length === userAnswers.length &&
-                correctOptions.every(c => userAnswers.includes(c))) {
+              correctOptions.every(c => userAnswers.includes(c))) {
               correctCount++;
             }
           } else {
@@ -471,9 +471,9 @@ function QuizBlock({
         } else if (q.correctAnswer) {
           // Fallback a correctAnswer si no hay isCorrect
           if (Array.isArray(q.correctAnswer)) {
-            if (Array.isArray(userAnswer) && 
-                userAnswer.length === q.correctAnswer.length &&
-                userAnswer.every(a => q.correctAnswer?.includes(a))) {
+            if (Array.isArray(userAnswer) &&
+              userAnswer.length === q.correctAnswer.length &&
+              userAnswer.every(a => q.correctAnswer?.includes(a))) {
               correctCount++;
             }
           } else if (userAnswer === q.correctAnswer) {
@@ -481,7 +481,7 @@ function QuizBlock({
           }
         }
       });
-      
+
       // Preparar respuestas para guardar
       const answersToSave = quiz.questions.map((q) => ({
         questionId: q.id,
@@ -508,7 +508,7 @@ function QuizBlock({
       setScore({ correct: correctCount, total: quiz.questions.length });
       setSubmitted(true);
       setShowResults(true);
-      
+
       // Actualizar progreso cuando se completa el quiz
       if (onProgressUpdate && subsectionIndex !== undefined && totalSubsections !== undefined) {
         // Marcar esta subsección como completada
@@ -528,7 +528,7 @@ function QuizBlock({
     setSubmitted(false);
     setScore(null);
     setShowResults(false);
-    
+
     // Eliminar respuestas guardadas de la base de datos
     if (quizId && userId) {
       try {
@@ -584,14 +584,14 @@ function QuizBlock({
   const isCorrectAnswer = (questionId: string, optionValue: string) => {
     const question = quiz.questions.find(q => q.id === questionId);
     if (!question) return false;
-    
+
     // Primero verificar si la opción tiene isCorrect marcado
     const option = question.options?.find(o => o.value === optionValue);
     if (option?.isCorrect) return true;
-    
+
     // Si no, verificar contra correctAnswer
     if (!question.correctAnswer) return false;
-    
+
     if (Array.isArray(question.correctAnswer)) {
       return question.correctAnswer.includes(optionValue);
     }
@@ -626,8 +626,8 @@ function QuizBlock({
       {/* Questions */}
       <div className="p-6 space-y-6">
         {quiz.questions.map((question, index) => (
-          <div 
-            key={question.id} 
+          <div
+            key={question.id}
             className={cn(
               "p-5 rounded-xl border transition-all",
               showResults && question.correctAnswer
@@ -656,16 +656,16 @@ function QuizBlock({
                 {question.options.map((option, optIndex) => {
                   const optionValue = option.value;
                   const optionLabel = option.label;
-                  
+
                   const isSelected = question.type === 'multiple_choice'
                     ? (answers[question.id] as string[] || []).includes(optionValue)
                     : answers[question.id] === optionValue;
-                  
+
                   const isCorrect = showResults && (option.isCorrect || isCorrectAnswer(question.id, optionValue));
                   const isWrong = showResults && isSelected && !isCorrect;
 
                   return (
-                    <label 
+                    <label
                       key={optIndex}
                       className={cn(
                         "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
@@ -770,12 +770,12 @@ function QuizBlock({
               Intentar de nuevo
             </button>
           )}
-          
+
           {score && (
             <div className={cn(
               "text-lg font-bold px-4 py-2 rounded-lg",
-              score.correct / score.total >= 0.7 
-                ? "bg-green-100 text-green-700" 
+              score.correct / score.total >= 0.7
+                ? "bg-green-100 text-green-700"
                 : "bg-yellow-100 text-yellow-700"
             )}>
               {score.correct / score.total >= 0.7 ? "¡Muy bien! " : "Sigue practicando "}
@@ -789,16 +789,16 @@ function QuizBlock({
 }
 
 // ===== COMPONENT: Content Block Renderer =====
-function ContentBlockRenderer({ 
-  block, 
+function ContentBlockRenderer({
+  block,
   courseId,
   lessonId,
   subsectionIndex,
   totalSubsections,
   userId,
   onProgressUpdate
-}: { 
-  block: ContentBlock; 
+}: {
+  block: ContentBlock;
   courseId: string;
   lessonId?: string;
   subsectionIndex?: number;
@@ -811,7 +811,7 @@ function ContentBlockRenderer({
       {
         // Detectar si el contenido contiene HTML
         const hasHTML = block.content && /<[a-z][\s\S]*>/i.test(block.content);
-        
+
         if (hasHTML) {
           // Si tiene HTML, renderizar con dangerouslySetInnerHTML manteniendo estilos
           const styles = block.data?.styles || {};
@@ -825,9 +825,9 @@ function ContentBlockRenderer({
           const textAlign = styles.textAlign || 'left';
           const fontFamily = styles.fontFamily || 'inherit';
           const color = styles.color || '#192170';
-          
+
           return (
-            <h2 
+            <h2
               className="mb-4 mt-6 first:mt-0"
               style={{
                 fontSize,
@@ -843,7 +843,7 @@ function ContentBlockRenderer({
             />
           );
         }
-        
+
         // Si no tiene HTML, renderizar con estilos personalizados
         const styles = block.data?.styles || {};
         const fontSize = styles.fontSize ? `${parseInt(styles.fontSize) + 8}px` : '24px';
@@ -856,9 +856,9 @@ function ContentBlockRenderer({
         const textAlign = styles.textAlign || 'left';
         const fontFamily = styles.fontFamily || 'inherit';
         const color = styles.color || '#192170';
-        
+
         return (
-          <h2 
+          <h2
             className="mb-4 mt-6 first:mt-0"
             style={{
               fontSize,
@@ -875,12 +875,12 @@ function ContentBlockRenderer({
           </h2>
         );
       }
-    
+
     case 'text':
       {
         // Detectar si el contenido contiene HTML
         const hasHTML = block.content && /<[a-z][\s\S]*>/i.test(block.content);
-        
+
         if (hasHTML) {
           // Si tiene HTML, usar RichTextContent para mantener estilos consistentes
           return (
@@ -889,7 +889,7 @@ function ContentBlockRenderer({
             </div>
           );
         }
-        
+
         // Si no tiene HTML, renderizar con estilos personalizados
         const styles = block.data?.styles || {};
         const fontSize = styles.fontSize ? `${styles.fontSize}px` : '14px';
@@ -902,9 +902,9 @@ function ContentBlockRenderer({
         const textAlign = styles.textAlign || 'left';
         const fontFamily = styles.fontFamily || 'inherit';
         const color = styles.color || '#374151';
-        
+
         return (
-          <p 
+          <p
             className="leading-relaxed mb-4"
             style={{
               fontSize,
@@ -921,19 +921,19 @@ function ContentBlockRenderer({
           </p>
         );
       }
-    
+
     case 'richtext':
       return (
         <div className="mb-4">
           <RichTextContent html={block.content || ""} />
         </div>
       );
-    
+
     case 'image':
       return (
         <div className="my-6 rounded-lg overflow-hidden">
-          <img 
-            src={block.content} 
+          <img
+            src={block.content}
             alt={block.data?.description || block.data?.fileName || 'Imagen de la lección'}
             className="w-full h-auto max-h-[500px] object-contain bg-gray-100"
           />
@@ -944,10 +944,10 @@ function ContentBlockRenderer({
           )}
         </div>
       );
-    
+
     case 'video':
       const youtubeId = block.data?.videoType === 'youtube' ? getYouTubeVideoId(block.content) : null;
-      
+
       if (youtubeId) {
         return (
           <div className="my-6 aspect-video rounded-lg overflow-hidden bg-black">
@@ -961,21 +961,21 @@ function ContentBlockRenderer({
           </div>
         );
       }
-      
+
       // Video URL directo
       return (
         <div className="my-6 aspect-video rounded-lg overflow-hidden bg-black">
-          <video 
-            src={block.content} 
-            controls 
+          <video
+            src={block.content}
+            controls
             className="w-full h-full"
           />
         </div>
       );
-    
+
     case 'attachment':
       return <AttachmentBlock block={block} />;
-    
+
     case 'list':
       const items = block.data?.items || [];
       return (
@@ -987,11 +987,11 @@ function ContentBlockRenderer({
           ))}
         </ul>
       );
-    
+
     case 'table':
       const cells = block.data?.cells || [];
       if (cells.length === 0) return null;
-      
+
       return (
         <div className="my-6 overflow-x-auto">
           <table className="w-full border-collapse border border-gray-300 rounded-lg overflow-hidden">
@@ -999,8 +999,8 @@ function ContentBlockRenderer({
               {cells.map((row, rowIndex) => (
                 <tr key={rowIndex} className={rowIndex === 0 ? 'bg-gray-100 font-semibold' : 'bg-white'}>
                   {row.map((cell, cellIndex) => (
-                    <td 
-                      key={cellIndex} 
+                    <td
+                      key={cellIndex}
                       className="border border-gray-300 px-4 py-2 text-gray-700"
                     >
                       {cell}
@@ -1012,7 +1012,7 @@ function ContentBlockRenderer({
           </table>
         </div>
       );
-    
+
     case 'quiz':
       return (
         <QuizBlock
@@ -1026,30 +1026,70 @@ function ContentBlockRenderer({
           userId={userId}
         />
       );
-    
+
     default:
       return null;
   }
 }
 
 // ===== COMPONENT: Subsection Content Viewer =====
-function SubsectionViewer({ 
-  subsection, 
+function SubsectionViewer({
+  subsection,
   courseId,
   lessonId,
   subsectionIndex,
   totalSubsections,
   userId,
-  onProgressUpdate
-}: { 
-  subsection: Subsection | null; 
+  onProgressUpdate,
+  isCompleted,
+  hasQuiz,
+  onMarkComplete,
+  onScrollComplete,
+}: {
+  subsection: Subsection | null;
   courseId: string;
   lessonId?: string;
   subsectionIndex?: number;
   totalSubsections?: number;
   userId?: string;
   onProgressUpdate?: (subsectionIndex: number, isCompleted: boolean) => void;
+  isCompleted?: boolean;
+  hasQuiz?: boolean;
+  onMarkComplete?: () => void;
+  onScrollComplete?: () => void;
 }) {
+  const [hasReachedEnd, setHasReachedEnd] = useState(false);
+  const endOfContentRef = useRef<HTMLDivElement>(null);
+
+  // Reset hasReachedEnd when subsection changes
+  useEffect(() => {
+    setHasReachedEnd(false);
+  }, [subsectionIndex, lessonId]);
+
+  // IntersectionObserver to detect when user scrolls to the end
+  useEffect(() => {
+    if (!endOfContentRef.current || isCompleted || hasQuiz) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !hasReachedEnd) {
+            setHasReachedEnd(true);
+            onScrollComplete?.();
+          }
+        });
+      },
+      {
+        threshold: 0.5, // 50% visible
+        rootMargin: '0px',
+      }
+    );
+
+    observer.observe(endOfContentRef.current);
+
+    return () => observer.disconnect();
+  }, [hasReachedEnd, isCompleted, hasQuiz, onScrollComplete]);
+
   if (!subsection) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
@@ -1057,9 +1097,9 @@ function SubsectionViewer({
       </div>
     );
   }
-  
+
   const blocks = subsection.blocks || [];
-  
+
   if (blocks.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
@@ -1067,13 +1107,13 @@ function SubsectionViewer({
       </div>
     );
   }
-  
+
   return (
     <div className="max-w-4xl mx-auto">
       {blocks.map((block) => (
-        <ContentBlockRenderer 
-          key={block.id} 
-          block={block} 
+        <ContentBlockRenderer
+          key={block.id}
+          block={block}
           courseId={courseId}
           lessonId={lessonId}
           subsectionIndex={subsectionIndex}
@@ -1082,6 +1122,60 @@ function SubsectionViewer({
           onProgressUpdate={onProgressUpdate}
         />
       ))}
+
+      {/* Anchor element to detect scroll to end */}
+      <div ref={endOfContentRef} className="h-1" />
+
+      {/* Botón "Completar Lección" al final del contenido - solo para lecciones sin quiz */}
+      {!hasQuiz && !isCompleted && onMarkComplete && (
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <div className="flex flex-col items-center gap-3">
+            {!hasReachedEnd ? (
+              <>
+                <div className="flex items-center gap-2 text-gray-400">
+                  <IconChevronDown size={20} className="animate-bounce" />
+                  <p className="text-sm text-center">
+                    Desplázate hacia abajo para habilitar el botón
+                  </p>
+                  <IconChevronDown size={20} className="animate-bounce" />
+                </div>
+                <button
+                  disabled
+                  className="flex items-center gap-2 px-6 py-3 bg-gray-300 text-gray-500 font-semibold rounded-full cursor-not-allowed opacity-60"
+                >
+                  <IconCheck size={20} />
+                  Marcar como completada
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-500 text-center">
+                  ¡Excelente! Ya revisaste todo el contenido
+                </p>
+                <button
+                  onClick={onMarkComplete}
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold rounded-full hover:from-emerald-600 hover:to-teal-600 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 animate-pulse"
+                >
+                  <IconCheck size={20} />
+                  Marcar como completada
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Indicador de lección completada */}
+      {isCompleted && (
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <div className="flex items-center justify-center gap-2 text-emerald-600">
+            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+              <IconCheck size={18} className="text-emerald-600" />
+            </div>
+            <span className="font-medium">Lección completada</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1100,15 +1194,15 @@ export default function LessonPlayerPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  
+
   // Modo preview para maestros/admins (no requiere inscripción)
   const isPreviewMode = searchParams.get("preview") === "true";
-  
+
   // Get initial subsection index from URL query parameter
-  const initialSubsectionIndex = searchParams.get("subsection") 
-    ? parseInt(searchParams.get("subsection")!, 10) 
+  const initialSubsectionIndex = searchParams.get("subsection")
+    ? parseInt(searchParams.get("subsection")!, 10)
     : 0;
-  
+
   // Core State
   const [loading, setLoading] = useState(true);
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -1118,17 +1212,17 @@ export default function LessonPlayerPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const hasFetchedRef = useRef(false);
-  
+
   // Progress persistence state
   const [dbCompletedLessons, setDbCompletedLessons] = useState<string[]>([]);
   const [dbProgress, setDbProgress] = useState(0);
   const [totalDbLessons, setTotalDbLessons] = useState(0);
   const progressFetchedRef = useRef(false);
-  
+
   // Resources State
   const [resources, setResources] = useState<Resource[]>([]);
   const [loadingResources, setLoadingResources] = useState(false);
-  
+
   // Notes State
   const [notes, setNotes] = useState<Note[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
@@ -1136,7 +1230,7 @@ export default function LessonPlayerPage() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteContent, setEditingNoteContent] = useState("");
   const [savingNote, setSavingNote] = useState(false);
-  
+
   // Q&A State
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
@@ -1147,27 +1241,30 @@ export default function LessonPlayerPage() {
   const [replyText, setReplyText] = useState("");
   const [submittingReply, setSubmittingReply] = useState(false);
   const [questionSortBy, setQuestionSortBy] = useState<"recent" | "popular">("recent");
-  
+
   // Video simulation state (para timestamp de notas)
   const [currentVideoTime, setCurrentVideoTime] = useState(0);
-  
+
   // Progress tooltip state (click to pin)
   const [progressTooltipOpen, setProgressTooltipOpen] = useState(false);
   const progressTooltipRef = useRef<HTMLDivElement>(null);
-  
+
   // Rating modal state
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
   const [userRating, setUserRating] = useState<number | null>(null);
   const [loadingRating, setLoadingRating] = useState(false);
-  
+
   // More options dropdown state
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   const moreOptionsRef = useRef<HTMLDivElement>(null);
-  
+
   // Favorite state
   const [isFavorite, setIsFavorite] = useState(false);
   const [loadingFavorite, setLoadingFavorite] = useState(false);
-  
+
+  // Scroll-to-complete state - tracks if user has scrolled to end of content
+  const [hasScrolledToEnd, setHasScrolledToEnd] = useState(false);
+
   // Confirmation modal state for completing lessons
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [completionModalType, setCompletionModalType] = useState<'confirm' | 'error'>('confirm');
@@ -1182,10 +1279,14 @@ export default function LessonPlayerPage() {
     lessonId: string;
     subIndex: number;
   } | null>(null);
-  
+
   // Quiz scores state - stores quiz scores by lessonId-subIndex
   const [quizScores, setQuizScores] = useState<Map<string, { correct: number; total: number }>>(new Map());
-  
+
+  // Confetti animation state - shown when completing a section
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [confettiMessage, setConfettiMessage] = useState<string>('');
+
   // Subsection State (para navegación dentro de una lección)
   // Inicializa con el valor del query parameter si existe
   const [activeSubsectionIndex, setActiveSubsectionIndex] = useState(initialSubsectionIndex);
@@ -1194,19 +1295,19 @@ export default function LessonPlayerPage() {
   const [completedSubsectionsByLesson, setCompletedSubsectionsByLesson] = useState<Record<string, number>>({});
   // Ref para saber si ya aplicamos el índice inicial del query param
   const initialSubsectionAppliedRef = useRef(false);
-  
+
   // Flag para evitar actualizaciones duplicadas
   const isUpdatingProgressRef = useRef(false);
-  
+
   // Derived State
   const courseId = params.courseId as string;
   const currentLessonId = params.lessonId as string;
-  
+
   // Find current lesson
   const currentLesson = useMemo(() => {
     return lessons.find(l => l.id === currentLessonId);
   }, [lessons, currentLessonId]);
-  
+
   // Parse subsections from current lesson content
   const currentSubsections = useMemo((): Subsection[] => {
     if (!currentLesson?.content) return [];
@@ -1217,29 +1318,31 @@ export default function LessonPlayerPage() {
       return [];
     }
   }, [currentLesson]);
-  
+
   // Get active subsection
   const activeSubsection = useMemo(() => {
     return currentSubsections[activeSubsectionIndex] || null;
   }, [currentSubsections, activeSubsectionIndex]);
-  
+
   // Navigation helpers
   const sortedLessons = useMemo(() => {
     return [...lessons].sort((a, b) => a.order - b.order);
   }, [lessons]);
-  
+
   const currentIndex = sortedLessons.findIndex(l => l.id === currentLessonId);
   const prevLesson = currentIndex > 0 ? sortedLessons[currentIndex - 1] : null;
   const nextLesson = currentIndex < sortedLessons.length - 1 ? sortedLessons[currentIndex + 1] : null;
 
   // ===== CALCULATE VISUAL PROGRESS =====
   // Calcula el progreso real basado en subsecciones completadas de todas las lecciones
+  // Usa el mismo algoritmo que el API para mantener consistencia
   const visualProgress = useMemo(() => {
-    if (sortedLessons.length === 0) return 0;
-    
+    // Si no hay lecciones cargadas, usar el progreso de la BD o 0
+    if (sortedLessons.length === 0) return dbProgress;
+
     let totalSubsections = 0;
     let completedSubsections = 0;
-    
+
     sortedLessons.forEach(lesson => {
       // Parsear subsecciones de cada lección
       let subsections: Subsection[] = [];
@@ -1251,10 +1354,10 @@ export default function LessonPlayerPage() {
       } catch {
         // Si falla el parse, contar como 1 subsección
       }
-      
+
       const lessonSubsectionCount = subsections.length || 1;
       totalSubsections += lessonSubsectionCount;
-      
+
       // Si la lección está completada en la BD, todas sus subsecciones están completadas
       if (dbCompletedLessons.includes(lesson.id)) {
         completedSubsections += lessonSubsectionCount;
@@ -1267,23 +1370,29 @@ export default function LessonPlayerPage() {
         }
       }
     });
-    
-    if (totalSubsections === 0) return 0;
-    return Math.round((completedSubsections / totalSubsections) * 100);
-  }, [sortedLessons, dbCompletedLessons, completedSubsectionsByLesson]);
+
+    if (totalSubsections === 0) return dbProgress;
+
+    // Calcular progreso local (para actualizaciones en tiempo real)
+    const localProgress = Math.round((completedSubsections / totalSubsections) * 100);
+
+    // Usar el mayor entre el progreso local y el de la BD
+    // Esto evita retrocesos visuales cuando la BD aún no se ha sincronizado
+    return Math.max(localProgress, dbProgress);
+  }, [sortedLessons, dbCompletedLessons, completedSubsectionsByLesson, dbProgress]);
 
   // ===== HELPER: Check if subsection has quiz =====
   const subsectionHasQuiz = useCallback((lessonId: string, subIndex: number): boolean => {
     const lesson = sortedLessons.find(l => l.id === lessonId);
     if (!lesson?.content) return false;
-    
+
     try {
       const parsed = JSON.parse(lesson.content);
       const subsections = parsed.subsections || [];
       const subsection = subsections[subIndex];
-      
+
       if (!subsection?.blocks) return false;
-      
+
       // Verificar si algún bloque es de tipo quiz
       return subsection.blocks.some((block: any) => block.type === 'quiz');
     } catch {
@@ -1301,9 +1410,9 @@ export default function LessonPlayerPage() {
     // En modo preview, no actualizar progreso
     if (isPreviewMode) return null;
     if (!user || !courseId || isUpdatingProgressRef.current) return null;
-    
+
     isUpdatingProgressRef.current = true;
-    
+
     try {
       const response = await fetch('/api/student/progress', {
         method: 'POST',
@@ -1317,13 +1426,13 @@ export default function LessonPlayerPage() {
           totalSubsections,
         }),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         // Actualizar estado local con los datos de la BD
         setDbProgress(data.progress || 0);
         setDbCompletedLessons(data.completedLessons || []);
-        
+
         // Sincronizar subsection progress si viene de la BD
         if (data.subsectionProgress) {
           setCompletedSubsectionsByLesson(prev => ({
@@ -1331,7 +1440,7 @@ export default function LessonPlayerPage() {
             ...data.subsectionProgress,
           }));
         }
-        
+
         // Devolver los datos actualizados
         return {
           progress: data.progress || 0,
@@ -1344,16 +1453,16 @@ export default function LessonPlayerPage() {
     } finally {
       isUpdatingProgressRef.current = false;
     }
-    
+
     return null;
   }, [user, courseId, isPreviewMode]);
 
   // ===== HELPER: Handle completion confirmation =====
   const handleConfirmCompletion = useCallback(() => {
     if (!pendingNavigation) return;
-    
+
     const { lessonId, fromSubIndex, toSubIndex, subsectionsLength } = pendingNavigation;
-    
+
     // Marcar la subsección como completada
     setCompletedSubsectionsByLesson((prev) => {
       const currentMax = prev[lessonId] ?? -1;
@@ -1366,7 +1475,7 @@ export default function LessonPlayerPage() {
 
     // Verificar si es la última subsección o si estamos completando toda la sección
     const isLastSubsection = fromSubIndex >= subsectionsLength - 1 || toSubIndex >= subsectionsLength - 1;
-    
+
     // Si es la última, marcar la lección como completada
     if (isLastSubsection) {
       // Marcar todas las subsecciones como completadas
@@ -1374,13 +1483,21 @@ export default function LessonPlayerPage() {
         ...prev,
         [lessonId]: subsectionsLength - 1,
       }));
-      
+
       setDbCompletedLessons((prev) => {
         if (prev.includes(lessonId)) return prev;
         return [...prev, lessonId];
       });
+
+      // Mostrar confetti al completar la sección
+      const completedLesson = sortedLessons.find(l => l.id === lessonId);
+      if (completedLesson) {
+        setConfettiMessage(`¡Completaste "${completedLesson.title}"!`);
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 4000);
+      }
     }
-    
+
     // Guardar progreso en segundo plano
     updateProgressInBackground(
       lessonId,
@@ -1412,12 +1529,14 @@ export default function LessonPlayerPage() {
       // Navegar a la siguiente subsección en la misma lección
       setActiveSubsectionIndex(toSubIndex);
     }
-    
+
     // Cerrar modal y limpiar estado
     setShowCompletionModal(false);
     setPendingNavigation(null);
     setPendingNavigationToSection(null);
-  }, [pendingNavigation, pendingNavigationToSection, updateProgressInBackground, user, courseId, router]);
+    // Reset scroll state for the next subsection
+    setHasScrolledToEnd(false);
+  }, [pendingNavigation, pendingNavigationToSection, updateProgressInBackground, user, courseId, router, sortedLessons]);
 
   const handleCancelCompletion = useCallback(() => {
     setShowCompletionModal(false);
@@ -1446,13 +1565,13 @@ export default function LessonPlayerPage() {
           const data = await lessonsRes.json();
           setLessons(data.lessons || []);
           setSections(data.sections || []);
-          
+
           // Auto-expandir la sección de la lección actual
           const currentLessonData = (data.lessons || []).find((l: Lesson) => l.id === currentLessonId);
           if (currentLessonData?.sectionId) {
             setExpandedSections(new Set([currentLessonData.sectionId]));
           }
-          
+
           // Set course info from API response
           if (data.course) {
             setCourseInfo({
@@ -1468,7 +1587,7 @@ export default function LessonPlayerPage() {
             });
           }
         }
-        
+
       } catch (error) {
         console.error("Error fetching course data", error);
       } finally {
@@ -1492,20 +1611,20 @@ export default function LessonPlayerPage() {
         const response = await fetch(
           `/api/student/progress?courseId=${courseId}&userId=${user.id}`
         );
-        
+
         if (response.ok) {
           const data: ProgressData = await response.json();
-          
+
           // Sincronizar estado local con BD
           setDbProgress(data.progress);
           setDbCompletedLessons(data.completedLessons);
           setTotalDbLessons(data.totalLessons);
-          
+
           // Sincronizar subsection progress
           if (data.subsectionProgress && Object.keys(data.subsectionProgress).length > 0) {
             setCompletedSubsectionsByLesson(data.subsectionProgress);
           }
-          
+
           // Si el usuario entró sin lessonId específico y hay un lastAccessedLessonId,
           // redirigir a esa lección
           // Nota: Este check se hace aquí porque necesitamos los datos de la BD
@@ -1527,13 +1646,13 @@ export default function LessonPlayerPage() {
   // Si es la última lección de la última sección y es de lectura, completarla automáticamente
   useEffect(() => {
     if (isPreviewMode || !user || !currentLessonId || sortedLessons.length === 0) return;
-    
+
     // Verificar si es la última sección
     const currentLessonIndex = sortedLessons.findIndex(l => l.id === currentLessonId);
     const isLastSection = currentLessonIndex === sortedLessons.length - 1;
-    
+
     if (!isLastSection) return;
-    
+
     // Obtener subsecciones de la lección actual
     const currentLesson = sortedLessons[currentLessonIndex];
     let currentSubsections: Subsection[] = [];
@@ -1542,24 +1661,24 @@ export default function LessonPlayerPage() {
         const parsed = JSON.parse(currentLesson.content);
         currentSubsections = parsed.subsections || [];
       }
-    } catch {}
-    
+    } catch { }
+
     if (currentSubsections.length === 0) return;
-    
+
     // Verificar si estamos en la última subsección
     const isLastSubsection = activeSubsectionIndex === currentSubsections.length - 1;
     if (!isLastSubsection) return;
-    
+
     // Verificar si ya está completada
     const highestCompleted = completedSubsectionsByLesson[currentLessonId] ?? -1;
-    const isAlreadyCompleted = dbCompletedLessons.includes(currentLessonId) || 
+    const isAlreadyCompleted = dbCompletedLessons.includes(currentLessonId) ||
       highestCompleted >= currentSubsections.length - 1;
-    
+
     if (isAlreadyCompleted) return;
-    
+
     // Verificar si es de lectura (no tiene quiz)
     const hasQuiz = subsectionHasQuiz(currentLessonId, activeSubsectionIndex);
-    
+
     if (!hasQuiz) {
       // Es la última lección, última subsección, y es de lectura
       // Completar automáticamente después de un breve delay
@@ -1569,12 +1688,12 @@ export default function LessonPlayerPage() {
           ...prev,
           [currentLessonId]: currentSubsections.length - 1,
         }));
-        
+
         setDbCompletedLessons(prev => {
           if (prev.includes(currentLessonId)) return prev;
           return [...prev, currentLessonId];
         });
-        
+
         // Guardar en BD
         updateProgressInBackground(
           currentLessonId,
@@ -1583,16 +1702,16 @@ export default function LessonPlayerPage() {
           currentSubsections.length
         );
       }, 1000); // Esperar 1 segundo antes de marcar como completada
-      
+
       return () => clearTimeout(timer);
     }
   }, [
-    isPreviewMode, 
-    user, 
-    currentLessonId, 
-    sortedLessons, 
-    activeSubsectionIndex, 
-    completedSubsectionsByLesson, 
+    isPreviewMode,
+    user,
+    currentLessonId,
+    sortedLessons,
+    activeSubsectionIndex,
+    completedSubsectionsByLesson,
     dbCompletedLessons,
     subsectionHasQuiz,
     updateProgressInBackground
@@ -1602,10 +1721,10 @@ export default function LessonPlayerPage() {
   // Cargar las calificaciones de quizzes completados
   useEffect(() => {
     if (isPreviewMode || !user || sortedLessons.length === 0) return;
-    
+
     const loadQuizScores = async () => {
       const scoresMap = new Map<string, { correct: number; total: number }>();
-      
+
       // Recorrer todas las lecciones y subsecciones para encontrar quizzes
       for (const lesson of sortedLessons) {
         let subsections: Subsection[] = [];
@@ -1614,8 +1733,8 @@ export default function LessonPlayerPage() {
             const parsed = JSON.parse(lesson.content);
             subsections = parsed.subsections || [];
           }
-        } catch {}
-        
+        } catch { }
+
         for (let subIndex = 0; subIndex < subsections.length; subIndex++) {
           const subsection = subsections[subIndex];
           // Buscar bloques de tipo quiz
@@ -1635,14 +1754,14 @@ export default function LessonPlayerPage() {
                   if (quizRes.ok) {
                     const quizData = await quizRes.json();
                     const questions = quizData.survey?.questions || [];
-                    
+
                     // Calcular score
                     let correct = 0;
                     const savedAnswers: Record<string, any> = {};
                     data.response.answers.forEach((ans: any) => {
                       savedAnswers[ans.questionId] = ans.answer;
                     });
-                    
+
                     questions.forEach((q: any) => {
                       const userAnswer = savedAnswers[q.id];
                       if (q.options?.some((o: any) => o.isCorrect)) {
@@ -1650,7 +1769,7 @@ export default function LessonPlayerPage() {
                         if (q.type === 'multiple_choice') {
                           const userAnswers = Array.isArray(userAnswer) ? userAnswer : [];
                           if (correctOptions.length === userAnswers.length &&
-                              correctOptions.every((c: string) => userAnswers.includes(c))) {
+                            correctOptions.every((c: string) => userAnswers.includes(c))) {
                             correct++;
                           }
                         } else {
@@ -1660,9 +1779,9 @@ export default function LessonPlayerPage() {
                         }
                       } else if (q.correctAnswer) {
                         if (Array.isArray(q.correctAnswer)) {
-                          if (Array.isArray(userAnswer) && 
-                              userAnswer.length === q.correctAnswer.length &&
-                              userAnswer.every((a: string) => q.correctAnswer?.includes(a))) {
+                          if (Array.isArray(userAnswer) &&
+                            userAnswer.length === q.correctAnswer.length &&
+                            userAnswer.every((a: string) => q.correctAnswer?.includes(a))) {
                             correct++;
                           }
                         } else if (userAnswer === q.correctAnswer) {
@@ -1670,7 +1789,7 @@ export default function LessonPlayerPage() {
                         }
                       }
                     });
-                    
+
                     scoresMap.set(`${lesson.id}-${subIndex}`, { correct, total: questions.length });
                   }
                 }
@@ -1681,12 +1800,12 @@ export default function LessonPlayerPage() {
           }
         }
       }
-      
+
       if (scoresMap.size > 0) {
         setQuizScores(scoresMap);
       }
     };
-    
+
     loadQuizScores();
   }, [isPreviewMode, user, sortedLessons, courseId]);
 
@@ -1720,78 +1839,78 @@ export default function LessonPlayerPage() {
             const parsed = JSON.parse(previousLesson.content);
             prevSubsections = parsed.subsections || [];
           }
-        } catch (e) {}
+        } catch (e) { }
         const prevTotalSubsections = prevSubsections.length || 1;
         // La lección anterior debe estar completamente completada
         isUnlocked = prevIsCompleted || (prevHighestIndex >= 0 && prevHighestIndex >= prevTotalSubsections - 1);
       }
     }
 
-      // Verificar también si la lección actual ya está completada (si es así, permitir acceso)
-      const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
-      const isCurrentLessonCompleted = currentLesson ? dbCompletedLessons.includes(currentLessonId) : false;
-      
-      if (!isUnlocked && !isCurrentLessonCompleted) {
-        // Encontrar la primera lección desbloqueada
-        let firstUnlockedLesson = sortedLessons[0];
-        for (let i = 0; i < sortedLessons.length; i++) {
-          const lesson = sortedLessons[i];
-          if (i === 0) {
-            firstUnlockedLesson = lesson;
-            break;
-          }
-          const prevLesson = sortedLessons[i - 1];
-          const prevHighestIndex = completedSubsectionsByLesson[prevLesson.id] ?? -1;
-          const prevIsCompleted = dbCompletedLessons.includes(prevLesson.id);
-          let prevSubsections: Subsection[] = [];
-          try {
-            if (prevLesson.content) {
-              const parsed = JSON.parse(prevLesson.content);
-              prevSubsections = parsed.subsections || [];
-            }
-          } catch (e) {}
-          const prevTotalSubsections = prevSubsections.length || 1;
-          const prevIsCompletedFully = prevIsCompleted || (prevHighestIndex >= 0 && prevHighestIndex >= prevTotalSubsections - 1);
-          
-          if (prevIsCompletedFully) {
-            firstUnlockedLesson = lesson;
-            break;
-          } else {
-            break; // No hay más lecciones desbloqueadas
-          }
-        }
-        
-        // Redirigir a la primera lección desbloqueada
-        router.replace(`/student/courses/${courseId}/learn/lecture/${firstUnlockedLesson.id}?subsection=0`);
-        return;
-      }
+    // Verificar también si la lección actual ya está completada (si es así, permitir acceso)
+    const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
+    const isCurrentLessonCompleted = currentLesson ? dbCompletedLessons.includes(currentLessonId) : false;
 
-      // Verificar también que la subsección actual esté desbloqueada o completada
-      if (currentLesson && initialSubsectionIndex !== undefined) {
-        let subsections: Subsection[] = [];
+    if (!isUnlocked && !isCurrentLessonCompleted) {
+      // Encontrar la primera lección desbloqueada
+      let firstUnlockedLesson = sortedLessons[0];
+      for (let i = 0; i < sortedLessons.length; i++) {
+        const lesson = sortedLessons[i];
+        if (i === 0) {
+          firstUnlockedLesson = lesson;
+          break;
+        }
+        const prevLesson = sortedLessons[i - 1];
+        const prevHighestIndex = completedSubsectionsByLesson[prevLesson.id] ?? -1;
+        const prevIsCompleted = dbCompletedLessons.includes(prevLesson.id);
+        let prevSubsections: Subsection[] = [];
         try {
-          if (currentLesson.content) {
-            const parsed = JSON.parse(currentLesson.content);
-            subsections = parsed.subsections || [];
+          if (prevLesson.content) {
+            const parsed = JSON.parse(prevLesson.content);
+            prevSubsections = parsed.subsections || [];
           }
-        } catch (e) {}
+        } catch (e) { }
+        const prevTotalSubsections = prevSubsections.length || 1;
+        const prevIsCompletedFully = prevIsCompleted || (prevHighestIndex >= 0 && prevHighestIndex >= prevTotalSubsections - 1);
 
-        if (subsections.length > 0 && initialSubsectionIndex > 0) {
-          const highestCompletedIndex = completedSubsectionsByLesson[currentLessonId] ?? -1;
-          const isLessonFullyCompleted = dbCompletedLessons.includes(currentLessonId);
-          // Verificar si la subsección ya está completada
-          const isSubsectionCompleted = isLessonFullyCompleted || initialSubsectionIndex <= highestCompletedIndex;
-          // Verificar si está desbloqueada (la anterior está completada)
-          const isSubsectionUnlocked = isLessonFullyCompleted || initialSubsectionIndex <= highestCompletedIndex + 1;
-
-          // Si no está completada ni desbloqueada, redirigir
-          if (!isSubsectionCompleted && !isSubsectionUnlocked) {
-            // Redirigir a la primera subsección desbloqueada
-            const firstUnlockedIndex = isLessonFullyCompleted ? 0 : Math.max(0, highestCompletedIndex + 1);
-            router.replace(`/student/courses/${courseId}/learn/lecture/${currentLessonId}?subsection=${firstUnlockedIndex}`);
-          }
+        if (prevIsCompletedFully) {
+          firstUnlockedLesson = lesson;
+          break;
+        } else {
+          break; // No hay más lecciones desbloqueadas
         }
       }
+
+      // Redirigir a la primera lección desbloqueada
+      router.replace(`/student/courses/${courseId}/learn/lecture/${firstUnlockedLesson.id}?subsection=0`);
+      return;
+    }
+
+    // Verificar también que la subsección actual esté desbloqueada o completada
+    if (currentLesson && initialSubsectionIndex !== undefined) {
+      let subsections: Subsection[] = [];
+      try {
+        if (currentLesson.content) {
+          const parsed = JSON.parse(currentLesson.content);
+          subsections = parsed.subsections || [];
+        }
+      } catch (e) { }
+
+      if (subsections.length > 0 && initialSubsectionIndex > 0) {
+        const highestCompletedIndex = completedSubsectionsByLesson[currentLessonId] ?? -1;
+        const isLessonFullyCompleted = dbCompletedLessons.includes(currentLessonId);
+        // Verificar si la subsección ya está completada
+        const isSubsectionCompleted = isLessonFullyCompleted || initialSubsectionIndex <= highestCompletedIndex;
+        // Verificar si está desbloqueada (la anterior está completada)
+        const isSubsectionUnlocked = isLessonFullyCompleted || initialSubsectionIndex <= highestCompletedIndex + 1;
+
+        // Si no está completada ni desbloqueada, redirigir
+        if (!isSubsectionCompleted && !isSubsectionUnlocked) {
+          // Redirigir a la primera subsección desbloqueada
+          const firstUnlockedIndex = isLessonFullyCompleted ? 0 : Math.max(0, highestCompletedIndex + 1);
+          router.replace(`/student/courses/${courseId}/learn/lecture/${currentLessonId}?subsection=${firstUnlockedIndex}`);
+        }
+      }
+    }
   }, [lessons, currentLessonId, dbCompletedLessons, completedSubsectionsByLesson, sortedLessons, isPreviewMode, courseId, router, initialSubsectionIndex]);
 
   // ===== SYNC COMPLETED LESSONS =====
@@ -1803,12 +1922,12 @@ export default function LessonPlayerPage() {
       if (isPreviewMode) return;
       if (!user || !courseId || lessons.length === 0) return;
       if (Object.keys(completedSubsectionsByLesson).length === 0) return;
-      
+
       // Verificar cada lección
       for (const lesson of lessons) {
         // Si ya está completada en la BD, saltar
         if (dbCompletedLessons.includes(lesson.id)) continue;
-        
+
         // Parsear subsecciones
         let subsectionsCount = 1;
         try {
@@ -1821,7 +1940,7 @@ export default function LessonPlayerPage() {
         } catch {
           // Si falla, asumir 1 subsección
         }
-        
+
         // Verificar si todas las subsecciones están completadas
         const highestCompletedIndex = completedSubsectionsByLesson[lesson.id] ?? -1;
         if (highestCompletedIndex >= subsectionsCount - 1) {
@@ -1840,7 +1959,7 @@ export default function LessonPlayerPage() {
                 totalSubsections: subsectionsCount,
               }),
             });
-            
+
             if (response.ok) {
               const data = await response.json();
               setDbProgress(data.progress || 0);
@@ -1852,7 +1971,7 @@ export default function LessonPlayerPage() {
         }
       }
     };
-    
+
     syncCompletedLessons();
   }, [user, courseId, lessons, completedSubsectionsByLesson, dbCompletedLessons, isPreviewMode]);
 
@@ -1873,6 +1992,8 @@ export default function LessonPlayerPage() {
       setActiveSubsectionIndex(0);
       initialSubsectionAppliedRef.current = false;
     }
+    // Reset scroll state when changing subsection/lesson
+    setHasScrolledToEnd(false);
   }, [currentLessonId, searchParams]);
 
   // Close progress tooltip when clicking outside
@@ -1896,7 +2017,7 @@ export default function LessonPlayerPage() {
   useEffect(() => {
     const fetchUserRating = async () => {
       if (!user || !courseId) return;
-      
+
       setLoadingRating(true);
       try {
         const response = await fetch(
@@ -1922,7 +2043,7 @@ export default function LessonPlayerPage() {
   useEffect(() => {
     const fetchFavoriteStatus = async () => {
       if (!user || !courseId) return;
-      
+
       try {
         const response = await fetch(
           `/api/student/favorites?courseId=${courseId}&userId=${user.id}`
@@ -1961,7 +2082,7 @@ export default function LessonPlayerPage() {
     const fetchResources = async () => {
       if (!currentLessonId) return;
       setLoadingResources(true);
-      
+
       try {
         const res = await fetch(`/api/student/lesson-resources?lessonId=${currentLessonId}`);
         if (res.ok) {
@@ -1982,7 +2103,7 @@ export default function LessonPlayerPage() {
   const fetchNotes = useCallback(async () => {
     if (isPreviewMode || !currentLessonId || !user) return;
     setLoadingNotes(true);
-    
+
     try {
       const res = await fetch(`/api/student/notes?lessonId=${currentLessonId}&userId=${user.id}`);
       if (res.ok) {
@@ -2006,7 +2127,7 @@ export default function LessonPlayerPage() {
   const fetchQuestions = useCallback(async () => {
     if (isPreviewMode || !currentLessonId) return;
     setLoadingQuestions(true);
-    
+
     try {
       const res = await fetch(`/api/student/questions?lessonId=${currentLessonId}&sortBy=${questionSortBy}`);
       if (res.ok) {
@@ -2043,7 +2164,7 @@ export default function LessonPlayerPage() {
         }),
       }).catch(err => console.error('[goToLesson] Error updating progress:', err));
     }
-    
+
     router.push(`/student/courses/${courseId}/learn/lecture/${lessonId}`);
   }, [router, courseId, user]);
 
@@ -2063,7 +2184,7 @@ export default function LessonPlayerPage() {
   const handleCreateNote = async () => {
     if (!newNoteContent.trim() || !user || !currentLessonId) return;
     setSavingNote(true);
-    
+
     try {
       const res = await fetch('/api/student/notes', {
         method: 'POST',
@@ -2076,7 +2197,7 @@ export default function LessonPlayerPage() {
           videoTimestamp: currentVideoTime,
         }),
       });
-      
+
       if (res.ok) {
         setNewNoteContent("");
         fetchNotes();
@@ -2091,7 +2212,7 @@ export default function LessonPlayerPage() {
   const handleUpdateNote = async (noteId: string) => {
     if (!editingNoteContent.trim() || !user) return;
     setSavingNote(true);
-    
+
     try {
       const res = await fetch('/api/student/notes', {
         method: 'PATCH',
@@ -2102,7 +2223,7 @@ export default function LessonPlayerPage() {
           content: editingNoteContent.trim(),
         }),
       });
-      
+
       if (res.ok) {
         setEditingNoteId(null);
         setEditingNoteContent("");
@@ -2117,12 +2238,12 @@ export default function LessonPlayerPage() {
 
   const handleDeleteNote = async (noteId: string) => {
     if (!user || !confirm("¿Estás seguro de eliminar esta nota?")) return;
-    
+
     try {
       const res = await fetch(`/api/student/notes?noteId=${noteId}&userId=${user.id}`, {
         method: 'DELETE',
       });
-      
+
       if (res.ok) {
         fetchNotes();
       }
@@ -2134,7 +2255,7 @@ export default function LessonPlayerPage() {
   // Favorite Handler
   const handleToggleFavorite = async () => {
     if (!user || !courseId || loadingFavorite) return;
-    
+
     setLoadingFavorite(true);
     try {
       if (isFavorite) {
@@ -2169,7 +2290,7 @@ export default function LessonPlayerPage() {
   const handleSubmitQuestion = async () => {
     if (!newQuestionText.trim() || !user || !currentLessonId) return;
     setSubmittingQuestion(true);
-    
+
     try {
       const res = await fetch('/api/student/questions', {
         method: 'POST',
@@ -2182,7 +2303,7 @@ export default function LessonPlayerPage() {
           videoTimestamp: currentVideoTime,
         }),
       });
-      
+
       if (res.ok) {
         setNewQuestionText("");
         fetchQuestions();
@@ -2197,7 +2318,7 @@ export default function LessonPlayerPage() {
   const handleSubmitReply = async (questionId: string) => {
     if (!replyText.trim() || !user) return;
     setSubmittingReply(true);
-    
+
     try {
       const res = await fetch('/api/student/questions/answer', {
         method: 'POST',
@@ -2208,7 +2329,7 @@ export default function LessonPlayerPage() {
           answerText: replyText.trim(),
         }),
       });
-      
+
       if (res.ok) {
         setReplyText("");
         setReplyingToId(null);
@@ -2235,16 +2356,16 @@ export default function LessonPlayerPage() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: TOKENS.colors.backgroundApp }}>
-      
+
       {/* ===== TOP BAR (Dark Mode) ===== */}
-      <header 
+      <header
         className="flex items-center justify-between px-4 md:px-6 sticky top-0 z-50 shrink-0"
         style={{ height: TOKENS.spacing.topbarHeight, backgroundColor: TOKENS.colors.topbar }}
       >
         <div className="flex items-center gap-2 overflow-hidden">
           {/* Logo - Navega al dashboard del estudiante */}
-          <button 
-            onClick={() => router.push('/dashboard/student')} 
+          <button
+            onClick={() => router.push('/dashboard/student')}
             className="text-white hover:text-gray-300 transition-colors shrink-0"
             title="Ir al dashboard"
           >
@@ -2252,12 +2373,12 @@ export default function LessonPlayerPage() {
               MU
             </div>
           </button>
-          
+
           <div className="h-6 w-[1px] bg-gray-700 mx-2 hidden sm:block shrink-0"></div>
-          
+
           {/* Título del curso - Navega a la página del curso */}
-          <button 
-            onClick={() => router.push(`/dashboard/student/courses/${courseId}`)} 
+          <button
+            onClick={() => router.push(`/dashboard/student/courses/${courseId}`)}
             className="text-gray-300 hover:text-white transition-colors hidden sm:block"
             title="Ver detalles del curso"
           >
@@ -2273,7 +2394,7 @@ export default function LessonPlayerPage() {
             <>
               {/* Progress Indicator */}
               <div className="hidden md:flex items-center gap-2 text-sm text-gray-300">
-                <button 
+                <button
                   onClick={() => setIsRatingModalOpen(true)}
                   className="flex items-center gap-1.5 text-yellow-400 cursor-pointer hover:text-yellow-300 transition-colors group"
                   title={userRating ? "Editar calificación" : "Calificar este curso"}
@@ -2307,7 +2428,7 @@ export default function LessonPlayerPage() {
                 <div className="h-4 w-[1px] bg-gray-700 mx-2"></div>
                 {/* Progress Circle with Tooltip (hover + click to pin) */}
                 <div className="relative group" ref={progressTooltipRef}>
-                  <div 
+                  <div
                     className="flex items-center cursor-pointer hover:text-white"
                     onClick={() => setProgressTooltipOpen(!progressTooltipOpen)}
                   >
@@ -2315,16 +2436,16 @@ export default function LessonPlayerPage() {
                     <div className="relative w-14 h-14 flex items-center justify-center">
                       <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
                         {/* Background circle */}
-                        <circle 
+                        <circle
                           cx="18" cy="18" r="15.9155"
-                          fill="none" 
+                          fill="none"
                           stroke="#374151"
                           strokeWidth="3"
                         />
                         {/* Progress circle */}
-                        <circle 
+                        <circle
                           cx="18" cy="18" r="15.9155"
-                          fill="none" 
+                          fill="none"
                           stroke="#A855F7"
                           strokeWidth="3"
                           strokeDasharray={`${visualProgress}, 100`}
@@ -2338,12 +2459,12 @@ export default function LessonPlayerPage() {
                       </span>
                     </div>
                   </div>
-                  
+
                   {/* Tooltip - appears on hover OR when pinned (clicked) */}
                   <div className={cn(
                     "absolute top-full right-0 mt-2 w-64 transition-all duration-200 z-50",
-                    progressTooltipOpen 
-                      ? "opacity-100 visible" 
+                    progressTooltipOpen
+                      ? "opacity-100 visible"
                       : "opacity-0 invisible group-hover:opacity-100 group-hover:visible"
                   )}>
                     {/* Arrow */}
@@ -2352,7 +2473,7 @@ export default function LessonPlayerPage() {
                     <div className="bg-white rounded-lg shadow-xl p-4">
                       {/* Close button when pinned */}
                       {progressTooltipOpen && (
-                        <button 
+                        <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setProgressTooltipOpen(false);
@@ -2374,7 +2495,7 @@ export default function LessonPlayerPage() {
                                 const parsed = JSON.parse(lesson.content);
                                 subs = parsed.subsections || [];
                               }
-                            } catch {}
+                            } catch { }
                             const count = subs.length || 1;
                             totalSubs += count;
                             if (dbCompletedLessons.includes(lesson.id)) {
@@ -2398,22 +2519,22 @@ export default function LessonPlayerPage() {
               <button className="p-2 rounded hover:bg-white/10 transition-colors">
                 <IconShare size={18} />
               </button>
-              
+
               {/* More Options Dropdown */}
               <div className="relative" ref={moreOptionsRef}>
-                <button 
+                <button
                   onClick={() => setMoreOptionsOpen(!moreOptionsOpen)}
                   className="p-2 rounded hover:bg-white/10 transition-colors"
                 >
                   <IconDotsVertical size={18} />
                 </button>
-                
+
                 {/* Dropdown Menu */}
                 {moreOptionsOpen && (
                   <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                     {/* Arrow */}
                     <div className="absolute -top-2 right-3 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-white"></div>
-                    
+
                     {/* Marcar como favorito */}
                     <button
                       onClick={handleToggleFavorite}
@@ -2434,10 +2555,10 @@ export default function LessonPlayerPage() {
                         {isFavorite ? "Quitar de favoritos" : "Marcar como favorito"}
                       </span>
                     </button>
-                    
+
                     {/* Separator */}
                     <div className="my-1 border-t border-gray-100"></div>
-                    
+
                     {/* Regalar esta Microcredencial */}
                     <button
                       onClick={() => {
@@ -2457,7 +2578,7 @@ export default function LessonPlayerPage() {
               </div>
             </>
           )}
-          
+
           {/* Indicador de modo preview */}
           {isPreviewMode && (
             <div className="px-3 py-1 bg-yellow-500/20 border border-yellow-500/30 rounded-full text-yellow-300 text-xs font-medium">
@@ -2469,14 +2590,14 @@ export default function LessonPlayerPage() {
 
       {/* ===== MAIN CONTENT (Split Screen) ===== */}
       <main className="flex flex-1 overflow-hidden">
-        
+
         {/* ZONE A: Main Content Stage (Left) */}
         <div className="flex-1 overflow-y-auto flex flex-col">
-          
+
           {/* Lesson Content Area */}
           <div className="flex-1 bg-white p-6 md:p-8 overflow-y-auto">
-            <SubsectionViewer 
-              subsection={activeSubsection} 
+            <SubsectionViewer
+              subsection={activeSubsection}
               courseId={courseId}
               lessonId={currentLessonId}
               subsectionIndex={activeSubsectionIndex}
@@ -2491,9 +2612,71 @@ export default function LessonPlayerPage() {
                 }
               })()}
               userId={user?.id}
+              isCompleted={(() => {
+                if (!currentLessonId) return false;
+                const highestCompletedIndex = completedSubsectionsByLesson[currentLessonId] ?? -1;
+                const isLessonFullyCompleted = dbCompletedLessons.includes(currentLessonId);
+                return isLessonFullyCompleted || activeSubsectionIndex <= highestCompletedIndex;
+              })()}
+              hasQuiz={subsectionHasQuiz(currentLessonId, activeSubsectionIndex)}
+              onMarkComplete={async () => {
+                if (!currentLessonId || !user || isPreviewMode) return;
+
+                const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
+                if (!currentLesson?.content) return;
+
+                let totalSubs = 0;
+                try {
+                  const parsed = JSON.parse(currentLesson.content);
+                  totalSubs = parsed.subsections?.length || 0;
+                } catch { }
+
+                // Verificar si es la última subsección de la sección
+                const isLastSubsection = activeSubsectionIndex === totalSubs - 1;
+
+                // Actualizar estado local
+                setCompletedSubsectionsByLesson((prev) => {
+                  const currentMax = prev[currentLessonId] ?? -1;
+                  const newMax = Math.max(currentMax, activeSubsectionIndex);
+                  return {
+                    ...prev,
+                    [currentLessonId]: newMax,
+                  };
+                });
+
+                if (isLastSubsection) {
+                  setDbCompletedLessons((prev) => {
+                    if (prev.includes(currentLessonId)) return prev;
+                    return [...prev, currentLessonId];
+                  });
+
+                  // Mostrar confetti al completar la sección
+                  setConfettiMessage(`¡Completaste "${currentLesson.title}"!`);
+                  setShowConfetti(true);
+                  setTimeout(() => setShowConfetti(false), 4000);
+                }
+
+                // Actualizar progreso en segundo plano
+                const result = await updateProgressInBackground(
+                  currentLessonId,
+                  activeSubsectionIndex,
+                  isLastSubsection,
+                  totalSubs
+                );
+
+                if (result?.completedLessons) {
+                  setDbCompletedLessons(result.completedLessons);
+                }
+                if (result?.subsectionProgress) {
+                  setCompletedSubsectionsByLesson(prev => ({
+                    ...prev,
+                    ...result.subsectionProgress,
+                  }));
+                }
+              }}
               onProgressUpdate={async (subIndex: number, isCompleted: boolean) => {
                 if (!currentLessonId || !user || isPreviewMode) return;
-                
+
                 // Actualizar estado local optimista - marcar esta subsección como completada
                 setCompletedSubsectionsByLesson((prev) => {
                   const currentMax = prev[currentLessonId] ?? -1;
@@ -2503,15 +2686,23 @@ export default function LessonPlayerPage() {
                     [currentLessonId]: newMax,
                   };
                 });
-                
+
                 // Si es la última subsección, actualizar dbCompletedLessons de forma optimista
                 if (isCompleted) {
                   setDbCompletedLessons((prev) => {
                     if (prev.includes(currentLessonId)) return prev;
                     return [...prev, currentLessonId];
                   });
+
+                  // Mostrar confetti al completar la sección
+                  const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
+                  if (currentLesson) {
+                    setConfettiMessage(`¡Completaste "${currentLesson.title}"!`);
+                    setShowConfetti(true);
+                    setTimeout(() => setShowConfetti(false), 4000);
+                  }
                 }
-                
+
                 // Actualizar progreso en segundo plano
                 const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
                 if (currentLesson?.content) {
@@ -2524,12 +2715,12 @@ export default function LessonPlayerPage() {
                       isCompleted,
                       totalSubs
                     );
-                    
+
                     // Si la lección se completó, actualizar dbCompletedLessons con datos del servidor
                     if (result?.completedLessons) {
                       setDbCompletedLessons(result.completedLessons);
                     }
-                    
+
                     // Actualizar subsection progress desde la respuesta
                     if (result?.subsectionProgress) {
                       setCompletedSubsectionsByLesson(prev => ({
@@ -2541,6 +2732,10 @@ export default function LessonPlayerPage() {
                     console.error('Error updating progress:', e);
                   }
                 }
+              }}
+              onScrollComplete={() => {
+                // Notificar que el usuario ha hecho scroll hasta el final
+                setHasScrolledToEnd(true);
               }}
             />
           </div>
@@ -2555,13 +2750,13 @@ export default function LessonPlayerPage() {
                   { id: "questions", label: "Preguntas y respuestas" },
                   { id: "notes", label: "Notas" },
                 ].map((tab) => (
-                  <button 
+                  <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as any)}
                     className={cn(
                       "py-4 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap",
-                      activeTab === tab.id 
-                        ? "border-black text-black" 
+                      activeTab === tab.id
+                        ? "border-black text-black"
                         : "border-transparent text-gray-500 hover:text-gray-700"
                     )}
                   >
@@ -2573,12 +2768,12 @@ export default function LessonPlayerPage() {
 
             {/* Tab Content */}
             <div className="flex-1 overflow-y-auto p-4 md:p-8">
-              
+
               {/* ===== OVERVIEW TAB ===== */}
               {activeTab === "overview" && currentLesson && (
                 <div className="max-w-4xl animate-in fade-in duration-200">
                   <h1 className="text-2xl font-bold text-gray-900 mb-4">{currentLesson.title}</h1>
-                  
+
                   {currentLesson.description && (
                     <div className="prose prose-sm max-w-none text-gray-700 mb-8">
                       <p>{currentLesson.description}</p>
@@ -2668,7 +2863,7 @@ export default function LessonPlayerPage() {
                       </div>
                     </div>
                   )}
-                  
+
                   {/* Mensaje en modo preview */}
                   {isPreviewMode && (
                     <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -2718,11 +2913,11 @@ export default function LessonPlayerPage() {
                           <div className="flex gap-3">
                             <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-semibold shrink-0">
                               {question.author?.avatarUrl ? (
-                                <Image 
-                                  src={question.author.avatarUrl} 
-                                  alt="" 
-                                  width={40} 
-                                  height={40} 
+                                <Image
+                                  src={question.author.avatarUrl}
+                                  alt=""
+                                  width={40}
+                                  height={40}
                                   className="rounded-full"
                                 />
                               ) : (
@@ -2748,13 +2943,13 @@ export default function LessonPlayerPage() {
                                 )}
                               </div>
                               <p className="text-gray-700 mb-3">{question.questionText}</p>
-                              
+
                               <div className="flex items-center gap-4 text-sm">
                                 <div className="flex items-center gap-1 text-gray-500">
                                   <IconThumbUp size={16} />
                                   <span>{question.upvotes}</span>
                                 </div>
-                                <button 
+                                <button
                                   onClick={() => setExpandedQuestionId(expandedQuestionId === question.id ? null : question.id)}
                                   className="text-gray-500 hover:text-purple-600 transition-colors"
                                   disabled={isPreviewMode}
@@ -2762,7 +2957,7 @@ export default function LessonPlayerPage() {
                                   {question.answersCount} respuesta{question.answersCount !== 1 ? 's' : ''}
                                 </button>
                                 {!isPreviewMode && (
-                                  <button 
+                                  <button
                                     onClick={() => {
                                       setReplyingToId(replyingToId === question.id ? null : question.id);
                                       setExpandedQuestionId(question.id);
@@ -2781,8 +2976,8 @@ export default function LessonPlayerPage() {
                                     <div key={answer.id} className="flex gap-3">
                                       <div className={cn(
                                         "w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold shrink-0",
-                                        answer.isInstructorAnswer 
-                                          ? "bg-purple-100 text-purple-600" 
+                                        answer.isInstructorAnswer
+                                          ? "bg-purple-100 text-purple-600"
                                           : "bg-gray-100 text-gray-600"
                                       )}>
                                         {answer.author?.name?.charAt(0).toUpperCase() || "?"}
@@ -2894,7 +3089,7 @@ export default function LessonPlayerPage() {
                       </div>
                     </div>
                   )}
-                  
+
                   {/* Mensaje en modo preview */}
                   {isPreviewMode && (
                     <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -2918,8 +3113,8 @@ export default function LessonPlayerPage() {
                   ) : (
                     <div className="space-y-4">
                       {notes.map((note) => (
-                        <div 
-                          key={note.id} 
+                        <div
+                          key={note.id}
                           className="p-4 border rounded-lg hover:shadow-sm transition-shadow"
                           style={{ borderColor: TOKENS.colors.border }}
                         >
@@ -2955,7 +3150,7 @@ export default function LessonPlayerPage() {
                             <>
                               <div className="flex items-start justify-between gap-4">
                                 <div className="flex-1">
-                                  <button 
+                                  <button
                                     className="text-sm text-purple-600 bg-purple-50 px-2 py-0.5 rounded mb-2 hover:bg-purple-100"
                                     title="Ir a este momento del video"
                                   >
@@ -3008,8 +3203,8 @@ export default function LessonPlayerPage() {
           {/* Sidebar Header */}
           <div className="p-4 flex items-center justify-between border-b bg-white shrink-0" style={{ borderColor: TOKENS.colors.border }}>
             <h3 className="font-bold text-gray-900">Contenido del curso</h3>
-            <button 
-              onClick={() => setSidebarOpen(false)} 
+            <button
+              onClick={() => setSidebarOpen(false)}
               className="p-1 text-gray-500 hover:text-gray-700 rounded hover:bg-gray-100"
             >
               <IconX size={18} />
@@ -3029,8 +3224,8 @@ export default function LessonPlayerPage() {
               } catch (e) {
                 // Si falla el parse, subsections queda vacío
               }
-              
-              const isExpanded = expandedSections.has(lesson.id) || 
+
+              const isExpanded = expandedSections.has(lesson.id) ||
                 (expandedSections.size === 0 && lesson.id === currentLessonId);
               const isActiveSection = lesson.id === currentLessonId;
               const totalDuration = lesson.durationMinutes || (subsections.length * 5); // Estimado 5 min por subsección
@@ -3039,17 +3234,17 @@ export default function LessonPlayerPage() {
               const highestCompletedIndex = completedSubsectionsByLesson[lesson.id] ?? -1;
               // Si la lección está en completedLessons de la BD, todas las subsecciones están completadas
               const isLessonCompletedInDb = dbCompletedLessons.includes(lesson.id);
-              const completedCount = isLessonCompletedInDb 
-                ? (subsections.length || 1) 
+              const completedCount = isLessonCompletedInDb
+                ? (subsections.length || 1)
                 : (highestCompletedIndex >= 0 ? highestCompletedIndex + 1 : 0);
-              
+
               // Calcular porcentaje de progreso
               const totalSubsections = subsections.length || 1;
-              const sectionProgress = totalSubsections > 0 
+              const sectionProgress = totalSubsections > 0
                 ? Math.round((completedCount / totalSubsections) * 100)
                 : 0;
               const isSectionCompleted = sectionProgress === 100;
-              
+
               // Verificar si la sección está desbloqueada (para visualización)
               // La sección se muestra habilitada si:
               // 1. Es la primera sección
@@ -3067,18 +3262,18 @@ export default function LessonPlayerPage() {
                     prevSubsections = parsed.subsections || [];
                     prevTotalSubsections = prevSubsections.length || 1;
                   }
-                } catch (e) {}
+                } catch (e) { }
               }
-              
+
               // La sección está completamente desbloqueada si la anterior está completa
-              const isSectionFullyUnlocked = lessonIndex === 0 || prevIsCompleted || 
+              const isSectionFullyUnlocked = lessonIndex === 0 || prevIsCompleted ||
                 (prevHighestIndex >= 0 && prevHighestIndex >= prevTotalSubsections - 1);
-              
+
               // La sección está parcialmente habilitada si es la siguiente a la actual
               // (permite clic pero muestra modal de validación)
               const currentLessonIndex = sortedLessons.findIndex(l => l.id === currentLessonId);
               const isNextSection = lessonIndex === currentLessonIndex + 1;
-              
+
               // Para visualización: habilitar si está completamente desbloqueada o es la siguiente sección
               const isSectionUnlocked = isSectionFullyUnlocked || isNextSection;
 
@@ -3098,10 +3293,10 @@ export default function LessonPlayerPage() {
                           {lesson.title}
                         </h4>
                         {isSectionCompleted && (
-                          <span 
+                          <span
                             className="text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse"
-                            style={{ 
-                              backgroundColor: 'rgba(16, 185, 129, 0.15)', 
+                            style={{
+                              backgroundColor: 'rgba(16, 185, 129, 0.15)',
                               color: '#059669',
                               boxShadow: '0 0 8px rgba(16, 185, 129, 0.3)',
                             }}
@@ -3111,7 +3306,7 @@ export default function LessonPlayerPage() {
                           </span>
                         )}
                       </div>
-                      
+
                       {/* Barra de progreso */}
                       {totalSubsections > 0 && (
                         <div className="space-y-1 mb-1.5">
@@ -3119,20 +3314,20 @@ export default function LessonPlayerPage() {
                             <span className="text-gray-500">
                               {completedCount} de {totalSubsections} lecciones
                             </span>
-                            <span 
+                            <span
                               className="font-semibold"
                               style={{ color: isSectionCompleted ? '#059669' : TOKENS.colors.accent }}
                             >
                               {sectionProgress}%
                             </span>
                           </div>
-                          <div 
+                          <div
                             className="w-full h-1.5 rounded-full overflow-hidden"
                             style={{ backgroundColor: '#E5E7EB' }}
                           >
-                            <div 
+                            <div
                               className="h-full rounded-full transition-all duration-300"
-                              style={{ 
+                              style={{
                                 width: `${sectionProgress}%`,
                                 backgroundColor: isSectionCompleted ? '#10B981' : TOKENS.colors.accent,
                               }}
@@ -3140,17 +3335,17 @@ export default function LessonPlayerPage() {
                           </div>
                         </div>
                       )}
-                      
+
                       <p className="text-xs text-gray-500">
                         {totalDuration} min
                       </p>
                     </div>
-                    <IconChevronDown 
-                      size={18} 
+                    <IconChevronDown
+                      size={18}
                       className={cn(
                         "text-gray-500 transition-transform duration-200 mt-0.5 shrink-0",
                         isExpanded && "rotate-180"
-                      )} 
+                      )}
                     />
                   </button>
 
@@ -3167,10 +3362,10 @@ export default function LessonPlayerPage() {
                           const highestCompletedIndexForLesson = completedSubsectionsByLesson[lesson.id] ?? -1;
                           const isLessonFullyCompleted = dbCompletedLessons.includes(lesson.id);
                           const isCompleted = isLessonFullyCompleted || subIndex <= highestCompletedIndexForLesson;
-                          
+
                           // Verificar si la subsección está desbloqueada visualmente
                           let isSubsectionUnlocked = false;
-                          
+
                           if (isCompleted || isLessonFullyCompleted) {
                             // Si ya está completada, siempre desbloqueada
                             isSubsectionUnlocked = true;
@@ -3194,18 +3389,18 @@ export default function LessonPlayerPage() {
                             // Sección bloqueada
                             isSubsectionUnlocked = false;
                           }
-                          
+
                           const handleSubsectionClick = () => {
                             // No permitir navegación si está completamente bloqueada
                             if (!isSubsectionUnlocked) {
                               // Mostrar modal de error indicando qué falta
                               const currentSubIndex = activeSubsectionIndex;
                               const currentSubCompleted = currentSubIndex <= highestCompletedIndexForLesson;
-                              
+
                               if (!currentSubCompleted) {
                                 const currentHasQuiz = subsectionHasQuiz(lesson.id, currentSubIndex);
                                 const currentSubsection = subsections[currentSubIndex];
-                                
+
                                 if (currentHasQuiz) {
                                   setCompletionModalType('error');
                                   setCompletionModalMessage(`Debes completar el cuestionario de la lección "${currentSubsection?.title || 'actual'}" antes de poder avanzar.`);
@@ -3217,7 +3412,7 @@ export default function LessonPlayerPage() {
                               }
                               return;
                             }
-                            
+
                             if (lesson.id === currentLessonId) {
                               // Si ya estamos en esta misma lección
                               const previousIndex = activeSubsectionIndex;
@@ -3244,7 +3439,7 @@ export default function LessonPlayerPage() {
                               // Verificar si la subsección actual tiene quiz
                               const currentHasQuiz = subsectionHasQuiz(lesson.id, previousIndex);
                               const currentSubsection = subsections[previousIndex];
-                              
+
                               if (currentHasQuiz) {
                                 // Si tiene quiz, mostrar modal de error indicando que debe completar el quiz
                                 setCompletionModalType('error');
@@ -3253,7 +3448,16 @@ export default function LessonPlayerPage() {
                                 return;
                               }
 
-                              // Si es una lección de lectura (sin quiz), mostrar modal de confirmación
+                              // Si es una lección de lectura (sin quiz), verificar que haya hecho scroll
+                              // Si no ha hecho scroll, mostrar error. Si ha hecho scroll, mostrar modal de confirmación
+                              if (!hasScrolledToEnd) {
+                                setCompletionModalType('error');
+                                setCompletionModalMessage(`Debes revisar todo el contenido de esta lección antes de continuar. Desplázate hasta el final.`);
+                                setShowCompletionModal(true);
+                                return;
+                              }
+
+                              // Si ha hecho scroll, mostrar modal de confirmación
                               setCompletionModalType('confirm');
                               setCompletionModalMessage('');
                               setPendingNavigation({
@@ -3268,31 +3472,31 @@ export default function LessonPlayerPage() {
                               if (!isSectionUnlocked) {
                                 return;
                               }
-                              
+
                               // Si la sección está completamente desbloqueada, navegar directamente
                               if (isSectionFullyUnlocked) {
                                 setActiveSubsectionIndex(subIndex);
                                 goToLesson(lesson.id);
                                 return;
                               }
-                              
+
                               // Si es la siguiente sección pero la actual no está completa,
                               // mostrar modal de validación
                               const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
                               if (!currentLesson) return;
-                              
+
                               let currentSubsections: Subsection[] = [];
                               try {
                                 if (currentLesson.content) {
                                   const parsed = JSON.parse(currentLesson.content);
                                   currentSubsections = parsed.subsections || [];
                                 }
-                              } catch {}
-                              
+                              } catch { }
+
                               const currentHighestIndex = completedSubsectionsByLesson[currentLessonId] ?? -1;
-                              const currentIsFullyCompleted = dbCompletedLessons.includes(currentLessonId) || 
+                              const currentIsFullyCompleted = dbCompletedLessons.includes(currentLessonId) ||
                                 (currentHighestIndex >= currentSubsections.length - 1);
-                              
+
                               if (currentIsFullyCompleted) {
                                 // La sección actual está completa, navegar
                                 setActiveSubsectionIndex(subIndex);
@@ -3301,11 +3505,11 @@ export default function LessonPlayerPage() {
                                 // La sección actual no está completa, mostrar modal
                                 const activeSubIndex = activeSubsectionIndex;
                                 const currentSubCompleted = activeSubIndex <= currentHighestIndex;
-                                
+
                                 if (!currentSubCompleted) {
                                   const currentHasQuiz = subsectionHasQuiz(currentLessonId, activeSubIndex);
                                   const currentSubsection = currentSubsections[activeSubIndex];
-                                  
+
                                   if (currentHasQuiz) {
                                     setCompletionModalType('error');
                                     setCompletionModalMessage(`Debes completar el cuestionario de la lección "${currentSubsection?.title || 'actual'}" antes de avanzar a la siguiente sección.`);
@@ -3340,13 +3544,13 @@ export default function LessonPlayerPage() {
                           };
 
                           return (
-                            <div 
+                            <div
                               key={subsection.id}
                               onClick={handleSubsectionClick}
                               className={cn(
                                 "pl-6 pr-4 py-2.5 flex gap-3 transition-colors",
-                                isSubsectionUnlocked 
-                                  ? "cursor-pointer hover:bg-gray-50" 
+                                isSubsectionUnlocked
+                                  ? "cursor-pointer hover:bg-gray-50"
                                   : "cursor-not-allowed opacity-60",
                                 isActiveSubsection && "bg-purple-100"
                               )}
@@ -3376,13 +3580,13 @@ export default function LessonPlayerPage() {
                                   )}
                                 </div>
                               </div>
-                              
+
                               {/* Subsection Info */}
                               <div className="flex-1 min-w-0">
                                 <p className={cn(
                                   "text-sm leading-tight",
-                                  isActiveSubsection ? "text-gray-900 font-medium" : 
-                                  isSubsectionUnlocked ? "text-gray-700" : "text-gray-400"
+                                  isActiveSubsection ? "text-gray-900 font-medium" :
+                                    isSubsectionUnlocked ? "text-gray-700" : "text-gray-400"
                                 )}>
                                   {subIndex + 1}. {subsection.title}
                                   {!isSubsectionUnlocked && (
@@ -3401,7 +3605,7 @@ export default function LessonPlayerPage() {
                                     const percentage = Math.round((score.correct / score.total) * 100);
                                     const isGood = percentage >= 70;
                                     return (
-                                      <span 
+                                      <span
                                         className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold"
                                         style={{
                                           backgroundColor: isGood ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
@@ -3419,23 +3623,23 @@ export default function LessonPlayerPage() {
                         })
                       ) : (
                         // Si no hay subsecciones, mostrar la lección como único item
-                        <div 
+                        <div
                           onClick={() => {
                             setActiveSubsectionIndex(0);
                             goToLesson(lesson.id);
                           }}
                           className={cn(
                             "pl-6 pr-4 py-2.5 flex gap-3 cursor-pointer transition-colors",
-                            isActiveSection 
-                              ? "bg-purple-100" 
+                            isActiveSection
+                              ? "bg-purple-100"
                               : "hover:bg-gray-50"
                           )}
                         >
                           <div className="pt-0.5 shrink-0">
                             <div className={cn(
                               "w-4 h-4 border rounded-sm flex items-center justify-center",
-                              isActiveSection 
-                                ? "bg-purple-600 border-purple-600" 
+                              isActiveSection
+                                ? "bg-purple-600 border-purple-600"
                                 : "border-gray-400 bg-white"
                             )}>
                               {isActiveSection && <IconCheck size={10} className="text-white" />}
@@ -3466,7 +3670,7 @@ export default function LessonPlayerPage() {
 
         {/* Toggle Sidebar Button (cuando está cerrado) */}
         {!sidebarOpen && (
-          <button 
+          <button
             onClick={() => setSidebarOpen(true)}
             className="fixed right-0 top-1/2 -translate-y-1/2 bg-white border border-r-0 p-2 rounded-l-lg shadow-lg z-20 hover:bg-gray-50"
             style={{ borderColor: TOKENS.colors.border }}
@@ -3501,28 +3705,28 @@ export default function LessonPlayerPage() {
               {completionModalType === 'confirm' ? (
                 <>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                      <IconCheck className="w-6 h-6 text-purple-600" />
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg">
+                      <IconCheck className="w-6 h-6 text-white" />
                     </div>
                     <h3 className="text-xl font-bold text-gray-900">
-                      ¿Completar lección?
+                      ¡Excelente trabajo! 🎉
                     </h3>
                   </div>
                   <p className="text-gray-600 mb-6">
-                    ¿Estás seguro de que deseas marcar la lección actual como completada y avanzar a la siguiente?
+                    ¿Listo para continuar a la siguiente lección?
                   </p>
                   <div className="flex gap-3">
                     <button
                       onClick={handleCancelCompletion}
                       className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
                     >
-                      No, continuar aquí
+                      Seguir revisando
                     </button>
                     <button
                       onClick={handleConfirmCompletion}
-                      className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors"
+                      className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-indigo-700 transition-all shadow-md"
                     >
-                      Sí, completar
+                      ¡Continuar! →
                     </button>
                   </div>
                 </>
@@ -3553,6 +3757,87 @@ export default function LessonPlayerPage() {
           </div>
         </div>
       )}
+
+      {/* Confetti Animation - Celebración al completar sección */}
+      {showConfetti && (
+        <div className="fixed inset-0 pointer-events-none z-[60]">
+          {/* Overlay suave */}
+          <div className="absolute inset-0 bg-black/10 animate-pulse" />
+
+          {/* Confetti particles */}
+          <div className="absolute inset-0 overflow-hidden">
+            {[...Array(50)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute animate-confetti"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  top: '-10px',
+                  animationDelay: `${Math.random() * 2}s`,
+                  animationDuration: `${2 + Math.random() * 2}s`,
+                }}
+              >
+                <div
+                  className="w-3 h-3 rounded-sm"
+                  style={{
+                    backgroundColor: [
+                      '#A855F7', '#8B5CF6', '#6366F1', '#3B82F6',
+                      '#10B981', '#F59E0B', '#EF4444', '#EC4899'
+                    ][Math.floor(Math.random() * 8)],
+                    transform: `rotate(${Math.random() * 360}deg)`,
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Celebration message */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 text-center animate-bounce-in transform scale-100">
+              <div className="text-4xl mb-3">🎉</div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                ¡Felicidades!
+              </h2>
+              <p className="text-gray-600">
+                {confettiMessage || '¡Sección completada!'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom styles for confetti animation */}
+      <style jsx>{`
+        @keyframes confetti-fall {
+          0% {
+            transform: translateY(0) rotate(0deg);
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(100vh) rotate(720deg);
+            opacity: 0;
+          }
+        }
+        @keyframes bounce-in {
+          0% {
+            transform: scale(0.5);
+            opacity: 0;
+          }
+          50% {
+            transform: scale(1.1);
+          }
+          100% {
+            transform: scale(1);
+            opacity: 1;
+          }
+        }
+        :global(.animate-confetti) {
+          animation: confetti-fall linear forwards;
+        }
+        :global(.animate-bounce-in) {
+          animation: bounce-in 0.5s ease-out forwards;
+        }
+      `}</style>
     </div>
   );
 }
