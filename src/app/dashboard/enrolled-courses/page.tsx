@@ -496,38 +496,7 @@ export default function EnrolledCoursesPage() {
                     </button>
                   )}
 
-                  {/* Lista de secciones expandida */}
-                  {isExpanded && progress && progress.lessons.length > 0 && (
-                    <div className="mt-2 space-y-2 max-h-60 overflow-y-auto">
-                      {progress.lessons.map((lesson, index) => {
-                        const lessonProgress = lesson.totalSubsections > 0 
-                          ? Math.round((lesson.completedSubsections / lesson.totalSubsections) * 100)
-                          : 0;
-                        
-                        return (
-                          <div key={lesson.id} className="bg-gray-50 rounded-lg p-3">
-                            <div className="flex justify-between items-start mb-1">
-                              <span className="text-xs font-medium text-gray-700 line-clamp-1 flex-1 pr-2">
-                                {index + 1}. {lesson.title}
-                              </span>
-                              <span className={`text-xs font-bold shrink-0 ${lessonProgress === 100 ? 'text-green-600' : 'text-purple-600'}`}>
-                                {lessonProgress}%
-                              </span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-1.5">
-                              <div 
-                                className={`h-1.5 rounded-full transition-all duration-300 ${lessonProgress === 100 ? 'bg-green-500' : 'bg-purple-500'}`}
-                                style={{ width: `${lessonProgress}%` }}
-                              />
-                            </div>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {lesson.completedSubsections}/{lesson.totalSubsections} lecciones
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  {/* Lista de secciones expandida - MOVIDA FUERA DEL GRID */}
                   
                   {/* Instructor */}
                   {(() => {
@@ -598,6 +567,87 @@ export default function EnrolledCoursesPage() {
               </div>
             );
           })}
+        </div>
+      )}
+      
+      {/* Modal/Overlay para contenido expandido - FUERA DEL BLOQUE CONDICIONAL */}
+      {expandedCourses.size > 0 && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            {courses.map((course) => {
+              const progress = getProgress(course.id);
+              const isExpanded = expandedCourses.has(course.id);
+              
+              if (!isExpanded || !progress) return null;
+              
+              return (
+                <div key={course.id} className="p-6">
+                  {/* Header del modal */}
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900 mb-2">{course.title}</h2>
+                      <p className="text-sm text-gray-600">Progreso por sección</p>
+                    </div>
+                    <button
+                      onClick={(e) => toggleCourseExpand(course.id, e)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  {/* Lista de secciones */}
+                  <div className="space-y-3">
+                    {progress.lessons.map((lesson, index) => {
+                      const lessonProgress = lesson.totalSubsections > 0 
+                        ? Math.round((lesson.completedSubsections / lesson.totalSubsections) * 100)
+                        : 0;
+                      
+                      return (
+                        <div key={lesson.id} className="bg-gray-50 rounded-lg p-4">
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-sm font-medium text-gray-700 line-clamp-2 flex-1 pr-3">
+                              {index + 1}. {lesson.title}
+                            </span>
+                            <span className={`text-sm font-bold shrink-0 ${lessonProgress === 100 ? 'text-green-600' : 'text-purple-600'}`}>
+                              {lessonProgress}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className={`h-2 rounded-full transition-all duration-300 ${lessonProgress === 100 ? 'bg-green-500' : 'bg-purple-600'}`}
+                              style={{ width: `${lessonProgress}%` }}
+                            />
+                          </div>
+                          <p className="text-xs text-gray-500 mt-2">
+                            {lesson.completedSubsections} de {lesson.totalSubsections} lecciones completadas
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Footer del modal */}
+                  <div className="mt-6 pt-4 border-t border-gray-200">
+                    <div className="flex justify-between items-center">
+                      <div className="text-sm text-gray-600">
+                        <span className="font-medium">{progress.completedLessons.length}</span> de{' '}
+                        <span className="font-medium">{progress.totalLessons}</span> secciones completadas
+                      </div>
+                      <Link 
+                        href={`/dashboard/student/courses/${course.id}`}
+                        className="btn btn-primary text-white"
+                      >
+                        {progress.progress === 100 ? 'Revisar curso' : 'Continuar'} →
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
