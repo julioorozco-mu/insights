@@ -147,6 +147,15 @@ export default function MicrocredentialDetailPage() {
                                 isUnlocked={enrollment?.badgeUnlocked || false}
                                 size="xl"
                                 badgeColor={microcredential.badgeColor}
+                                progressPercentage={
+                                    enrollment?.badgeUnlocked
+                                        ? 100
+                                        : enrollment?.level1Completed && enrollment?.level2Completed
+                                            ? 100
+                                            : enrollment?.level1Completed
+                                                ? 50
+                                                : enrollment ? 0 : undefined
+                                }
                             />
                         </div>
 

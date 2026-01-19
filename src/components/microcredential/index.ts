@@ -8,3 +8,4 @@ export { MicrocredentialProgress } from './MicrocredentialProgress';
 export { MicrocredentialEnrollButton } from './MicrocredentialEnrollButton';
 export { CourseAccessCard } from './CourseAccessCard';
 export { PaymentTransferModal } from './PaymentTransferModal';
+export { MicrocredentialDetailDrawer } from './MicrocredentialDetailDrawer';
