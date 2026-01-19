@@ -203,7 +203,7 @@ export default function DashboardPage() {
     e.preventDefault();
     e.stopPropagation();
     if (!user || loadingFavorite) return;
-    
+
     setLoadingFavorite(courseId);
     try {
       if (favorites.has(courseId)) {
@@ -312,7 +312,7 @@ export default function DashboardPage() {
                 } catch {
                   // Si falla el parse, usar fallback
                 }
-                
+
                 if (subsectionsDuration > 0) {
                   studyTimeMinutes += subsectionsDuration;
                 } else if (subsectionsCount > 0) {
@@ -366,7 +366,7 @@ export default function DashboardPage() {
       const coursesWithRating = coursesWithRatings
         .filter(c => c.averageRating > 0)
         .sort((a, b) => b.averageRating - a.averageRating); // Mayor rating primero
-      
+
       const coursesWithoutRating = coursesWithRatings
         .filter(c => c.averageRating === 0)
         .sort((a, b) => {
@@ -754,7 +754,7 @@ export default function DashboardPage() {
       const coursesWithRating = coursesWithRatings
         .filter(c => c.averageRating > 0)
         .sort((a, b) => b.averageRating - a.averageRating); // Mayor rating primero
-      
+
       const coursesWithoutRating = coursesWithRatings
         .filter(c => c.averageRating === 0)
         .sort((a, b) => {
@@ -922,9 +922,13 @@ export default function DashboardPage() {
     const loadData = async () => {
       if (user.role === "teacher") {
         await loadTeacherData();
-      } else {
+      } else if (user.role === "student") {
         await loadStudentData();
         await fetchFavorites();
+      } else {
+        // Para admin, superadmin, support - no cargar enrollments de estudiante
+        // Solo mostrar estadísticas generales o redirigir a panel específico
+        setLoading(false);
       }
       setDataLoaded(true);
     };
@@ -997,8 +1001,8 @@ export default function DashboardPage() {
               <div className="grid gap-6 md:grid-cols-2">
                 {recommendedCourses.map((course, idx) => (
                   <Link key={course.courseId} href={`/dashboard/available-courses`} className="block h-full">
-                    <CourseCard 
-                      {...course} 
+                    <CourseCard
+                      {...course}
                       priority={idx === 0}
                       courseId={course.courseId}
                       isFavorite={favorites.has(course.courseId)}
@@ -1140,23 +1144,21 @@ export default function DashboardPage() {
                       <button
                         key={`${rowIndex}-${columnIndex}-${day}`}
                         onClick={() => setSelectedDay(day)}
-                        className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-medium transition-colors ${
-                          isSelected
+                        className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-medium transition-colors ${isSelected
                             ? "bg-brand-secondary text-white"
                             : isToday
                               ? "bg-brand-primary/10 text-brand-primary"
                               : hasEvent
                                 ? "text-slate-700 hover:bg-brand-secondary/10"
                                 : "text-slate-700 hover:bg-slate-100"
-                        }`}
+                          }`}
                       >
                         <div className="flex flex-col items-center">
                           <span>{day}</span>
                           {hasEvent && (
                             <span
-                              className={`mt-0.5 h-1.5 w-1.5 rounded-full ${
-                                isSelected ? "bg-white" : "bg-brand-secondary"
-                              }`}
+                              className={`mt-0.5 h-1.5 w-1.5 rounded-full ${isSelected ? "bg-white" : "bg-brand-secondary"
+                                }`}
                             />
                           )}
                         </div>

@@ -68,17 +68,24 @@ const studentMenuConfig: RoleMenuConfig = {
     },
     {
       title: "Catálogo",
-      icon: BookOpen,
+      icon: Package,
       items: [
-        { path: "/dashboard/available-courses", label: "Explorar", icon: BookOpen, indent: true },
+        { path: "/dashboard/catalog/microcredentials", label: "Microcredenciales", icon: Award, indent: true },
+        { path: "/dashboard/available-courses", label: "Cursos", icon: BookOpen, indent: true },
+      ],
+    },
+    {
+      title: "Mis Estudios",
+      icon: GraduationCap,
+      items: [
         { path: "/dashboard/enrolled-courses", label: "En Curso", icon: TrendingUp, indent: true },
-        { path: "/dashboard/completed-courses", label: "Completadas", icon: CheckCircle, indent: true },
+        { path: "/dashboard/completed-courses", label: "Completados", icon: CheckCircle, indent: true },
         { path: "/dashboard/favorites", label: "Favoritos", icon: Bookmark, indent: true },
       ],
     },
     {
       items: [
-        { path: "/dashboard/credentials", label: "Credenciales", icon: Award },
+        { path: "/dashboard/credentials", label: "Mis Credenciales", icon: Award },
         { path: "/dashboard/explore-teachers", label: "Docentes", icon: GraduationCap },
       ],
     },
@@ -141,21 +148,20 @@ const adminMenuConfig: RoleMenuConfig = {
       ],
     },
     {
-      title: "Microcredenciales",
-      icon: BookOpen,
+      title: "Catálogo",
+      icon: Package,
       items: [
-        { path: "/dashboard/certificates", label: "Insignias", icon: Award, indent: true },
+        { path: "/dashboard/microcredentials", label: "Microcredenciales", icon: Award, indent: true },
         { path: "/dashboard/courses", label: "Cursos", icon: BookOpen, indent: true },
-        { path: "/dashboard/assignments", label: "Asignaciones", icon: ClipboardCheck, indent: true },
+        { path: "/dashboard/certificates", label: "Plantillas Cert.", icon: FileCheck, indent: true },
         { path: "/dashboard/resources", label: "Recursos", icon: FolderOpen, indent: true },
       ],
     },
     {
       items: [
+        { path: "/dashboard/assignments", label: "Asignaciones", icon: ClipboardCheck },
         { path: "/dashboard/surveys", label: "Cuestionarios", icon: ClipboardList },
         { path: "/dashboard/tests", label: "Evaluaciones", icon: FileCheck },
-        // { path: "/dashboard/reports", label: "Reportes", icon: BarChart3 },
-        // { path: "/dashboard/payments", label: "Pagos", icon: CreditCard },
         { path: "/dashboard/logs", label: "Logs del Sistema", icon: FileText },
       ],
     },
@@ -219,11 +225,11 @@ export function DashboardSidebar({
 }: DashboardSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  
+
   // Refs para detectar clics fuera del sidebar
   const sidebarRef = useRef<HTMLElement>(null);
   const mobileSidebarRef = useRef<HTMLElement>(null);
-  
+
   // Estado para controlar qué secciones acordeón están expandidas
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   // Estado para secciones colapsadas manualmente (override del auto-expand)
@@ -241,7 +247,7 @@ export function DashboardSidebar({
     const allTitles = menuConfig.main
       .filter((section) => section.title)
       .map((section) => section.title!);
-    
+
     setManuallyCollapsed(new Set(allTitles));
     setExpandedSections(new Set());
   };
@@ -250,10 +256,10 @@ export function DashboardSidebar({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
-      
+
       // Si el clic fue fuera del sidebar desktop
       const isOutsideDesktop = sidebarRef.current && !sidebarRef.current.contains(target);
-      
+
       // Si estamos en desktop y el clic fue fuera
       if (isOutsideDesktop && !mobileSidebarRef.current?.contains(target)) {
         // Colapsar acordeones
@@ -292,9 +298,9 @@ export function DashboardSidebar({
     if (isCollapsed) {
       onToggleCollapse();
     }
-    
+
     const isCurrentlyExpanded = isSectionExpanded(section);
-    
+
     if (isCurrentlyExpanded && !isCollapsed) {
       // Colapsar: agregar a manuallyCollapsed y remover de expandedSections
       setManuallyCollapsed((prev) => new Set(prev).add(sectionTitle));
@@ -311,7 +317,7 @@ export function DashboardSidebar({
         return newSet;
       });
       setExpandedSections((prev) => new Set(prev).add(sectionTitle));
-      
+
       // Navegar al primer item navegable
       const firstItem = getFirstNavigableItem(section);
       if (firstItem) {
@@ -350,9 +356,8 @@ export function DashboardSidebar({
         <Link
           href={item.path}
           onClick={handleMenuItemClick}
-          className={`flex items-center ${visualCollapsed ? "justify-center" : "justify-between"} rounded-full ${item.indent && !visualCollapsed ? "pl-11 pr-4" : "px-4"} py-2 text-sm font-medium transition relative ${
-            active ? "bg-white/15 text-white" : "text-white/70 hover:bg-white/10"
-          }`}
+          className={`flex items-center ${visualCollapsed ? "justify-center" : "justify-between"} rounded-full ${item.indent && !visualCollapsed ? "pl-11 pr-4" : "px-4"} py-2 text-sm font-medium transition relative ${active ? "bg-white/15 text-white" : "text-white/70 hover:bg-white/10"
+            }`}
           title={visualCollapsed ? item.label : undefined}
         >
           {visualCollapsed ? (
@@ -392,9 +397,8 @@ export function DashboardSidebar({
         ref={sidebarRef}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        className={`hidden lg:flex bg-brand-primary text-white flex-col py-6 transition-all duration-300 sticky top-0 h-screen flex-shrink-0 relative z-[60] ${
-          visualCollapsed ? "w-[70px] px-3" : "w-[260px] px-6"
-        }`}
+        className={`hidden lg:flex bg-brand-primary text-white flex-col py-6 transition-all duration-300 sticky top-0 h-screen flex-shrink-0 relative z-[60] ${visualCollapsed ? "w-[70px] px-3" : "w-[260px] px-6"
+          }`}
       >
         {/* Toggle Button */}
         <button
@@ -420,67 +424,63 @@ export function DashboardSidebar({
         {/* Navigation */}
         <nav className="flex flex-col flex-1 min-h-0">
           <div className="space-y-1 flex-1">
-          {menuConfig.main.map((section, sectionIndex) => {
-            const hasTitle = !!section.title;
-            const isExpanded = isSectionExpanded(section);
-            const SectionIcon = section.icon;
+            {menuConfig.main.map((section, sectionIndex) => {
+              const hasTitle = !!section.title;
+              const isExpanded = isSectionExpanded(section);
+              const SectionIcon = section.icon;
 
-            return (
-              <div key={sectionIndex}>
-                {sectionIndex > 0 && <div className="my-4 border-t border-white/10" />}
-                
-                {/* Sección con título = Acordeón */}
-                {hasTitle && !visualCollapsed ? (
-                  <button
-                    onClick={() => toggleSection(section.title!, section)}
-                    className={`w-full flex items-center justify-between px-4 py-2 text-sm font-medium rounded-full transition ${
-                      isSectionActive(section)
-                        ? "bg-white/15 text-white"
-                        : "text-white/70 hover:bg-white/10"
-                    }`}
-                  >
-                    <span className="flex items-center gap-3">
-                      {SectionIcon && <SectionIcon className="h-4 w-4" />}
-                      {section.title}
-                    </span>
-                    <ChevronDown
-                      className={`h-4 w-4 transition-transform duration-200 ${
-                        isExpanded ? "rotate-180" : ""
+              return (
+                <div key={sectionIndex}>
+                  {sectionIndex > 0 && <div className="my-4 border-t border-white/10" />}
+
+                  {/* Sección con título = Acordeón */}
+                  {hasTitle && !visualCollapsed ? (
+                    <button
+                      onClick={() => toggleSection(section.title!, section)}
+                      className={`w-full flex items-center justify-between px-4 py-2 text-sm font-medium rounded-full transition ${isSectionActive(section)
+                          ? "bg-white/15 text-white"
+                          : "text-white/70 hover:bg-white/10"
+                        }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        {SectionIcon && <SectionIcon className="h-4 w-4" />}
+                        {section.title}
+                      </span>
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""
+                          }`}
+                      />
+                    </button>
+                  ) : hasTitle && visualCollapsed ? (
+                    // Modo colapsado: mostrar solo icono de la sección
+                    <button
+                      onClick={() => toggleSection(section.title!, section)}
+                      className={`w-full flex items-center justify-center px-4 py-2 rounded-full transition ${isSectionActive(section)
+                          ? "bg-white/15 text-white"
+                          : "text-white/70 hover:bg-white/10"
+                        }`}
+                      title={section.title}
+                    >
+                      {SectionIcon && <SectionIcon className="h-5 w-5" />}
+                    </button>
+                  ) : null}
+
+                  {/* Items de la sección */}
+                  <div
+                    className={`overflow-hidden transition-all duration-200 ${hasTitle
+                        ? isExpanded
+                          ? "max-h-96 opacity-100 mt-1"
+                          : "max-h-0 opacity-0"
+                        : ""
                       }`}
-                    />
-                  </button>
-                ) : hasTitle && visualCollapsed ? (
-                  // Modo colapsado: mostrar solo icono de la sección
-                  <button
-                    onClick={() => toggleSection(section.title!, section)}
-                    className={`w-full flex items-center justify-center px-4 py-2 rounded-full transition ${
-                      isSectionActive(section)
-                        ? "bg-white/15 text-white"
-                        : "text-white/70 hover:bg-white/10"
-                    }`}
-                    title={section.title}
                   >
-                    {SectionIcon && <SectionIcon className="h-5 w-5" />}
-                  </button>
-                ) : null}
-
-                {/* Items de la sección */}
-                <div
-                  className={`overflow-hidden transition-all duration-200 ${
-                    hasTitle
-                      ? isExpanded
-                        ? "max-h-96 opacity-100 mt-1"
-                        : "max-h-0 opacity-0"
-                      : ""
-                  }`}
-                >
-                  <ul className="space-y-1">
-                    {section.items.map(renderMenuItem)}
-                  </ul>
+                    <ul className="space-y-1">
+                      {section.items.map(renderMenuItem)}
+                    </ul>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
 
           </div>
 
@@ -516,54 +516,51 @@ export function DashboardSidebar({
           {/* Navigation */}
           <nav className="flex flex-col flex-1 min-h-0">
             <div className="space-y-1 flex-1">
-            {menuConfig.main.map((section, sectionIndex) => {
-              const hasTitle = !!section.title;
-              const isExpanded = isSectionExpanded(section);
-              const SectionIcon = section.icon;
+              {menuConfig.main.map((section, sectionIndex) => {
+                const hasTitle = !!section.title;
+                const isExpanded = isSectionExpanded(section);
+                const SectionIcon = section.icon;
 
-              return (
-                <div key={sectionIndex}>
-                  {sectionIndex > 0 && <div className="my-4 border-t border-white/10" />}
-                  
-                  {/* Sección con título = Acordeón */}
-                  {hasTitle && (
-                    <button
-                      onClick={() => toggleSection(section.title!, section)}
-                      className={`w-full flex items-center justify-between px-4 py-2 text-sm font-medium rounded-full transition ${
-                        isSectionActive(section)
-                          ? "bg-white/15 text-white"
-                          : "text-white/70 hover:bg-white/10"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3">
-                        {SectionIcon && <SectionIcon className="h-4 w-4" />}
-                        {section.title}
-                      </span>
-                      <ChevronDown
-                        className={`h-4 w-4 transition-transform duration-200 ${
-                          isExpanded ? "rotate-180" : ""
+                return (
+                  <div key={sectionIndex}>
+                    {sectionIndex > 0 && <div className="my-4 border-t border-white/10" />}
+
+                    {/* Sección con título = Acordeón */}
+                    {hasTitle && (
+                      <button
+                        onClick={() => toggleSection(section.title!, section)}
+                        className={`w-full flex items-center justify-between px-4 py-2 text-sm font-medium rounded-full transition ${isSectionActive(section)
+                            ? "bg-white/15 text-white"
+                            : "text-white/70 hover:bg-white/10"
+                          }`}
+                      >
+                        <span className="flex items-center gap-3">
+                          {SectionIcon && <SectionIcon className="h-4 w-4" />}
+                          {section.title}
+                        </span>
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""
+                            }`}
+                        />
+                      </button>
+                    )}
+
+                    {/* Items de la sección */}
+                    <div
+                      className={`overflow-hidden transition-all duration-200 ${hasTitle
+                          ? isExpanded
+                            ? "max-h-96 opacity-100 mt-1"
+                            : "max-h-0 opacity-0"
+                          : ""
                         }`}
-                      />
-                    </button>
-                  )}
-
-                  {/* Items de la sección */}
-                  <div
-                    className={`overflow-hidden transition-all duration-200 ${
-                      hasTitle
-                        ? isExpanded
-                          ? "max-h-96 opacity-100 mt-1"
-                          : "max-h-0 opacity-0"
-                        : ""
-                    }`}
-                  >
-                    <ul className="space-y-1">
-                      {section.items.map(renderMenuItem)}
-                    </ul>
+                    >
+                      <ul className="space-y-1">
+                        {section.items.map(renderMenuItem)}
+                      </ul>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
 
             </div>
 

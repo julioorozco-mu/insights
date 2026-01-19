@@ -489,6 +489,18 @@ SET default_tablespace = '';
 SET default_table_access_method = "heap";
 
 
+CREATE TABLE IF NOT EXISTS "public"."_backup_courses_teacher_ids_20251214" (
+    "course_id" "uuid",
+    "teacher_ids" "uuid"[],
+    "co_host_ids" "uuid"[],
+    "updated_at" timestamp with time zone,
+    "backed_up_at" timestamp with time zone
+);
+
+
+ALTER TABLE "public"."_backup_courses_teacher_ids_20251214" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."certificate_downloads" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "course_id" "uuid" NOT NULL,
@@ -3340,6 +3352,12 @@ GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
 
 
 
+
+
+
+GRANT ALL ON TABLE "public"."_backup_courses_teacher_ids_20251214" TO "anon";
+GRANT ALL ON TABLE "public"."_backup_courses_teacher_ids_20251214" TO "authenticated";
+GRANT ALL ON TABLE "public"."_backup_courses_teacher_ids_20251214" TO "service_role";
 
 
 

@@ -43,6 +43,9 @@ export const TABLES = {
   LESSON_QUESTION_UPVOTES: "lesson_question_upvotes",
   // Secciones de cursos
   COURSE_SECTIONS: "course_sections",
+  // Microcredenciales
+  MICROCREDENTIALS: "microcredentials",
+  MICROCREDENTIAL_ENROLLMENTS: "microcredential_enrollments",
 } as const;
 
 // Alias para compatibilidad (deprecado - usar TABLES)
