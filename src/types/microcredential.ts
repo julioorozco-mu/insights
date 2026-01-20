@@ -23,27 +23,27 @@ export interface Microcredential {
   slug: string;
   description: string | null;
   shortDescription: string | null;
-  
+
   // Insignia/Badge
   badgeImageUrl: string;
   badgeLockedImageUrl: string | null;
   badgeColor: string | null;
-  
+
   // Cursos vinculados
   courseLevel1Id: string;
   courseLevel2Id: string;
-  
+
   // Pricing
   isFree: boolean;
   price: number;
   salePercentage: number;
-  
+
   // Estado
   isPublished: boolean;
   isActive: boolean;
   displayOrder: number;
   featured: boolean;
-  
+
   // Auditoría
   createdBy: string | null;
   createdAt: string;
@@ -62,6 +62,9 @@ export interface MicrocredentialWithCourses extends Microcredential {
     thumbnailUrl: string | null;
     durationMinutes: number | null;
     difficulty: string | null;
+    teacherIds?: string[];
+    averageRating?: number;
+    reviewsCount?: number;
   };
   courseLevel2?: {
     id: string;
@@ -71,6 +74,9 @@ export interface MicrocredentialWithCourses extends Microcredential {
     thumbnailUrl: string | null;
     durationMinutes: number | null;
     difficulty: string | null;
+    teacherIds?: string[];
+    averageRating?: number;
+    reviewsCount?: number;
   };
 }
 
@@ -81,10 +87,10 @@ export interface MicrocredentialEnrollment {
   id: string;
   studentId: string;
   microcredentialId: string;
-  
+
   // Fechas
   enrolledAt: string;
-  
+
   // Tracking de progreso
   level1Completed: boolean;
   level1CompletedAt: string | null;
@@ -92,20 +98,20 @@ export interface MicrocredentialEnrollment {
   level2UnlockedAt: string | null;
   level2Completed: boolean;
   level2CompletedAt: string | null;
-  
+
   // Estado
   status: MicrocredentialStatus;
   completedAt: string | null;
-  
+
   // Badge
   badgeUnlocked: boolean;
   badgeUnlockedAt: string | null;
   badgeDownloadedAt: string | null;
-  
+
   // Certificado
   certificateId: string | null;
   certificateIssuedAt: string | null;
-  
+
   // Pago
   acquisitionType: AcquisitionType;
   paymentAmount: number | null;
@@ -113,7 +119,7 @@ export interface MicrocredentialEnrollment {
   paymentReference: string | null;
   paymentVerifiedAt: string | null;
   paymentVerifiedBy: string | null;
-  
+
   // Auditoría
   createdAt: string;
   updatedAt: string;
@@ -283,7 +289,7 @@ export function mapMicrocredentialToDB(data: CreateMicrocredentialData): Record<
  */
 export function mapMicrocredentialUpdateToDB(data: UpdateMicrocredentialData): Record<string, any> {
   const result: Record<string, any> = {};
-  
+
   if (data.title !== undefined) result.title = data.title;
   if (data.slug !== undefined) result.slug = data.slug;
   if (data.description !== undefined) result.description = data.description;
@@ -300,6 +306,6 @@ export function mapMicrocredentialUpdateToDB(data: UpdateMicrocredentialData): R
   if (data.isActive !== undefined) result.is_active = data.isActive;
   if (data.displayOrder !== undefined) result.display_order = data.displayOrder;
   if (data.featured !== undefined) result.featured = data.featured;
-  
+
   return result;
 }

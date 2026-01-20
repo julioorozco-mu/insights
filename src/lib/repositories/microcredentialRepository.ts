@@ -50,8 +50,8 @@ async function findAllPublished(): Promise<MicrocredentialWithCourses[]> {
         .from(TABLES.MICROCREDENTIALS)
         .select(`
       *,
-      courseLevel1:courses!microcredentials_course_level_1_id_fkey(id, title, description, cover_image_url, thumbnail_url, duration_minutes, difficulty),
-      courseLevel2:courses!microcredentials_course_level_2_id_fkey(id, title, description, cover_image_url, thumbnail_url, duration_minutes, difficulty)
+      courseLevel1:courses!microcredentials_course_level_1_id_fkey(id, title, description, cover_image_url, thumbnail_url, duration_minutes, difficulty, teacher_ids, average_rating, reviews_count),
+      courseLevel2:courses!microcredentials_course_level_2_id_fkey(id, title, description, cover_image_url, thumbnail_url, duration_minutes, difficulty, teacher_ids, average_rating, reviews_count)
     `)
         .eq('is_published', true)
         .eq('is_active', true)
@@ -72,6 +72,9 @@ async function findAllPublished(): Promise<MicrocredentialWithCourses[]> {
             thumbnailUrl: row.courseLevel1.thumbnail_url,
             durationMinutes: row.courseLevel1.duration_minutes,
             difficulty: row.courseLevel1.difficulty,
+            teacherIds: row.courseLevel1.teacher_ids || [],
+            averageRating: row.courseLevel1.average_rating || 0,
+            reviewsCount: row.courseLevel1.reviews_count || 0,
         } : undefined,
         courseLevel2: row.courseLevel2 ? {
             id: row.courseLevel2.id,
@@ -81,6 +84,9 @@ async function findAllPublished(): Promise<MicrocredentialWithCourses[]> {
             thumbnailUrl: row.courseLevel2.thumbnail_url,
             durationMinutes: row.courseLevel2.duration_minutes,
             difficulty: row.courseLevel2.difficulty,
+            teacherIds: row.courseLevel2.teacher_ids || [],
+            averageRating: row.courseLevel2.average_rating || 0,
+            reviewsCount: row.courseLevel2.reviews_count || 0,
         } : undefined,
     }));
 }
@@ -95,8 +101,8 @@ async function findAll(): Promise<MicrocredentialWithCourses[]> {
         .from(TABLES.MICROCREDENTIALS)
         .select(`
       *,
-      courseLevel1:courses!microcredentials_course_level_1_id_fkey(id, title, description, cover_image_url, thumbnail_url),
-      courseLevel2:courses!microcredentials_course_level_2_id_fkey(id, title, description, cover_image_url, thumbnail_url)
+      courseLevel1:courses!microcredentials_course_level_1_id_fkey(id, title, description, cover_image_url, thumbnail_url, teacher_ids, average_rating, reviews_count),
+      courseLevel2:courses!microcredentials_course_level_2_id_fkey(id, title, description, cover_image_url, thumbnail_url, teacher_ids, average_rating, reviews_count)
     `)
         .order('created_at', { ascending: false });
 
@@ -115,6 +121,9 @@ async function findAll(): Promise<MicrocredentialWithCourses[]> {
             thumbnailUrl: row.courseLevel1.thumbnail_url,
             durationMinutes: null,
             difficulty: null,
+            teacherIds: row.courseLevel1.teacher_ids || [],
+            averageRating: row.courseLevel1.average_rating || 0,
+            reviewsCount: row.courseLevel1.reviews_count || 0,
         } : undefined,
         courseLevel2: row.courseLevel2 ? {
             id: row.courseLevel2.id,
@@ -124,6 +133,9 @@ async function findAll(): Promise<MicrocredentialWithCourses[]> {
             thumbnailUrl: row.courseLevel2.thumbnail_url,
             durationMinutes: null,
             difficulty: null,
+            teacherIds: row.courseLevel2.teacher_ids || [],
+            averageRating: row.courseLevel2.average_rating || 0,
+            reviewsCount: row.courseLevel2.reviews_count || 0,
         } : undefined,
     }));
 }
@@ -138,8 +150,8 @@ async function findById(id: string): Promise<MicrocredentialWithCourses | null> 
         .from(TABLES.MICROCREDENTIALS)
         .select(`
       *,
-      courseLevel1:courses!microcredentials_course_level_1_id_fkey(id, title, description, cover_image_url, thumbnail_url, duration_minutes, difficulty),
-      courseLevel2:courses!microcredentials_course_level_2_id_fkey(id, title, description, cover_image_url, thumbnail_url, duration_minutes, difficulty)
+      courseLevel1:courses!microcredentials_course_level_1_id_fkey(id, title, description, cover_image_url, thumbnail_url, duration_minutes, difficulty, teacher_ids, average_rating, reviews_count),
+      courseLevel2:courses!microcredentials_course_level_2_id_fkey(id, title, description, cover_image_url, thumbnail_url, duration_minutes, difficulty, teacher_ids, average_rating, reviews_count)
     `)
         .eq('id', id)
         .maybeSingle();
@@ -161,6 +173,9 @@ async function findById(id: string): Promise<MicrocredentialWithCourses | null> 
             thumbnailUrl: data.courseLevel1.thumbnail_url,
             durationMinutes: data.courseLevel1.duration_minutes,
             difficulty: data.courseLevel1.difficulty,
+            teacherIds: data.courseLevel1.teacher_ids || [],
+            averageRating: data.courseLevel1.average_rating || 0,
+            reviewsCount: data.courseLevel1.reviews_count || 0,
         } : undefined,
         courseLevel2: data.courseLevel2 ? {
             id: data.courseLevel2.id,
@@ -170,6 +185,9 @@ async function findById(id: string): Promise<MicrocredentialWithCourses | null> 
             thumbnailUrl: data.courseLevel2.thumbnail_url,
             durationMinutes: data.courseLevel2.duration_minutes,
             difficulty: data.courseLevel2.difficulty,
+            teacherIds: data.courseLevel2.teacher_ids || [],
+            averageRating: data.courseLevel2.average_rating || 0,
+            reviewsCount: data.courseLevel2.reviews_count || 0,
         } : undefined,
     };
 }
@@ -184,8 +202,8 @@ async function findBySlug(slug: string): Promise<MicrocredentialWithCourses | nu
         .from(TABLES.MICROCREDENTIALS)
         .select(`
       *,
-      courseLevel1:courses!microcredentials_course_level_1_id_fkey(id, title, description, cover_image_url, thumbnail_url, duration_minutes, difficulty),
-      courseLevel2:courses!microcredentials_course_level_2_id_fkey(id, title, description, cover_image_url, thumbnail_url, duration_minutes, difficulty)
+      courseLevel1:courses!microcredentials_course_level_1_id_fkey(id, title, description, cover_image_url, thumbnail_url, duration_minutes, difficulty, teacher_ids, average_rating, reviews_count),
+      courseLevel2:courses!microcredentials_course_level_2_id_fkey(id, title, description, cover_image_url, thumbnail_url, duration_minutes, difficulty, teacher_ids, average_rating, reviews_count)
     `)
         .eq('slug', slug)
         .maybeSingle();
@@ -207,6 +225,9 @@ async function findBySlug(slug: string): Promise<MicrocredentialWithCourses | nu
             thumbnailUrl: data.courseLevel1.thumbnail_url,
             durationMinutes: data.courseLevel1.duration_minutes,
             difficulty: data.courseLevel1.difficulty,
+            teacherIds: data.courseLevel1.teacher_ids || [],
+            averageRating: data.courseLevel1.average_rating || 0,
+            reviewsCount: data.courseLevel1.reviews_count || 0,
         } : undefined,
         courseLevel2: data.courseLevel2 ? {
             id: data.courseLevel2.id,
@@ -216,6 +237,9 @@ async function findBySlug(slug: string): Promise<MicrocredentialWithCourses | nu
             thumbnailUrl: data.courseLevel2.thumbnail_url,
             durationMinutes: data.courseLevel2.duration_minutes,
             difficulty: data.courseLevel2.difficulty,
+            teacherIds: data.courseLevel2.teacher_ids || [],
+            averageRating: data.courseLevel2.average_rating || 0,
+            reviewsCount: data.courseLevel2.reviews_count || 0,
         } : undefined,
     };
 }

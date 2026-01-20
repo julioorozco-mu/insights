@@ -53,7 +53,7 @@ export function DashboardTopbar({ onToggleSidebar, user, onSignOut }: DashboardT
   const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
 
   return (
-    <header className="sticky top-0 z-50 bg-white shadow-card-soft">
+    <header data-dashboard-topbar className="sticky top-0 z-50 bg-white shadow-card-soft">
       <div className="flex items-center justify-between px-6 py-4">
         {/* Left: Mobile menu + Logos + Date */}
         <div className="flex items-center gap-4">
