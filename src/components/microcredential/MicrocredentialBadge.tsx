@@ -5,7 +5,7 @@
 'use client';
 
 import { IconAward, IconLock } from '@tabler/icons-react';
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 interface MicrocredentialBadgeProps {
     imageUrl: string;
@@ -46,17 +46,89 @@ export function MicrocredentialBadge({
 
     // Estado para animación inicial del progreso
     const [animatedProgress, setAnimatedProgress] = useState(0);
-    const [animatedRingProgress, setAnimatedRingProgress] = useState(0);
+    const [animatedRingProgress, setAnimatedRingProgress] = useState(0);    
+    const [revealPhase, setRevealPhase] = useState<'fill' | 'wave'>('wave');
+    const animatedProgressRef = useRef(0);
+    const fillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const fillRafRef = useRef<number | null>(null);
 
-    // Animar el progreso al cargar
+    // Animación: "llenado" suave de arriba hacia abajo (tipo agua al revés).
+    // Al final se queda solo la onda en el borde.
     useEffect(() => {
-        // Pequeño delay para que se note la animación
-        const timer = setTimeout(() => {
-            setAnimatedProgress(progress);
-            setAnimatedRingProgress(progress);
-        }, 100);
-        return () => clearTimeout(timer);
-    }, [progress]);
+        if (fillTimerRef.current) {
+            clearTimeout(fillTimerRef.current);
+            fillTimerRef.current = null;
+        }
+        if (fillRafRef.current != null) {
+            cancelAnimationFrame(fillRafRef.current);
+            fillRafRef.current = null;
+        }
+
+        if (isUnlocked) {
+            setRevealPhase('wave');
+            setAnimatedProgress(100);
+            setAnimatedRingProgress(100);
+            animatedProgressRef.current = 100;
+            return;
+        }
+
+        if (progress <= 0) {
+            setRevealPhase('wave');
+            setAnimatedProgress(0);
+            setAnimatedRingProgress(0);
+            animatedProgressRef.current = 0;
+            return;
+        }
+
+        const from = animatedProgressRef.current;
+        const to = progress;
+
+        if (from === to) {
+            setRevealPhase('wave');
+            return;
+        }
+
+        const delayMs = 100;
+        const delta = Math.abs(to - from);
+        const durationMs = Math.min(2400, Math.max(900, Math.round(700 + delta * 12)));
+
+        setRevealPhase('fill');
+        fillTimerRef.current = setTimeout(() => {
+            const start = performance.now();
+            const tick = (now: number) => {
+                const t = Math.min(1, (now - start) / durationMs);        
+                const eased = 0.5 - 0.5 * Math.cos(Math.PI * t); // easeInOutSine
+                const next = from + (to - from) * eased;
+
+                animatedProgressRef.current = next;
+                setAnimatedProgress(next);
+                setAnimatedRingProgress(next);
+
+                if (t < 1) {
+                    fillRafRef.current = requestAnimationFrame(tick);     
+                } else {
+                    setRevealPhase('wave');
+                    animatedProgressRef.current = to;
+                    setAnimatedProgress(to);
+                    setAnimatedRingProgress(to);
+                    fillRafRef.current = null;
+                }
+            };
+
+            fillRafRef.current = requestAnimationFrame(tick);
+        }, delayMs);
+
+        return () => {
+            if (fillTimerRef.current) {
+                clearTimeout(fillTimerRef.current);
+                fillTimerRef.current = null;
+            }
+            if (fillRafRef.current != null) {
+                cancelAnimationFrame(fillRafRef.current);
+                fillRafRef.current = null;
+            }
+        };
+    }, [progress, isUnlocked]);
 
     // Calcular valores para el anillo de progreso
     const sizeMap = { sm: 64, md: 96, lg: 128, xl: 192 };
@@ -66,8 +138,23 @@ export function MicrocredentialBadge({
     const circumference = 2 * Math.PI * radius;
     const strokeDashoffset = circumference - (animatedRingProgress / 100) * circumference;
 
-    // ID único para el clip path (para evitar conflictos con múltiples badges)
-    const clipPathId = `wave-clip-${Math.random().toString(36).substr(2, 9)}`;
+    // IDs estables (evita reset/flicker y colisiones entre múltiples badges)
+    const uid = useMemo(() => Math.random().toString(36).slice(2, 11), []); 
+    const fillClipPathId = `fill-clip-${uid}`;
+    const waveClipPathId = `wave-clip-${uid}`;
+    const progressGradientId = `progress-gradient-${uid}`;
+
+    // Onda: evitar que el oleaje "sub-revele" por debajo del % real (p.ej. 50%)
+    const fillRatio = animatedProgress / 100; // 0..1
+    const targetRatio = progress / 100; // 0..1
+    const fillPath = `M 0,0 L 1,0 L 1,${fillRatio} L 0,${fillRatio} Z`;
+    const maxWaveAmplitude = 0.04; // 4% del alto
+    const waveAmplitude =
+        maxWaveAmplitude * Math.min(1, targetRatio * 4, (1 - targetRatio) * 4);
+    const wave1 = Math.min(targetRatio + waveAmplitude, 1);
+    const wave2 = Math.min(targetRatio + waveAmplitude * 2, 1);
+    const wavePathA = `M 0,0 L 1,0 L 1,${targetRatio} C 0.8,${wave2} 0.6,${wave1} 0.5,${targetRatio} S 0.2,${wave2} 0,${targetRatio} Z`;
+    const wavePathB = `M 0,0 L 1,0 L 1,${targetRatio} C 0.8,${wave1} 0.6,${wave2} 0.5,${targetRatio} S 0.2,${wave1} 0,${targetRatio} Z`;
 
     return (
         <div className="flex flex-col items-center gap-2">
@@ -90,8 +177,11 @@ export function MicrocredentialBadge({
                             preserveAspectRatio="none"
                         >
                             <defs>
-                                <clipPath id={clipPathId} clipPathUnits="objectBoundingBox">
-                                    <path>
+                                <clipPath id={fillClipPathId} clipPathUnits="objectBoundingBox">
+                                    <path d={fillPath} />
+                                </clipPath>
+                                <clipPath id={waveClipPathId} clipPathUnits="objectBoundingBox">
+                                    <path d={wavePathA}>
                                         <animate
                                             attributeName="d"
                                             dur="3s"
@@ -99,11 +189,7 @@ export function MicrocredentialBadge({
                                             calcMode="spline"
                                             keyTimes="0;0.5;1"
                                             keySplines="0.4 0 0.2 1; 0.4 0 0.2 1"
-                                            values={`
-                                                M 0,0 L 1,0 L 1,${animatedProgress / 100} C 0.8,${(animatedProgress / 100) - 0.04} 0.6,${(animatedProgress / 100) + 0.04} 0.5,${animatedProgress / 100} S 0.2,${(animatedProgress / 100) - 0.04} 0,${animatedProgress / 100} Z;
-                                                M 0,0 L 1,0 L 1,${animatedProgress / 100} C 0.8,${(animatedProgress / 100) + 0.04} 0.6,${(animatedProgress / 100) - 0.04} 0.5,${animatedProgress / 100} S 0.2,${(animatedProgress / 100) + 0.04} 0,${animatedProgress / 100} Z;
-                                                M 0,0 L 1,0 L 1,${animatedProgress / 100} C 0.8,${(animatedProgress / 100) - 0.04} 0.6,${(animatedProgress / 100) + 0.04} 0.5,${animatedProgress / 100} S 0.2,${(animatedProgress / 100) - 0.04} 0,${animatedProgress / 100} Z
-                                            `}
+                                            values={`${wavePathA};${wavePathB};${wavePathA}`}
                                         />
                                     </path>
                                 </clipPath>
@@ -113,27 +199,42 @@ export function MicrocredentialBadge({
                             <image
                                 href={displayImage}
                                 x="0" y="0" width="100" height="100"
-                                preserveAspectRatio="xMidYMid meet"
+                                preserveAspectRatio="xMidYMid slice"
                                 style={{
                                     filter: !isUnlocked ? 'grayscale(100%) opacity(0.6)' : 'grayscale(100%) opacity(0.4)',
-                                    transform: 'scale(1.7)',
-                                    transformOrigin: 'center'
                                 }}
                             />
 
                             {/* Frente: Imagen color revelada con la onda */}
                             {(animatedProgress > 0 && !isUnlocked) && (
-                                <image
-                                    href={imageUrl}
-                                    x="0" y="0" width="100" height="100"
-                                    preserveAspectRatio="xMidYMid meet"
-                                    clipPath={`url(#${clipPathId})`}
-                                    style={{
-                                        transform: 'scale(1.15)',
-                                        transformOrigin: 'center',
-                                        transition: 'opacity 0.5s ease'
-                                    }}
-                                />
+                                <>
+                                    <image
+                                        href={imageUrl}
+                                        x="0"
+                                        y="0"
+                                        width="100"
+                                        height="100"
+                                        preserveAspectRatio="xMidYMid slice"
+                                        clipPath={`url(#${fillClipPathId})`}
+                                        style={{
+                                            opacity: revealPhase === 'fill' ? 1 : 0,
+                                            transition: 'opacity 450ms ease-in-out',
+                                        }}
+                                    />
+                                    <image
+                                        href={imageUrl}
+                                        x="0"
+                                        y="0"
+                                        width="100"
+                                        height="100"
+                                        preserveAspectRatio="xMidYMid slice"
+                                        clipPath={`url(#${waveClipPathId})`}
+                                        style={{
+                                            opacity: revealPhase === 'wave' ? 1 : 0,
+                                            transition: 'opacity 450ms ease-in-out',
+                                        }}
+                                    />
+                                </>
                             )}
 
                             {/* Completado: Imagen full color */}
@@ -141,10 +242,8 @@ export function MicrocredentialBadge({
                                 <image
                                     href={imageUrl}
                                     x="0" y="0" width="100" height="100"
-                                    preserveAspectRatio="xMidYMid meet"
+                                    preserveAspectRatio="xMidYMid slice"
                                     style={{
-                                        transform: 'scale(1.15)',
-                                        transformOrigin: 'center'
                                     }}
                                 />
                             )}
@@ -204,17 +303,16 @@ export function MicrocredentialBadge({
                             cx={(svgSize + 8) / 2}
                             cy={(svgSize + 8) / 2}
                             r={radius}
-                            stroke="url(#progressGradient)"
+                            stroke={`url(#${progressGradientId})`}
                             strokeWidth={strokeWidth}
                             fill="none"
                             strokeDasharray={circumference}
                             strokeDashoffset={strokeDashoffset}
                             strokeLinecap="round"
-                            className="transition-all duration-1000 ease-out"
                         />
                         {/* Degradado para el anillo de progreso */}
                         <defs>
-                            <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <linearGradient id={progressGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
                                 <stop offset="0%" stopColor="#10B981" />
                                 <stop offset="100%" stopColor="#059669" />
                             </linearGradient>
