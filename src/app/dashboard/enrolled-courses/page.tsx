@@ -7,7 +7,7 @@ import { courseRepository } from "@/lib/repositories/courseRepository";
 import { lessonRepository } from "@/lib/repositories/lessonRepository";
 import { userRepository } from "@/lib/repositories/userRepository";
 import { Loader } from "@/components/common/Loader";
-import { IconBook, IconStar, IconStarFilled, IconHeart, IconHeartFilled } from "@tabler/icons-react";
+import { IconBook, IconStar, IconStarFilled, IconHeart, IconHeartFilled, IconLock } from "@tabler/icons-react";
 
 interface Speaker {
   id: string;
@@ -34,6 +34,13 @@ interface Course {
   lessonCount: number;
   createdAt: any;
   startDate?: string;
+}
+
+interface CourseAccessInfo {
+  isMicrocredentialCourse: boolean;
+  isLevel2Locked: boolean;
+  microcredentialId?: string;
+  levelNumber?: 1 | 2;
 }
 
 interface CourseProgress {
@@ -63,6 +70,7 @@ export default function EnrolledCoursesPage() {
   const [speakers, setSpeakers] = useState<Map<string, Speaker>>(new Map());
   const [courseRatings, setCourseRatings] = useState<Map<string, CourseRating>>(new Map());
   const [courseProgress, setCourseProgress] = useState<Map<string, CourseProgress>>(new Map());
+  const [courseAccessInfo, setCourseAccessInfo] = useState<Map<string, CourseAccessInfo>>(new Map());
   const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [loadingFavorite, setLoadingFavorite] = useState<string | null>(null);
@@ -267,6 +275,10 @@ export default function EnrolledCoursesPage() {
     return courseProgress.get(courseId) || null;
   };
 
+  const getAccessInfo = (courseId: string): CourseAccessInfo | null => {
+    return courseAccessInfo.get(courseId) || null;
+  };
+
   useEffect(() => {
     const loadEnrolledCourses = async () => {
       if (!user) return;
@@ -360,6 +372,32 @@ export default function EnrolledCoursesPage() {
         );
         setCourseProgress(progressMap);
 
+        // Cargar información de acceso (verificar si es microcredencial y está bloqueado)
+        const accessMap = new Map<string, CourseAccessInfo>();
+        await Promise.all(
+          coursesData.map(async (course) => {
+            try {
+              const response = await fetch(`/api/student/check-course-access?courseId=${course.id}`);
+              if (response.ok) {
+                const data = await response.json();
+                if (data.isMicrocredentialCourse) {
+                  accessMap.set(course.id, {
+                    isMicrocredentialCourse: data.isMicrocredentialCourse,
+                    isLevel2Locked: data.isLevel2Locked,
+                    microcredentialId: data.microcredentialId,
+                    levelNumber: data.isLevel2Locked !== undefined
+                      ? (data.isLevel2Locked ? 2 : (progressMap.get(course.id)?.progress === 100 ? 1 : undefined))
+                      : undefined,
+                  });
+                }
+              }
+            } catch (error) {
+              console.error(`Error checking access for course ${course.id}:`, error);
+            }
+          })
+        );
+        setCourseAccessInfo(accessMap);
+
         // Cargar favoritos
         await fetchFavorites();
       } catch (error) {
@@ -432,15 +470,21 @@ export default function EnrolledCoursesPage() {
             const progress = getProgress(course.id);
             const speaker = getCourseSpeaker(course);
             const rating = getCourseRating(course.id);
+            const accessInfo = getAccessInfo(course.id);
+            const isLocked = accessInfo?.isLevel2Locked || false;
 
             return (
               <article
                 key={course.id}
-                className="flex flex-col sm:flex-row bg-white rounded-3xl shadow-card-soft overflow-hidden transition-all duration-200 hover:shadow-card hover:-translate-y-1"
+                className={`flex flex-col sm:flex-row bg-white rounded-3xl shadow-card-soft overflow-hidden transition-all duration-200 ${isLocked ? '' : 'hover:shadow-card hover:-translate-y-1'}`}
               >
                 {/* Imagen del curso - Lado izquierdo */}
-                <div className="relative w-full sm:w-48 md:w-56 flex-shrink-0 h-48 sm:h-auto">
-                  <Link href={`/dashboard/student/courses/${course.id}`} className="block h-full">
+                <div className={`relative w-full sm:w-48 md:w-56 flex-shrink-0 h-48 sm:h-auto ${isLocked ? 'opacity-70 grayscale' : ''}`}>
+                  <Link
+                    href={isLocked ? '#' : `/dashboard/student/courses/${course.id}`}
+                    className="block h-full"
+                    onClick={(e) => isLocked && e.preventDefault()}
+                  >
                     {course.coverImageUrl ? (
                       <img
                         src={course.coverImageUrl}
@@ -454,20 +498,36 @@ export default function EnrolledCoursesPage() {
                     )}
                   </Link>
 
+                  {/* Overlay de candado si está bloqueado */}
+                  {isLocked && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                      <div className="p-3 rounded-full shadow-lg bg-gray-800">
+                        <IconLock className="w-6 h-6 text-white" />
+                      </div>
+                    </div>
+                  )}
+
                   {/* Badge de progreso - Esquina superior derecha de la imagen */}
-                  {progress && (
+                  {progress && !isLocked && (
                     <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-sm rounded-lg px-2 py-0.5 shadow-md">
                       <span className={`text-xs font-bold ${progress.progress === 100 ? 'text-green-600' : 'text-brand-primary'}`}>
                         {progress.progress}%
                       </span>
                     </div>
                   )}
+
+                  {/* Badge de Nivel si es microcredencial */}
+                  {accessInfo?.isMicrocredentialCourse && (
+                    <div className="absolute top-3 left-3 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-md">
+                      Nivel {isLocked ? '2' : '1'}
+                    </div>
+                  )}
                 </div>
 
                 {/* Contenido - Lado derecho */}
-                <div className="flex flex-1 flex-col p-5 relative">
+                <div className={`flex flex-1 flex-col p-5 relative ${isLocked ? 'opacity-70' : ''}`}>
                   {/* Badge de progreso circular - Esquina superior derecha del contenido */}
-                  {progress && (
+                  {progress && !isLocked && (
                     <div className="absolute top-4 right-4 flex flex-col items-center">
                       <div className={`relative w-14 h-14 rounded-full flex items-center justify-center ${progress.progress === 100
                         ? 'bg-gradient-to-br from-cyan-400 to-cyan-500'
@@ -487,9 +547,22 @@ export default function EnrolledCoursesPage() {
                     </div>
                   )}
 
+                  {/* Badge de bloqueado */}
+                  {isLocked && (
+                    <div className="absolute top-4 right-4 flex flex-col items-center">
+                      <div className="w-14 h-14 rounded-full flex items-center justify-center bg-gray-400">
+                        <IconLock className="w-6 h-6 text-white" />
+                      </div>
+                      <span className="text-xs font-semibold text-gray-500 mt-1">Bloqueado</span>
+                    </div>
+                  )}
+
                   {/* Título del curso */}
-                  <Link href={`/dashboard/student/courses/${course.id}`}>
-                    <h3 className="text-lg font-bold text-slate-900 pr-20 leading-tight hover:text-brand-primary transition-colors line-clamp-2">
+                  <Link
+                    href={isLocked ? '#' : `/dashboard/student/courses/${course.id}`}
+                    onClick={(e) => isLocked && e.preventDefault()}
+                  >
+                    <h3 className={`text-lg font-bold text-slate-900 pr-20 leading-tight transition-colors line-clamp-2 ${isLocked ? '' : 'hover:text-brand-primary'}`}>
                       {course.title}
                     </h3>
                   </Link>
@@ -524,13 +597,20 @@ export default function EnrolledCoursesPage() {
                   </div>
 
                   {/* Link para ver progreso por sección */}
-                  {progress && progress.lessons.length > 0 && (
+                  {progress && progress.lessons.length > 0 && !isLocked && (
                     <button
                       onClick={(e) => toggleCourseExpand(course.id, e)}
                       className="flex items-center gap-1 mt-3 text-sm font-semibold text-teal-600 hover:text-teal-700 transition-colors self-start"
                     >
                       Ver progreso por sección
                     </button>
+                  )}
+
+                  {/* Mensaje de bloqueo */}
+                  {isLocked && (
+                    <div className="mt-3 text-sm text-amber-600 font-medium">
+                      🔒 Completa el Nivel 1 para desbloquear
+                    </div>
                   )}
 
                   {/* Espaciador flexible */}
@@ -555,45 +635,55 @@ export default function EnrolledCoursesPage() {
                     </button>
 
                     {/* Botón principal */}
-                    <Link
-                      href={(() => {
-                        // Si hay progreso y una última lección accedida, ir directamente ahí
-                        if (progress && progress.lastAccessedLessonId && progress.progress > 0 && progress.progress < 100) {
-                          return `/student/courses/${course.id}/learn/lecture/${progress.lastAccessedLessonId}?subsection=${progress.lastAccessedSubsectionIndex}`;
-                        }
-                        // Si el curso está completo o no ha comenzado, ir a la vista del curso
-                        return `/dashboard/student/courses/${course.id}`;
-                      })()}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-5 font-semibold rounded-full transition-all text-sm ${progress && progress.progress > 0 && progress.progress < 100
+                    {isLocked ? (
+                      <button
+                        disabled
+                        className="flex-1 flex items-center justify-center gap-2 py-2.5 px-5 font-semibold rounded-full text-sm bg-gray-300 text-gray-500 cursor-not-allowed"
+                      >
+                        <IconLock size={16} />
+                        Bloqueado
+                      </button>
+                    ) : (
+                      <Link
+                        href={(() => {
+                          // Si hay progreso y una última lección accedida, ir directamente ahí
+                          if (progress && progress.lastAccessedLessonId && progress.progress > 0 && progress.progress < 100) {
+                            return `/student/courses/${course.id}/learn/lecture/${progress.lastAccessedLessonId}?subsection=${progress.lastAccessedSubsectionIndex}`;
+                          }
+                          // Si el curso está completo o no ha comenzado, ir a la vista del curso
+                          return `/dashboard/student/courses/${course.id}`;
+                        })()}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-5 font-semibold rounded-full transition-all text-sm ${progress && progress.progress > 0 && progress.progress < 100
                           ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 shadow-md'
                           : 'bg-brand-primary text-white hover:bg-brand-primary/90'
-                        }`}
-                    >
-                      {progress && progress.progress === 100 ? (
-                        <>
-                          Revisar curso
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
-                        </>
-                      ) : progress && progress.progress > 0 ? (
-                        <>
-                          Continuar
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </>
-                      ) : (
-                        <>
-                          Comenzar curso
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                          </svg>
-                        </>
-                      )}
-                    </Link>
+                          }`}
+                      >
+                        {progress && progress.progress === 100 ? (
+                          <>
+                            Revisar curso
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </>
+                        ) : progress && progress.progress > 0 ? (
+                          <>
+                            Continuar
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </>
+                        ) : (
+                          <>
+                            Comenzar curso
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                            </svg>
+                          </>
+                        )}
+                      </Link>
+                    )}
                   </div>
                 </div>
               </article>
