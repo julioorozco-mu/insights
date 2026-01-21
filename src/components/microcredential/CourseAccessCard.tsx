@@ -32,24 +32,33 @@ export function CourseAccessCard({
 }: CourseAccessCardProps) {
 
     const cardContent = (
-        <div className={`card card-side bg-base-100 shadow-md hover:shadow-lg transition-all ${isLocked ? 'opacity-70 grayscale' : ''
-            }`}>
+        <div className="card card-side bg-base-100 shadow-md hover:shadow-lg transition-all">
             {/* Imagen o placeholder */}
-            <figure className="w-32 flex-shrink-0">
-                {coverImageUrl ? (
-                    <img
-                        src={coverImageUrl}
-                        alt={title}
-                        className="w-full h-full object-cover"
-                    />
-                ) : (
-                    <div className="w-full h-full bg-primary/10 flex items-center justify-center">
-                        <IconBook size={32} className="text-primary/50" />
+            <figure className="w-32 flex-shrink-0 relative overflow-hidden">
+                <div className={`w-full h-full ${isLocked ? 'opacity-70 grayscale' : ''}`}>
+                    {coverImageUrl ? (
+                        <img
+                            src={coverImageUrl}
+                            alt={title}
+                            className="w-full h-full object-cover"
+                        />
+                    ) : (
+                        <div className="w-full h-full bg-primary/10 flex items-center justify-center">
+                            <IconBook size={32} className="text-primary/50" />
+                        </div>
+                    )}
+                </div>
+                {/* Overlay de candado si está bloqueado */}
+                {isLocked && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                        <div className="p-2 rounded-full shadow-lg bg-gray-800">
+                            <IconLock className="w-5 h-5 text-white" />
+                        </div>
                     </div>
                 )}
             </figure>
 
-            <div className="card-body p-4 flex-1">
+            <div className={`card-body p-4 flex-1 ${isLocked ? 'opacity-70 grayscale' : ''}`}>
                 {/* Badge de nivel */}
                 <div className="flex items-center gap-2">
                     <span className={`badge ${isCompleted ? 'badge-success' : 'badge-primary'

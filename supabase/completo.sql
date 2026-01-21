@@ -52,6 +52,17 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
 
 
 
+CREATE TYPE "public"."acquisition_type" AS ENUM (
+    'free',
+    'paid',
+    'gifted',
+    'promo'
+);
+
+
+ALTER TYPE "public"."acquisition_type" OWNER TO "postgres";
+
+
 CREATE TYPE "public"."certificate_availability_mode" AS ENUM (
     'hours_after_start',
     'after_course_end',
@@ -162,6 +173,16 @@ CREATE TYPE "public"."live_status" AS ENUM (
 
 
 ALTER TYPE "public"."live_status" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."microcredential_status" AS ENUM (
+    'in_progress',
+    'completed',
+    'expired'
+);
+
+
+ALTER TYPE "public"."microcredential_status" OWNER TO "postgres";
 
 
 CREATE TYPE "public"."per_lesson_mode" AS ENUM (
@@ -310,6 +331,76 @@ CREATE TYPE "public"."video_quality" AS ENUM (
 ALTER TYPE "public"."video_quality" OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."check_microcredential_progress"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    v_micro RECORD;
+BEGIN
+    -- Solo procesar si el progreso cambió a 100
+    IF NEW.progress = 100 AND (OLD.progress IS NULL OR OLD.progress < 100) THEN
+        
+        -- Buscar microcredenciales donde este curso es nivel 1 o nivel 2
+        FOR v_micro IN 
+            SELECT 
+                mc.id as micro_id,
+                mc.course_level_1_id,
+                mc.course_level_2_id,
+                me.id as enrollment_id,
+                me.level_1_completed,
+                me.level_2_completed
+            FROM public.microcredentials mc
+            INNER JOIN public.microcredential_enrollments me 
+                ON me.microcredential_id = mc.id
+            WHERE me.student_id = NEW.student_id
+            AND (mc.course_level_1_id = NEW.course_id OR mc.course_level_2_id = NEW.course_id)
+        LOOP
+            -- Si completó el Nivel 1
+            IF v_micro.course_level_1_id = NEW.course_id AND NOT v_micro.level_1_completed THEN
+                UPDATE public.microcredential_enrollments
+                SET 
+                    level_1_completed = true,
+                    level_1_completed_at = NOW(),
+                    level_2_unlocked = true,
+                    level_2_unlocked_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = v_micro.enrollment_id;
+            END IF;
+            
+            -- Si completó el Nivel 2
+            IF v_micro.course_level_2_id = NEW.course_id AND NOT v_micro.level_2_completed THEN
+                UPDATE public.microcredential_enrollments
+                SET 
+                    level_2_completed = true,
+                    level_2_completed_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = v_micro.enrollment_id;
+            END IF;
+            
+            -- Verificar si ambos niveles están completos → desbloquear badge
+            UPDATE public.microcredential_enrollments
+            SET 
+                status = 'completed',
+                completed_at = NOW(),
+                badge_unlocked = true,
+                badge_unlocked_at = NOW(),
+                updated_at = NOW()
+            WHERE id = v_micro.enrollment_id
+            AND level_1_completed = true
+            AND level_2_completed = true
+            AND badge_unlocked = false;
+            
+        END LOOP;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."check_microcredential_progress"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."get_signed_url"("bucket_name" "text", "file_path" "text", "expires_in_seconds" integer DEFAULT 3600) RETURNS "text"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -338,6 +429,37 @@ $$;
 
 
 ALTER FUNCTION "public"."get_user_role"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."handle_microcredential_enrollment"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    v_course_level_1_id UUID;
+    v_course_level_2_id UUID;
+BEGIN
+    -- Obtener los IDs de cursos de la microcredencial
+    SELECT course_level_1_id, course_level_2_id 
+    INTO v_course_level_1_id, v_course_level_2_id
+    FROM public.microcredentials 
+    WHERE id = NEW.microcredential_id;
+    
+    -- Inscribir en Nivel 1 (acceso inmediato)
+    INSERT INTO public.student_enrollments (student_id, course_id, progress, completed_lessons)
+    VALUES (NEW.student_id, v_course_level_1_id, 0, '{}')
+    ON CONFLICT (student_id, course_id) DO NOTHING;
+    
+    -- Inscribir en Nivel 2 (el acceso se controlará en el frontend)
+    INSERT INTO public.student_enrollments (student_id, course_id, progress, completed_lessons)
+    VALUES (NEW.student_id, v_course_level_2_id, 0, '{}')
+    ON CONFLICT (student_id, course_id) DO NOTHING;
+    
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_microcredential_enrollment"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."handle_new_student"() RETURNS "trigger"
@@ -1079,6 +1201,95 @@ COMMENT ON TABLE "public"."live_streams" IS 'Configuración de transmisiones en 
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."microcredential_enrollments" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "student_id" "uuid" NOT NULL,
+    "microcredential_id" "uuid" NOT NULL,
+    "enrolled_at" timestamp with time zone DEFAULT "now"(),
+    "level_1_completed" boolean DEFAULT false,
+    "level_1_completed_at" timestamp with time zone,
+    "level_2_unlocked" boolean DEFAULT false,
+    "level_2_unlocked_at" timestamp with time zone,
+    "level_2_completed" boolean DEFAULT false,
+    "level_2_completed_at" timestamp with time zone,
+    "status" "public"."microcredential_status" DEFAULT 'in_progress'::"public"."microcredential_status",
+    "completed_at" timestamp with time zone,
+    "badge_unlocked" boolean DEFAULT false,
+    "badge_unlocked_at" timestamp with time zone,
+    "badge_downloaded_at" timestamp with time zone,
+    "certificate_id" "uuid",
+    "certificate_issued_at" timestamp with time zone,
+    "acquisition_type" "public"."acquisition_type" DEFAULT 'free'::"public"."acquisition_type",
+    "payment_amount" numeric(10,2),
+    "payment_method" character varying(50),
+    "payment_reference" character varying(255),
+    "payment_verified_at" timestamp with time zone,
+    "payment_verified_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."microcredential_enrollments" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."microcredential_enrollments" IS 'Inscripciones de estudiantes a microcredenciales';
+
+
+
+COMMENT ON COLUMN "public"."microcredential_enrollments"."level_2_unlocked" IS 'Se activa automáticamente al completar Nivel 1';
+
+
+
+COMMENT ON COLUMN "public"."microcredential_enrollments"."acquisition_type" IS 'Tipo de adquisición: free, paid, gifted (regalo), promo';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."microcredentials" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "title" character varying(255) NOT NULL,
+    "slug" character varying(255) NOT NULL,
+    "description" "text",
+    "short_description" character varying(500),
+    "badge_image_url" "text" NOT NULL,
+    "badge_locked_image_url" "text",
+    "badge_color" character varying(20),
+    "course_level_1_id" "uuid" NOT NULL,
+    "course_level_2_id" "uuid" NOT NULL,
+    "is_free" boolean DEFAULT false,
+    "price" numeric(10,2) DEFAULT 0,
+    "sale_percentage" integer DEFAULT 0,
+    "is_published" boolean DEFAULT false,
+    "is_active" boolean DEFAULT true,
+    "display_order" integer DEFAULT 0,
+    "featured" boolean DEFAULT false,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "microcredentials_different_courses" CHECK (("course_level_1_id" <> "course_level_2_id")),
+    CONSTRAINT "microcredentials_sale_percentage_check" CHECK ((("sale_percentage" >= 0) AND ("sale_percentage" <= 100)))
+);
+
+
+ALTER TABLE "public"."microcredentials" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."microcredentials" IS 'Definición de microcredenciales (Hard Bundle de 2 cursos)';
+
+
+
+COMMENT ON COLUMN "public"."microcredentials"."slug" IS 'URL amigable para SEO';
+
+
+
+COMMENT ON COLUMN "public"."microcredentials"."course_level_1_id" IS 'Curso requerido como Nivel 1 (debe completarse primero)';
+
+
+
+COMMENT ON COLUMN "public"."microcredentials"."course_level_2_id" IS 'Curso requerido como Nivel 2 (se desbloquea al completar Nivel 1)';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."scheduled_emails" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "type" "public"."scheduled_email_type" NOT NULL,
@@ -1606,6 +1817,21 @@ ALTER TABLE ONLY "public"."live_streams"
 
 
 
+ALTER TABLE ONLY "public"."microcredential_enrollments"
+    ADD CONSTRAINT "microcredential_enrollments_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."microcredentials"
+    ADD CONSTRAINT "microcredentials_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."microcredentials"
+    ADD CONSTRAINT "microcredentials_slug_key" UNIQUE ("slug");
+
+
+
 ALTER TABLE ONLY "public"."scheduled_emails"
     ADD CONSTRAINT "scheduled_emails_pkey" PRIMARY KEY ("id");
 
@@ -1688,6 +1914,11 @@ ALTER TABLE ONLY "public"."test_questions"
 
 ALTER TABLE ONLY "public"."tests"
     ADD CONSTRAINT "tests_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."microcredential_enrollments"
+    ADD CONSTRAINT "unique_student_microcredential" UNIQUE ("student_id", "microcredential_id");
 
 
 
@@ -1911,6 +2142,46 @@ CREATE INDEX "idx_live_polls_lesson" ON "public"."live_polls" USING "btree" ("le
 
 
 
+CREATE INDEX "idx_mc_enrollments_badge" ON "public"."microcredential_enrollments" USING "btree" ("badge_unlocked") WHERE ("badge_unlocked" = true);
+
+
+
+CREATE INDEX "idx_mc_enrollments_micro" ON "public"."microcredential_enrollments" USING "btree" ("microcredential_id");
+
+
+
+CREATE INDEX "idx_mc_enrollments_payment" ON "public"."microcredential_enrollments" USING "btree" ("payment_verified_at") WHERE ("acquisition_type" = 'paid'::"public"."acquisition_type");
+
+
+
+CREATE INDEX "idx_mc_enrollments_status" ON "public"."microcredential_enrollments" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_mc_enrollments_student" ON "public"."microcredential_enrollments" USING "btree" ("student_id");
+
+
+
+CREATE INDEX "idx_microcredentials_featured" ON "public"."microcredentials" USING "btree" ("featured") WHERE ("featured" = true);
+
+
+
+CREATE INDEX "idx_microcredentials_level_1" ON "public"."microcredentials" USING "btree" ("course_level_1_id");
+
+
+
+CREATE INDEX "idx_microcredentials_level_2" ON "public"."microcredentials" USING "btree" ("course_level_2_id");
+
+
+
+CREATE INDEX "idx_microcredentials_published" ON "public"."microcredentials" USING "btree" ("is_published", "is_active");
+
+
+
+CREATE INDEX "idx_microcredentials_slug" ON "public"."microcredentials" USING "btree" ("slug");
+
+
+
 CREATE INDEX "idx_scheduled_emails_course" ON "public"."scheduled_emails" USING "btree" ("course_id");
 
 
@@ -2067,6 +2338,14 @@ CREATE OR REPLACE TRIGGER "lesson_questions_updated_at" BEFORE UPDATE ON "public
 
 
 
+CREATE OR REPLACE TRIGGER "on_course_progress_for_microcredential" AFTER UPDATE OF "progress" ON "public"."student_enrollments" FOR EACH ROW EXECUTE FUNCTION "public"."check_microcredential_progress"();
+
+
+
+CREATE OR REPLACE TRIGGER "on_microcredential_enrolled" AFTER INSERT ON "public"."microcredential_enrollments" FOR EACH ROW EXECUTE FUNCTION "public"."handle_microcredential_enrollment"();
+
+
+
 CREATE OR REPLACE TRIGGER "on_user_created_create_student" AFTER INSERT ON "public"."users" FOR EACH ROW WHEN (("new"."role" = 'student'::"public"."user_role")) EXECUTE FUNCTION "public"."handle_new_student"();
 
 
@@ -2120,6 +2399,14 @@ CREATE OR REPLACE TRIGGER "update_live_chats_updated_at" BEFORE UPDATE ON "publi
 
 
 CREATE OR REPLACE TRIGGER "update_live_streams_updated_at" BEFORE UPDATE ON "public"."live_streams" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "update_mc_enrollments_updated_at" BEFORE UPDATE ON "public"."microcredential_enrollments" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "update_microcredentials_updated_at" BEFORE UPDATE ON "public"."microcredentials" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
 
 
 
@@ -2414,6 +2701,41 @@ ALTER TABLE ONLY "public"."live_stream_sessions"
 
 ALTER TABLE ONLY "public"."live_streams"
     ADD CONSTRAINT "live_streams_instructor_id_fkey" FOREIGN KEY ("instructor_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."microcredential_enrollments"
+    ADD CONSTRAINT "microcredential_enrollments_certificate_id_fkey" FOREIGN KEY ("certificate_id") REFERENCES "public"."certificates"("id");
+
+
+
+ALTER TABLE ONLY "public"."microcredential_enrollments"
+    ADD CONSTRAINT "microcredential_enrollments_microcredential_id_fkey" FOREIGN KEY ("microcredential_id") REFERENCES "public"."microcredentials"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."microcredential_enrollments"
+    ADD CONSTRAINT "microcredential_enrollments_payment_verified_by_fkey" FOREIGN KEY ("payment_verified_by") REFERENCES "public"."users"("id");
+
+
+
+ALTER TABLE ONLY "public"."microcredential_enrollments"
+    ADD CONSTRAINT "microcredential_enrollments_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "public"."students"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."microcredentials"
+    ADD CONSTRAINT "microcredentials_course_level_1_id_fkey" FOREIGN KEY ("course_level_1_id") REFERENCES "public"."courses"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."microcredentials"
+    ADD CONSTRAINT "microcredentials_course_level_2_id_fkey" FOREIGN KEY ("course_level_2_id") REFERENCES "public"."courses"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."microcredentials"
+    ADD CONSTRAINT "microcredentials_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 
 
 
@@ -2958,6 +3280,40 @@ ALTER TABLE "public"."live_stream_sessions" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."live_streams" ENABLE ROW LEVEL SECURITY;
 
 
+CREATE POLICY "mc_enrollments_admin_all" ON "public"."microcredential_enrollments" USING ((EXISTS ( SELECT 1
+   FROM "public"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role"]))))));
+
+
+
+CREATE POLICY "mc_enrollments_student_insert" ON "public"."microcredential_enrollments" FOR INSERT WITH CHECK (("student_id" IN ( SELECT "students"."id"
+   FROM "public"."students"
+  WHERE ("students"."user_id" = "auth"."uid"()))));
+
+
+
+CREATE POLICY "mc_enrollments_student_read" ON "public"."microcredential_enrollments" FOR SELECT USING (("student_id" IN ( SELECT "students"."id"
+   FROM "public"."students"
+  WHERE ("students"."user_id" = "auth"."uid"()))));
+
+
+
+ALTER TABLE "public"."microcredential_enrollments" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."microcredentials" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "microcredentials_admin_all" ON "public"."microcredentials" USING ((EXISTS ( SELECT 1
+   FROM "public"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role"]))))));
+
+
+
+CREATE POLICY "microcredentials_public_read" ON "public"."microcredentials" FOR SELECT USING ((("is_published" = true) AND ("is_active" = true)));
+
+
+
 ALTER TABLE "public"."scheduled_emails" ENABLE ROW LEVEL SECURITY;
 
 
@@ -3292,6 +3648,12 @@ GRANT USAGE ON SCHEMA "public" TO "supabase_auth_admin";
 
 
 
+GRANT ALL ON FUNCTION "public"."check_microcredential_progress"() TO "anon";
+GRANT ALL ON FUNCTION "public"."check_microcredential_progress"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."check_microcredential_progress"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."get_signed_url"("bucket_name" "text", "file_path" "text", "expires_in_seconds" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."get_signed_url"("bucket_name" "text", "file_path" "text", "expires_in_seconds" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_signed_url"("bucket_name" "text", "file_path" "text", "expires_in_seconds" integer) TO "service_role";
@@ -3301,6 +3663,12 @@ GRANT ALL ON FUNCTION "public"."get_signed_url"("bucket_name" "text", "file_path
 GRANT ALL ON FUNCTION "public"."get_user_role"() TO "anon";
 GRANT ALL ON FUNCTION "public"."get_user_role"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_user_role"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_microcredential_enrollment"() TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_microcredential_enrollment"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_microcredential_enrollment"() TO "service_role";
 
 
 
@@ -3508,6 +3876,18 @@ GRANT ALL ON TABLE "public"."live_stream_sessions" TO "service_role";
 GRANT ALL ON TABLE "public"."live_streams" TO "anon";
 GRANT ALL ON TABLE "public"."live_streams" TO "authenticated";
 GRANT ALL ON TABLE "public"."live_streams" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."microcredential_enrollments" TO "anon";
+GRANT ALL ON TABLE "public"."microcredential_enrollments" TO "authenticated";
+GRANT ALL ON TABLE "public"."microcredential_enrollments" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."microcredentials" TO "anon";
+GRANT ALL ON TABLE "public"."microcredentials" TO "authenticated";
+GRANT ALL ON TABLE "public"."microcredentials" TO "service_role";
 
 
 
