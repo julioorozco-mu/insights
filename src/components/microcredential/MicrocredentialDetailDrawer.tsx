@@ -8,7 +8,7 @@
 import { MicrocredentialWithCourses } from '@/types/microcredential';
 import { IconX, IconAward, IconClock, IconStar, IconBook, IconCertificate, IconArrowLeft, IconChevronRight, IconUser, IconListDetails, IconUsers } from '@tabler/icons-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import RichTextContent from '@/components/ui/RichTextContent';
 import { Loader } from '@/components/common/Loader';
 
@@ -287,7 +287,7 @@ export function MicrocredentialDetailDrawer({
     const handleGoToLevel = (level: 1 | 2) => {
         const courseId = level === 1 ? microcredential?.courseLevel1Id : microcredential?.courseLevel2Id;
         if (courseId) {
-            router.push(`/dashboard/enrolled-courses/course/${courseId}`);
+            router.push(`/student/courses/${courseId}`);
         }
     };
 

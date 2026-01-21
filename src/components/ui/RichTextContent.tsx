@@ -14,7 +14,7 @@ export default function RichTextContent({ html, className = "" }: RichTextConten
 
   return (
     <>
-      <div 
+      <div
         className={`rich-text-content ${className}`}
         dangerouslySetInnerHTML={{ __html: html }}
       />
@@ -42,6 +42,7 @@ export default function RichTextContent({ html, className = "" }: RichTextConten
         }
         .rich-text-content p {
           margin: 0.5em 0;
+          text-align: justify;
         }
         .rich-text-content ul {
           list-style-type: disc;

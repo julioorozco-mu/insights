@@ -304,18 +304,9 @@ export async function POST(request: NextRequest) {
       throw updateError;
     }
 
-    // Obtener los datos actualizados para devolverlos
-    const { data: finalEnrollment } = await supabase
-      .from("student_enrollments")
-      .select('progress, completed_lessons, subsection_progress')
-      .eq("id", enrollment.id)
-      .single();
 
     return NextResponse.json({
       success: true,
-      progress: finalEnrollment?.progress || updates.progress || enrollment.progress || 0,
-      completedLessons: finalEnrollment?.completed_lessons || updates.completed_lessons || enrollment.completed_lessons || [],
-      subsectionProgress: finalEnrollment?.subsection_progress || updates.subsection_progress || enrollment.subsection_progress || {},
       progress: updatedEnrollment.progress,
       completedLessons: updatedEnrollment.completed_lessons,
       subsectionProgress: updatedEnrollment.subsection_progress,

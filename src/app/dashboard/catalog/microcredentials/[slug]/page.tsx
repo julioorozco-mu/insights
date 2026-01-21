@@ -164,7 +164,7 @@ export default function MicrocredentialDetailPage() {
                             <h1 className="text-3xl font-bold mb-2">{microcredential.title}</h1>
 
                             {microcredential.description && (
-                                <p className="text-base-content/70 mb-4">
+                                <p className="text-base-content/70 mb-4 text-justify">
                                     {microcredential.description}
                                 </p>
                             )}
