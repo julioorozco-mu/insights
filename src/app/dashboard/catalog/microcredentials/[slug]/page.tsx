@@ -72,16 +72,16 @@ export default function MicrocredentialDetailPage() {
                         // Si está inscrito, cargar progreso real de cursos
                         if (myEnrollment) {
                             // Obtener progreso del nivel 1
-                            const level1EnrollRes = await fetch(`/api/student/enrollments/${data.microcredential.courseLevel1Id}`);
-                            if (level1EnrollRes.ok) {
-                                const level1Data = await level1EnrollRes.json();
-                                setLevel1Progress(level1Data.enrollment?.progress || 0);
+                            const level1ProgressRes = await fetch(`/api/student/progress?courseId=${data.microcredential.courseLevel1Id}&userId=${user.id}`);
+                            if (level1ProgressRes.ok) {
+                                const level1Data = await level1ProgressRes.json();
+                                setLevel1Progress(level1Data.progress || 0);
                             }
                             // Obtener progreso del nivel 2
-                            const level2EnrollRes = await fetch(`/api/student/enrollments/${data.microcredential.courseLevel2Id}`);
-                            if (level2EnrollRes.ok) {
-                                const level2Data = await level2EnrollRes.json();
-                                setLevel2Progress(level2Data.enrollment?.progress || 0);
+                            const level2ProgressRes = await fetch(`/api/student/progress?courseId=${data.microcredential.courseLevel2Id}&userId=${user.id}`);
+                            if (level2ProgressRes.ok) {
+                                const level2Data = await level2ProgressRes.json();
+                                setLevel2Progress(level2Data.progress || 0);
                             }
                         }
                     }
@@ -195,7 +195,7 @@ export default function MicrocredentialDetailPage() {
                 <div className="relative flex items-center justify-center gap-4">
                     {/* Indicador de Progreso General - Estilo flotante izquierda */}
                     {isEnrolled && !isPendingPayment && (
-                        <div className="absolute -left-36 top-1/2 transform -translate-y-1/2 hidden md:flex flex-col items-end">
+                        <div className="absolute -left-64 top-1/2 transform -translate-y-1/2 hidden md:flex flex-col items-end">
                             <div className="bg-base-200/80 backdrop-blur-sm rounded-xl px-4 py-3 shadow-lg border border-base-300">
                                 <span className="text-sm font-semibold text-base-content/80 block">Progreso General</span>
                                 <span className="text-3xl font-bold text-primary">{Math.round(overallProgress)}%</span>
@@ -273,11 +273,11 @@ export default function MicrocredentialDetailPage() {
                 </div>
 
                 {/* ===== NIVEL 1 ===== */}
-                <div className="roadmap-level relative pt-8">
+                <div className="roadmap-level relative">
 
                     {/* Número de nivel flotante */}
                     <div className={`
-                        roadmap-level-number absolute -top-5 left-1/2 transform -translate-x-1/2 z-10
+                        roadmap-level-number absolute -translate-y-1/2 top-0 left-1/2 transform -translate-x-1/2 z-10
                         w-12 h-12 rounded-full flex items-center justify-center
                         font-bold text-xl shadow-lg
                         ${level1Completed
@@ -329,7 +329,7 @@ export default function MicrocredentialDetailPage() {
                                         </span>
                                         {level1Completed ? (
                                             <span className="badge badge-success badge-outline gap-1">
-                                                <IconCheck size={12} /> Desbloqueado
+                                                <IconCheck size={12} /> Completado
                                             </span>
                                         ) : isLevel1Locked ? (
                                             <span className="badge badge-warning gap-1">
@@ -416,10 +416,10 @@ export default function MicrocredentialDetailPage() {
                 </div>
 
                 {/* ===== NIVEL 2 ===== */}
-                <div className="roadmap-level relative pt-8">
+                <div className="roadmap-level relative">
                     {/* Número de nivel flotante */}
                     <div className={`
-                        roadmap-level-number absolute -top-5 left-1/2 transform -translate-x-1/2 z-10
+                        roadmap-level-number absolute -translate-y-1/2 top-0 left-1/2 transform -translate-x-1/2 z-10
                         w-12 h-12 rounded-full flex items-center justify-center
                         font-bold text-xl shadow-lg
                         ${level2Completed

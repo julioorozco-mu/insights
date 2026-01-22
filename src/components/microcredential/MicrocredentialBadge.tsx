@@ -23,7 +23,7 @@ const sizeClasses = {
     sm: 'w-16 h-16',
     md: 'w-24 h-24',
     lg: 'w-32 h-32',
-    xl: 'w-48 h-48',
+    xl: 'w-[340px] h-[340px]',
 };
 
 export function MicrocredentialBadge({
@@ -131,9 +131,9 @@ export function MicrocredentialBadge({
     }, [progress, isUnlocked]);
 
     // Calcular valores para el anillo de progreso
-    const sizeMap = { sm: 64, md: 96, lg: 128, xl: 192 };
+    const sizeMap = { sm: 64, md: 96, lg: 128, xl: 340 };
     const svgSize = sizeMap[size];
-    const strokeWidth = size === 'sm' ? 3 : size === 'md' ? 4 : size === 'lg' ? 5 : 6;
+    const strokeWidth = size === 'sm' ? 3 : size === 'md' ? 4 : size === 'lg' ? 5 : 10;
     const radius = (svgSize - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
     const strokeDashoffset = circumference - (animatedRingProgress / 100) * circumference;
@@ -253,7 +253,7 @@ export function MicrocredentialBadge({
                             className={`${size === 'sm' ? 'w-8 h-8' :
                                 size === 'md' ? 'w-12 h-12' :
                                     size === 'lg' ? 'w-16 h-16' :
-                                        'w-24 h-24'
+                                        'w-40 h-40'
                                 } ${isUnlocked ? 'text-primary' : 'text-gray-400'}`}
                         />
                     )}

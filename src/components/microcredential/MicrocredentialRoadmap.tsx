@@ -106,7 +106,7 @@ export function MicrocredentialRoadmap({
                                 </span>
                                 {level1Completed ? (
                                     <span className="badge badge-sm badge-success badge-outline gap-1">
-                                        <IconCheck size={10} /> Desbloqueado
+                                        <IconCheck size={10} /> Completado
                                     </span>
                                 ) : isLevel1Locked ? (
                                     <span className="badge badge-sm badge-warning gap-1">
