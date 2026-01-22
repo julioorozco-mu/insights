@@ -46,7 +46,7 @@ export function MicrocredentialBadge({
 
     // Estado para animación inicial del progreso
     const [animatedProgress, setAnimatedProgress] = useState(0);
-    const [animatedRingProgress, setAnimatedRingProgress] = useState(0);    
+    const [animatedRingProgress, setAnimatedRingProgress] = useState(0);
     const [revealPhase, setRevealPhase] = useState<'fill' | 'wave'>('wave');
     const animatedProgressRef = useRef(0);
     const fillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -96,7 +96,7 @@ export function MicrocredentialBadge({
         fillTimerRef.current = setTimeout(() => {
             const start = performance.now();
             const tick = (now: number) => {
-                const t = Math.min(1, (now - start) / durationMs);        
+                const t = Math.min(1, (now - start) / durationMs);
                 const eased = 0.5 - 0.5 * Math.cos(Math.PI * t); // easeInOutSine
                 const next = from + (to - from) * eased;
 
@@ -105,7 +105,7 @@ export function MicrocredentialBadge({
                 setAnimatedRingProgress(next);
 
                 if (t < 1) {
-                    fillRafRef.current = requestAnimationFrame(tick);     
+                    fillRafRef.current = requestAnimationFrame(tick);
                 } else {
                     setRevealPhase('wave');
                     animatedProgressRef.current = to;
@@ -139,7 +139,7 @@ export function MicrocredentialBadge({
     const strokeDashoffset = circumference - (animatedRingProgress / 100) * circumference;
 
     // IDs estables (evita reset/flicker y colisiones entre múltiples badges)
-    const uid = useMemo(() => Math.random().toString(36).slice(2, 11), []); 
+    const uid = useMemo(() => Math.random().toString(36).slice(2, 11), []);
     const fillClipPathId = `fill-clip-${uid}`;
     const waveClipPathId = `wave-clip-${uid}`;
     const progressGradientId = `progress-gradient-${uid}`;
@@ -280,43 +280,136 @@ export function MicrocredentialBadge({
                     </div>
                 )}
 
-                {/* Anillo de progreso circular - Solo visible si hay progreso y no está 100% completado */}
-                {progress > 0 && progress < 100 && !isUnlocked && (
+                {/* Anillo de progreso segmentado/punteado - Solo visible si hay progreso */}
+                {progress > 0 && !isUnlocked && (
                     <svg
-                        className="absolute -inset-1 transform -rotate-90"
-                        width={svgSize + 8}
-                        height={svgSize + 8}
+                        className="absolute -inset-2"
+                        width={svgSize + 16}
+                        height={svgSize + 16}
                         style={{ pointerEvents: 'none' }}
                     >
-                        {/* Círculo de fondo (gris claro) */}
-                        <circle
-                            cx={(svgSize + 8) / 2}
-                            cy={(svgSize + 8) / 2}
-                            r={radius}
-                            stroke="#e5e7eb"
-                            strokeWidth={strokeWidth}
-                            fill="none"
-                            opacity={0.3}
-                        />
-                        {/* Círculo de progreso (degradado animado) */}
-                        <circle
-                            cx={(svgSize + 8) / 2}
-                            cy={(svgSize + 8) / 2}
-                            r={radius}
-                            stroke={`url(#${progressGradientId})`}
-                            strokeWidth={strokeWidth}
-                            fill="none"
-                            strokeDasharray={circumference}
-                            strokeDashoffset={strokeDashoffset}
-                            strokeLinecap="round"
-                        />
-                        {/* Degradado para el anillo de progreso */}
                         <defs>
-                            <linearGradient id={progressGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
-                                <stop offset="0%" stopColor="#10B981" />
-                                <stop offset="100%" stopColor="#059669" />
+                            <linearGradient id={progressGradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stopColor="#192170" />
+                                <stop offset="50%" stopColor="#C9A227" />
+                                <stop offset="100%" stopColor="#192170" />
                             </linearGradient>
                         </defs>
+                        {/* Segmentos del anillo */}
+                        {Array.from({ length: 24 }).map((_, i) => {
+                            const segmentAngle = 360 / 24;
+                            const startAngle = i * segmentAngle - 90; // Empezar desde arriba
+                            const gapAngle = 4; // Espacio entre segmentos
+                            const segmentProgress = (animatedRingProgress / 100) * 24;
+                            const isFilled = i < segmentProgress;
+                            const isPartial = i >= Math.floor(segmentProgress) && i < Math.ceil(segmentProgress);
+
+                            const centerX = (svgSize + 16) / 2;
+                            const centerY = (svgSize + 16) / 2;
+                            const outerRadius = (svgSize + 12) / 2;
+                            const innerRadius = outerRadius - (strokeWidth + 2);
+
+                            const startRad = (startAngle * Math.PI) / 180;
+                            const endRad = ((startAngle + segmentAngle - gapAngle) * Math.PI) / 180;
+
+                            const x1 = centerX + outerRadius * Math.cos(startRad);
+                            const y1 = centerY + outerRadius * Math.sin(startRad);
+                            const x2 = centerX + outerRadius * Math.cos(endRad);
+                            const y2 = centerY + outerRadius * Math.sin(endRad);
+                            const x3 = centerX + innerRadius * Math.cos(endRad);
+                            const y3 = centerY + innerRadius * Math.sin(endRad);
+                            const x4 = centerX + innerRadius * Math.cos(startRad);
+                            const y4 = centerY + innerRadius * Math.sin(startRad);
+
+                            const largeArc = segmentAngle - gapAngle > 180 ? 1 : 0;
+
+                            const pathD = [
+                                `M ${x1} ${y1}`,
+                                `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${x2} ${y2}`,
+                                `L ${x3} ${y3}`,
+                                `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${x4} ${y4}`,
+                                'Z'
+                            ].join(' ');
+
+                            let fillColor = '#E5E7EB'; // Gris por defecto
+                            let fillOpacity = 0.4;
+
+                            if (isFilled) {
+                                // Alternar colores para efecto visual
+                                fillColor = i % 2 === 0 ? '#192170' : '#C9A227';
+                                fillOpacity = 1;
+                            } else if (isPartial) {
+                                fillColor = i % 2 === 0 ? '#192170' : '#C9A227';
+                                fillOpacity = 0.5;
+                            }
+
+                            return (
+                                <path
+                                    key={i}
+                                    d={pathD}
+                                    fill={fillColor}
+                                    opacity={fillOpacity}
+                                    style={{
+                                        transition: 'fill 0.3s ease, opacity 0.3s ease',
+                                    }}
+                                />
+                            );
+                        })}
+                    </svg>
+                )}
+
+                {/* Anillo completo dorado cuando está al 100% */}
+                {isUnlocked && (
+                    <svg
+                        className="absolute -inset-2"
+                        width={svgSize + 16}
+                        height={svgSize + 16}
+                        style={{ pointerEvents: 'none' }}
+                    >
+                        {Array.from({ length: 24 }).map((_, i) => {
+                            const segmentAngle = 360 / 24;
+                            const startAngle = i * segmentAngle - 90;
+                            const gapAngle = 4;
+
+                            const centerX = (svgSize + 16) / 2;
+                            const centerY = (svgSize + 16) / 2;
+                            const outerRadius = (svgSize + 12) / 2;
+                            const innerRadius = outerRadius - (strokeWidth + 2);
+
+                            const startRad = (startAngle * Math.PI) / 180;
+                            const endRad = ((startAngle + segmentAngle - gapAngle) * Math.PI) / 180;
+
+                            const x1 = centerX + outerRadius * Math.cos(startRad);
+                            const y1 = centerY + outerRadius * Math.sin(startRad);
+                            const x2 = centerX + outerRadius * Math.cos(endRad);
+                            const y2 = centerY + outerRadius * Math.sin(endRad);
+                            const x3 = centerX + innerRadius * Math.cos(endRad);
+                            const y3 = centerY + innerRadius * Math.sin(endRad);
+                            const x4 = centerX + innerRadius * Math.cos(startRad);
+                            const y4 = centerY + innerRadius * Math.sin(startRad);
+
+                            const largeArc = segmentAngle - gapAngle > 180 ? 1 : 0;
+
+                            const pathD = [
+                                `M ${x1} ${y1}`,
+                                `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${x2} ${y2}`,
+                                `L ${x3} ${y3}`,
+                                `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${x4} ${y4}`,
+                                'Z'
+                            ].join(' ');
+
+                            return (
+                                <path
+                                    key={i}
+                                    d={pathD}
+                                    fill={i % 2 === 0 ? '#192170' : '#C9A227'}
+                                    className="animate-pulse"
+                                    style={{
+                                        animationDelay: `${i * 50}ms`,
+                                    }}
+                                />
+                            );
+                        })}
                     </svg>
                 )}
             </div>
