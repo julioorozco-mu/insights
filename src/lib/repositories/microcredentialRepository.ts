@@ -505,7 +505,7 @@ async function getPendingPayments(): Promise<MicrocredentialEnrollmentWithDetail
 async function checkCourseAccessForStudent(
     studentId: string,
     courseId: string
-): Promise<{ isMicrocredentialCourse: boolean; isLevel2Locked: boolean; microcredentialId?: string }> {
+): Promise<{ isMicrocredentialCourse: boolean; isLevel2Locked: boolean; microcredentialId?: string; levelNumber?: 1 | 2 }> {
     const supabase = getSupabaseAdmin();
 
     // Buscar microcredenciales donde el estudiante esté inscrito
@@ -536,6 +536,7 @@ async function checkCourseAccessForStudent(
                 isMicrocredentialCourse: true,
                 isLevel2Locked: false, // L1 siempre accesible
                 microcredentialId: micro.id,
+                levelNumber: 1,
             };
         }
 
@@ -545,6 +546,7 @@ async function checkCourseAccessForStudent(
                 isMicrocredentialCourse: true,
                 isLevel2Locked: !enrollment.level_2_unlocked, // Bloqueado si L1 no completado
                 microcredentialId: micro.id,
+                levelNumber: 2,
             };
         }
     }

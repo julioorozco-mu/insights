@@ -309,6 +309,7 @@ function QuizBlock({
   subsectionIndex,
   totalSubsections,
   onProgressUpdate,
+  onQuizScoreUpdate,
   userId,
 }: {
   quizId?: string;
@@ -318,6 +319,11 @@ function QuizBlock({
   subsectionIndex?: number;
   totalSubsections?: number;
   onProgressUpdate?: (subsectionIndex: number, isCompleted: boolean) => void;
+  onQuizScoreUpdate?: (
+    lessonId: string,
+    subsectionIndex: number,
+    score: { correct: number; total: number } | null
+  ) => void;
   userId?: string;
 }) {
   const [quiz, setQuiz] = useState<QuizData | null>(null);
@@ -404,6 +410,12 @@ function QuizBlock({
                       }
                     });
                     setScore({ correct: correctCount, total: quizData.questions.length });
+                    if (onQuizScoreUpdate && lessonId && subsectionIndex !== undefined) {
+                      onQuizScoreUpdate(lessonId, subsectionIndex, {
+                        correct: correctCount,
+                        total: quizData.questions.length,
+                      });
+                    }
                   }
 
                   // SIEMPRE actualizar progreso cuando hay respuestas guardadas
@@ -508,6 +520,12 @@ function QuizBlock({
       setScore({ correct: correctCount, total: quiz.questions.length });
       setSubmitted(true);
       setShowResults(true);
+      if (onQuizScoreUpdate && lessonId && subsectionIndex !== undefined) {
+        onQuizScoreUpdate(lessonId, subsectionIndex, {
+          correct: correctCount,
+          total: quiz.questions.length,
+        });
+      }
 
       // Actualizar progreso cuando se completa el quiz
       if (onProgressUpdate && subsectionIndex !== undefined && totalSubsections !== undefined) {
@@ -528,6 +546,9 @@ function QuizBlock({
     setSubmitted(false);
     setScore(null);
     setShowResults(false);
+    if (onQuizScoreUpdate && lessonId && subsectionIndex !== undefined) {
+      onQuizScoreUpdate(lessonId, subsectionIndex, null);
+    }
 
     // Eliminar respuestas guardadas de la base de datos
     if (quizId && userId) {
@@ -796,7 +817,8 @@ function ContentBlockRenderer({
   subsectionIndex,
   totalSubsections,
   userId,
-  onProgressUpdate
+  onProgressUpdate,
+  onQuizScoreUpdate,
 }: {
   block: ContentBlock;
   courseId: string;
@@ -805,6 +827,11 @@ function ContentBlockRenderer({
   totalSubsections?: number;
   userId?: string;
   onProgressUpdate?: (subsectionIndex: number, isCompleted: boolean) => void;
+  onQuizScoreUpdate?: (
+    lessonId: string,
+    subsectionIndex: number,
+    score: { correct: number; total: number } | null
+  ) => void;
 }) {
   switch (block.type) {
     case 'heading':
@@ -1023,6 +1050,7 @@ function ContentBlockRenderer({
           subsectionIndex={subsectionIndex}
           totalSubsections={totalSubsections}
           onProgressUpdate={onProgressUpdate}
+          onQuizScoreUpdate={onQuizScoreUpdate}
           userId={userId}
         />
       );
@@ -1041,9 +1069,9 @@ function SubsectionViewer({
   totalSubsections,
   userId,
   onProgressUpdate,
+  onQuizScoreUpdate,
   isCompleted,
   hasQuiz,
-  onMarkComplete,
   onScrollComplete,
 }: {
   subsection: Subsection | null;
@@ -1053,9 +1081,13 @@ function SubsectionViewer({
   totalSubsections?: number;
   userId?: string;
   onProgressUpdate?: (subsectionIndex: number, isCompleted: boolean) => void;
+  onQuizScoreUpdate?: (
+    lessonId: string,
+    subsectionIndex: number,
+    score: { correct: number; total: number } | null
+  ) => void;
   isCompleted?: boolean;
   hasQuiz?: boolean;
-  onMarkComplete?: () => void;
   onScrollComplete?: () => void;
 }) {
   const [hasReachedEnd, setHasReachedEnd] = useState(false);
@@ -1120,50 +1152,12 @@ function SubsectionViewer({
           totalSubsections={totalSubsections}
           userId={userId}
           onProgressUpdate={onProgressUpdate}
+          onQuizScoreUpdate={onQuizScoreUpdate}
         />
       ))}
 
       {/* Anchor element to detect scroll to end */}
       <div ref={endOfContentRef} className="h-1" />
-
-      {/* Botón "Completar Lección" al final del contenido - solo para lecciones sin quiz */}
-      {!hasQuiz && !isCompleted && onMarkComplete && (
-        <div className="mt-8 pt-6 border-t border-gray-200">
-          <div className="flex flex-col items-center gap-3">
-            {!hasReachedEnd ? (
-              <>
-                <div className="flex items-center gap-2 text-gray-400">
-                  <IconChevronDown size={20} className="animate-bounce" />
-                  <p className="text-sm text-center">
-                    Desplázate hacia abajo para habilitar el botón
-                  </p>
-                  <IconChevronDown size={20} className="animate-bounce" />
-                </div>
-                <button
-                  disabled
-                  className="flex items-center gap-2 px-6 py-3 bg-gray-300 text-gray-500 font-semibold rounded-full cursor-not-allowed opacity-60"
-                >
-                  <IconCheck size={20} />
-                  Marcar como completada
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-gray-500 text-center">
-                  ¡Excelente! Ya revisaste todo el contenido
-                </p>
-                <button
-                  onClick={onMarkComplete}
-                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold rounded-full hover:from-emerald-600 hover:to-teal-600 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 animate-pulse"
-                >
-                  <IconCheck size={20} />
-                  Marcar como completada
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Indicador de lección completada */}
       {isCompleted && (
@@ -1249,6 +1243,9 @@ export default function LessonPlayerPage() {
   const [progressTooltipOpen, setProgressTooltipOpen] = useState(false);
   const progressTooltipRef = useRef<HTMLDivElement>(null);
 
+  // Ref for the lesson content scroll container - used to reset scroll position when navigating
+  const lessonContentScrollRef = useRef<HTMLDivElement>(null);
+
   // Rating modal state
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
   const [userRating, setUserRating] = useState<number | null>(null);
@@ -1282,6 +1279,22 @@ export default function LessonPlayerPage() {
 
   // Quiz scores state - stores quiz scores by lessonId-subIndex
   const [quizScores, setQuizScores] = useState<Map<string, { correct: number; total: number }>>(new Map());
+
+  const upsertQuizScore = useCallback(
+    (lessonId: string, subsectionIndex: number, score: { correct: number; total: number } | null) => {
+      const key = `${lessonId}-${subsectionIndex}`;
+      setQuizScores((prev) => {
+        const next = new Map(prev);
+        if (!score) {
+          next.delete(key);
+          return next;
+        }
+        next.set(key, score);
+        return next;
+      });
+    },
+    []
+  );
 
   // Confetti animation state - shown when completing a section
   const [showConfetti, setShowConfetti] = useState(false);
@@ -1456,6 +1469,176 @@ export default function LessonPlayerPage() {
 
     return null;
   }, [user, courseId, isPreviewMode]);
+
+  const goToLessonAtSubsection = useCallback((lessonId: string, subsectionIndex: number) => {
+    // Actualizar last_accessed_lesson_id/subsection en segundo plano
+    if (user && courseId) {
+      fetch('/api/student/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId,
+          userId: user.id,
+          lessonId,
+          subsectionIndex,
+          isCompleted: false,
+          totalSubsections: 1,
+        }),
+      }).catch(err => console.error('[goToLessonAtSubsection] Error updating progress:', err));
+    }
+
+    router.push(`/student/courses/${courseId}/learn/lecture/${lessonId}?subsection=${subsectionIndex}`);
+  }, [router, courseId, user]);
+
+  const getLessonSubsectionCount = useCallback((lesson: Lesson | null | undefined): number => {
+    if (!lesson?.content) return 1;
+    try {
+      const parsed = JSON.parse(lesson.content);
+      const subs = parsed?.subsections;
+      return Array.isArray(subs) && subs.length > 0 ? subs.length : 1;
+    } catch {
+      return 1;
+    }
+  }, []);
+
+  const handleSubsectionProgressUpdate = useCallback(async (subIndex: number, isCompleted: boolean) => {
+    if (!currentLessonId || !user || isPreviewMode) return;
+
+    // Actualizar estado local optimista - marcar esta subsección como completada
+    setCompletedSubsectionsByLesson((prev) => {
+      const currentMax = prev[currentLessonId] ?? -1;
+      const newMax = Math.max(currentMax, subIndex);
+      return {
+        ...prev,
+        [currentLessonId]: newMax,
+      };
+    });
+
+    // Si es la última subsección, actualizar dbCompletedLessons de forma optimista
+    if (isCompleted) {
+      setDbCompletedLessons((prev) => {
+        if (prev.includes(currentLessonId)) return prev;
+        return [...prev, currentLessonId];
+      });
+
+      // Mostrar confetti al completar la sección
+      const completedLesson = sortedLessons.find(l => l.id === currentLessonId);
+      if (completedLesson) {
+        setConfettiMessage(`¡Completaste "${completedLesson.title}"!`);
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 4000);
+      }
+    }
+
+    // Actualizar progreso en segundo plano
+    const currentLessonForUpdate = sortedLessons.find(l => l.id === currentLessonId);
+    if (!currentLessonForUpdate?.content) return;
+
+    try {
+      const parsed = JSON.parse(currentLessonForUpdate.content);
+      const totalSubs = Array.isArray(parsed?.subsections) ? parsed.subsections.length : 0;
+      const result = await updateProgressInBackground(
+        currentLessonId,
+        subIndex,
+        isCompleted,
+        totalSubs
+      );
+
+      if (result?.completedLessons) {
+        setDbCompletedLessons(result.completedLessons);
+      }
+      if (result?.subsectionProgress) {
+        setCompletedSubsectionsByLesson(prev => ({
+          ...prev,
+          ...result.subsectionProgress,
+        }));
+      }
+    } catch (e) {
+      console.error('Error updating progress:', e);
+    }
+  }, [currentLessonId, user, isPreviewMode, sortedLessons, updateProgressInBackground]);
+
+  type NavTarget = { lessonId: string; subIndex: number };
+
+  const currentSubsectionCount = useMemo(() => {
+    return currentSubsections.length > 0 ? currentSubsections.length : 1;
+  }, [currentSubsections]);
+
+  const prevNavTarget = useMemo<NavTarget | null>(() => {
+    if (!currentLessonId) return null;
+    if (activeSubsectionIndex > 0) {
+      return { lessonId: currentLessonId, subIndex: activeSubsectionIndex - 1 };
+    }
+    if (!prevLesson) return null;
+    return { lessonId: prevLesson.id, subIndex: Math.max(0, getLessonSubsectionCount(prevLesson) - 1) };
+  }, [currentLessonId, activeSubsectionIndex, prevLesson, getLessonSubsectionCount]);
+
+  const nextNavTarget = useMemo<NavTarget | null>(() => {
+    if (!currentLessonId) return null;
+    if (activeSubsectionIndex < currentSubsectionCount - 1) {
+      return { lessonId: currentLessonId, subIndex: activeSubsectionIndex + 1 };
+    }
+    if (!nextLesson) return null;
+    return { lessonId: nextLesson.id, subIndex: 0 };
+  }, [currentLessonId, activeSubsectionIndex, currentSubsectionCount, nextLesson]);
+
+  const currentHighestCompletedIndex = currentLessonId ? (completedSubsectionsByLesson[currentLessonId] ?? -1) : -1;
+  const isCurrentLessonFullyCompleted = currentLessonId ? dbCompletedLessons.includes(currentLessonId) : false;
+  const isCurrentSubCompletedForNav =
+    !!currentLessonId && (isCurrentLessonFullyCompleted || activeSubsectionIndex <= currentHighestCompletedIndex);
+  const currentSubHasQuizForNav =
+    !!currentLessonId && subsectionHasQuiz(currentLessonId, activeSubsectionIndex);
+  const canProceedToNextForNav =
+    isPreviewMode || isCurrentSubCompletedForNav || (!currentSubHasQuizForNav && hasScrolledToEnd);
+
+  const handlePrevNavigation = useCallback(() => {
+    if (!prevNavTarget || !currentLessonId) return;
+    setHasScrolledToEnd(false);
+    if (prevNavTarget.lessonId === currentLessonId) {
+      setActiveSubsectionIndex(prevNavTarget.subIndex);
+      return;
+    }
+    goToLessonAtSubsection(prevNavTarget.lessonId, prevNavTarget.subIndex);
+  }, [prevNavTarget, currentLessonId, goToLessonAtSubsection]);
+
+  const handleNextNavigation = useCallback(async () => {
+    if (!currentLessonId) return;
+
+    // Fin del contenido: permitir finalizar (marcar completado) en lectura sin quiz
+    if (!nextNavTarget) {
+      if (isPreviewMode || isCurrentSubCompletedForNav || currentSubHasQuizForNav) return;
+      if (!hasScrolledToEnd) return;
+      await handleSubsectionProgressUpdate(activeSubsectionIndex, true);
+      return;
+    }
+
+    if (!canProceedToNextForNav) return;
+
+    // Para lectura (sin quiz), al avanzar marcamos la subsección actual como completada
+    if (!isPreviewMode && !isCurrentSubCompletedForNav && !currentSubHasQuizForNav) {
+      const isLastSubsection = activeSubsectionIndex >= currentSubsectionCount - 1;
+      await handleSubsectionProgressUpdate(activeSubsectionIndex, isLastSubsection);
+    }
+
+    setHasScrolledToEnd(false);
+    if (nextNavTarget.lessonId === currentLessonId) {
+      setActiveSubsectionIndex(nextNavTarget.subIndex);
+      return;
+    }
+    goToLessonAtSubsection(nextNavTarget.lessonId, nextNavTarget.subIndex);
+  }, [
+    currentLessonId,
+    nextNavTarget,
+    isPreviewMode,
+    isCurrentSubCompletedForNav,
+    currentSubHasQuizForNav,
+    hasScrolledToEnd,
+    canProceedToNextForNav,
+    handleSubsectionProgressUpdate,
+    activeSubsectionIndex,
+    currentSubsectionCount,
+    goToLessonAtSubsection,
+  ]);
 
   // ===== HELPER: Handle completion confirmation =====
   const handleConfirmCompletion = useCallback(() => {
@@ -1994,6 +2177,10 @@ export default function LessonPlayerPage() {
     }
     // Reset scroll state when changing subsection/lesson
     setHasScrolledToEnd(false);
+    // Reset the actual scroll position of the content pane to top
+    if (lessonContentScrollRef.current) {
+      lessonContentScrollRef.current.scrollTop = 0;
+    }
   }, [currentLessonId, searchParams]);
 
   // Close progress tooltip when clicking outside
@@ -2595,7 +2782,7 @@ export default function LessonPlayerPage() {
         <div className="flex-1 overflow-y-auto flex flex-col">
 
           {/* Lesson Content Area */}
-          <div className="flex-1 bg-white p-6 md:p-8 overflow-y-auto">
+          <div ref={lessonContentScrollRef} className="flex-1 bg-white p-6 md:p-8 overflow-y-auto">
             <SubsectionViewer
               subsection={activeSubsection}
               courseId={courseId}
@@ -2603,15 +2790,16 @@ export default function LessonPlayerPage() {
               subsectionIndex={activeSubsectionIndex}
               totalSubsections={(() => {
                 const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
-                if (!currentLesson?.content) return 0;
+                if (!currentLesson?.content) return 1;
                 try {
                   const parsed = JSON.parse(currentLesson.content);
-                  return parsed.subsections?.length || 0;
+                  return parsed.subsections?.length || 1;
                 } catch {
-                  return 0;
+                  return 1;
                 }
               })()}
               userId={user?.id}
+              onQuizScoreUpdate={upsertQuizScore}
               isCompleted={(() => {
                 if (!currentLessonId) return false;
                 const highestCompletedIndex = completedSubsectionsByLesson[currentLessonId] ?? -1;
@@ -2619,120 +2807,7 @@ export default function LessonPlayerPage() {
                 return isLessonFullyCompleted || activeSubsectionIndex <= highestCompletedIndex;
               })()}
               hasQuiz={subsectionHasQuiz(currentLessonId, activeSubsectionIndex)}
-              onMarkComplete={async () => {
-                if (!currentLessonId || !user || isPreviewMode) return;
-
-                const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
-                if (!currentLesson?.content) return;
-
-                let totalSubs = 0;
-                try {
-                  const parsed = JSON.parse(currentLesson.content);
-                  totalSubs = parsed.subsections?.length || 0;
-                } catch { }
-
-                // Verificar si es la última subsección de la sección
-                const isLastSubsection = activeSubsectionIndex === totalSubs - 1;
-
-                // Actualizar estado local
-                setCompletedSubsectionsByLesson((prev) => {
-                  const currentMax = prev[currentLessonId] ?? -1;
-                  const newMax = Math.max(currentMax, activeSubsectionIndex);
-                  return {
-                    ...prev,
-                    [currentLessonId]: newMax,
-                  };
-                });
-
-                if (isLastSubsection) {
-                  setDbCompletedLessons((prev) => {
-                    if (prev.includes(currentLessonId)) return prev;
-                    return [...prev, currentLessonId];
-                  });
-
-                  // Mostrar confetti al completar la sección
-                  setConfettiMessage(`¡Completaste "${currentLesson.title}"!`);
-                  setShowConfetti(true);
-                  setTimeout(() => setShowConfetti(false), 4000);
-                }
-
-                // Actualizar progreso en segundo plano
-                const result = await updateProgressInBackground(
-                  currentLessonId,
-                  activeSubsectionIndex,
-                  isLastSubsection,
-                  totalSubs
-                );
-
-                if (result?.completedLessons) {
-                  setDbCompletedLessons(result.completedLessons);
-                }
-                if (result?.subsectionProgress) {
-                  setCompletedSubsectionsByLesson(prev => ({
-                    ...prev,
-                    ...result.subsectionProgress,
-                  }));
-                }
-              }}
-              onProgressUpdate={async (subIndex: number, isCompleted: boolean) => {
-                if (!currentLessonId || !user || isPreviewMode) return;
-
-                // Actualizar estado local optimista - marcar esta subsección como completada
-                setCompletedSubsectionsByLesson((prev) => {
-                  const currentMax = prev[currentLessonId] ?? -1;
-                  const newMax = Math.max(currentMax, subIndex);
-                  return {
-                    ...prev,
-                    [currentLessonId]: newMax,
-                  };
-                });
-
-                // Si es la última subsección, actualizar dbCompletedLessons de forma optimista
-                if (isCompleted) {
-                  setDbCompletedLessons((prev) => {
-                    if (prev.includes(currentLessonId)) return prev;
-                    return [...prev, currentLessonId];
-                  });
-
-                  // Mostrar confetti al completar la sección
-                  const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
-                  if (currentLesson) {
-                    setConfettiMessage(`¡Completaste "${currentLesson.title}"!`);
-                    setShowConfetti(true);
-                    setTimeout(() => setShowConfetti(false), 4000);
-                  }
-                }
-
-                // Actualizar progreso en segundo plano
-                const currentLesson = sortedLessons.find(l => l.id === currentLessonId);
-                if (currentLesson?.content) {
-                  try {
-                    const parsed = JSON.parse(currentLesson.content);
-                    const totalSubs = parsed.subsections?.length || 0;
-                    const result = await updateProgressInBackground(
-                      currentLessonId,
-                      subIndex,
-                      isCompleted,
-                      totalSubs
-                    );
-
-                    // Si la lección se completó, actualizar dbCompletedLessons con datos del servidor
-                    if (result?.completedLessons) {
-                      setDbCompletedLessons(result.completedLessons);
-                    }
-
-                    // Actualizar subsection progress desde la respuesta
-                    if (result?.subsectionProgress) {
-                      setCompletedSubsectionsByLesson(prev => ({
-                        ...prev,
-                        ...result.subsectionProgress,
-                      }));
-                    }
-                  } catch (e) {
-                    console.error('Error updating progress:', e);
-                  }
-                }
-              }}
+              onProgressUpdate={handleSubsectionProgressUpdate}
               onScrollComplete={() => {
                 // Notificar que el usuario ha hecho scroll hasta el final
                 setHasScrolledToEnd(true);
@@ -2740,8 +2815,55 @@ export default function LessonPlayerPage() {
             />
           </div>
 
+          {/* Lesson Navigation Controls - Fixed at bottom of main content pane */}
+          <div className="shrink-0 pt-4 pb-4 px-6 md:px-8 bg-white border-t border-gray-200">
+            <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
+              <button
+                onClick={handlePrevNavigation}
+                disabled={!prevNavTarget}
+                className={cn(
+                  "flex items-center gap-2 px-6 py-3 rounded-full font-semibold transition-all shadow-lg",
+                  prevNavTarget
+                    ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    : "bg-gray-100 text-gray-400 cursor-not-allowed opacity-70"
+                )}
+              >
+                <IconChevronLeft size={20} />
+                Anterior
+              </button>
+
+              <button
+                onClick={handleNextNavigation}
+                disabled={nextNavTarget ? !canProceedToNextForNav : (isPreviewMode || isCurrentSubCompletedForNav || currentSubHasQuizForNav || !hasScrolledToEnd)}
+                className={cn(
+                  "flex items-center gap-2 px-8 py-3 rounded-full font-semibold transition-all shadow-lg",
+                  (nextNavTarget ? canProceedToNextForNav : (!isPreviewMode && !isCurrentSubCompletedForNav && !currentSubHasQuizForNav && hasScrolledToEnd))
+                    ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700"
+                    : "bg-purple-100 text-purple-300 cursor-not-allowed opacity-70"
+                )}
+              >
+                {nextNavTarget ? "Siguiente" : "Finalizar"}
+                <IconChevronRight size={20} />
+              </button>
+            </div>
+
+            {!isPreviewMode && nextNavTarget && !isCurrentSubCompletedForNav && (
+              <div className="max-w-4xl mx-auto mt-2 text-center">
+                {currentSubHasQuizForNav ? (
+                  <p className="text-xs text-gray-500">
+                    Completa el quiz para habilitar "Siguiente".
+                  </p>
+                ) : !hasScrolledToEnd ? (
+                  <p className="text-xs text-gray-500">
+                    Desplázate hasta el final para habilitar "Siguiente".
+                  </p>
+                ) : null}
+              </div>
+            )}
+          </div>
+
           {/* Lower Tabs & Content */}
-          <div className="bg-white border-t flex-1 flex flex-col" style={{ borderColor: TOKENS.colors.border }}>
+          <div className="bg-white flex-1 flex flex-col" style={{ borderColor: TOKENS.colors.border }}>
             {/* Tab Navigation */}
             <div className="border-b px-4 md:px-8 shrink-0" style={{ borderColor: TOKENS.colors.border }}>
               <div className="flex gap-4 md:gap-8 overflow-x-auto scrollbar-hide">
@@ -3841,3 +3963,10 @@ export default function LessonPlayerPage() {
     </div>
   );
 }
+
+
+
+
+
+
+

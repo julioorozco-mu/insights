@@ -385,9 +385,7 @@ export default function EnrolledCoursesPage() {
                     isMicrocredentialCourse: data.isMicrocredentialCourse,
                     isLevel2Locked: data.isLevel2Locked,
                     microcredentialId: data.microcredentialId,
-                    levelNumber: data.isLevel2Locked !== undefined
-                      ? (data.isLevel2Locked ? 2 : (progressMap.get(course.id)?.progress === 100 ? 1 : undefined))
-                      : undefined,
+                    levelNumber: data.levelNumber,
                   });
                 }
               }
@@ -517,9 +515,9 @@ export default function EnrolledCoursesPage() {
                   )}
 
                   {/* Badge de Nivel si es microcredencial */}
-                  {accessInfo?.isMicrocredentialCourse && (
+                  {accessInfo?.isMicrocredentialCourse && accessInfo.levelNumber && (
                     <div className="absolute top-3 left-3 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-md">
-                      Nivel {isLocked ? '2' : '1'}
+                      Nivel {accessInfo.levelNumber}
                     </div>
                   )}
                 </div>
