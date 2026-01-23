@@ -1246,6 +1246,9 @@ export default function LessonPlayerPage() {
   // Ref for the lesson content scroll container - used to reset scroll position when navigating
   const lessonContentScrollRef = useRef<HTMLDivElement>(null);
 
+  // Ref for the sidebar scroll container - used to reset scroll position when navigating
+  const sidebarScrollRef = useRef<HTMLDivElement>(null);
+
   // Rating modal state
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
   const [userRating, setUserRating] = useState<number | null>(null);
@@ -2183,6 +2186,22 @@ export default function LessonPlayerPage() {
     }
   }, [currentLessonId, searchParams]);
 
+  // Reset scroll position when active subsection changes (navigation via buttons)
+  // Resets main window scroll, content scroll, and sidebar scroll
+  useEffect(() => {
+    // Reset main window/page scroll (scrollbar on the right edge of the window)
+    window.scrollTo(0, 0);
+    // Reset content container scroll
+    if (lessonContentScrollRef.current) {
+      lessonContentScrollRef.current.scrollTop = 0;
+    }
+    // Reset sidebar scroll
+    if (sidebarScrollRef.current) {
+      sidebarScrollRef.current.scrollTop = 0;
+    }
+    setHasScrolledToEnd(false);
+  }, [activeSubsectionIndex]);
+
   // Close progress tooltip when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -2779,7 +2798,7 @@ export default function LessonPlayerPage() {
       <main className="flex flex-1 overflow-hidden">
 
         {/* ZONE A: Main Content Stage (Left) */}
-        <div className="flex-1 overflow-y-auto flex flex-col">
+        <div className="flex-1 overflow-hidden flex flex-col">
 
           {/* Lesson Content Area */}
           <div ref={lessonContentScrollRef} className="flex-1 bg-white p-6 md:p-8 overflow-y-auto">
@@ -3334,7 +3353,7 @@ export default function LessonPlayerPage() {
           </div>
 
           {/* Sections & Lessons List */}
-          <div className="flex-1 overflow-y-auto">
+          <div ref={sidebarScrollRef} className="flex-1 overflow-y-auto">
             {sortedLessons.map((lesson, lessonIndex) => {
               // Parsear subsecciones del content JSON
               let subsections: Subsection[] = [];
