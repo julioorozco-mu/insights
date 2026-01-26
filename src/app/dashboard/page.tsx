@@ -740,6 +740,9 @@ export default function DashboardPage() {
     return selectedDay ? calendarData.lessonsPerDay[selectedDay]?.lessons || [] : [];
   }, [selectedDay, calendarData.lessonsPerDay]);
 
+  // Check if user is admin role (admin, superadmin, support)
+  const isAdminRole = user?.role === "admin" || user?.role === "superadmin" || user?.role === "support";
+
   // Loading state
   if (loading) {
     return (
@@ -781,42 +784,44 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-8 lg:flex-row">
         {/* Left Column - Main Content */}
         <div className="flex-1 space-y-8">
-          {/* Top Courses Section - Recommended */}
-          <section>
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-900">Cursos recomendados para ti</h2>
-              <Link href="/dashboard/available-courses" className="text-sm font-medium text-brand-secondary hover:underline">
-                Ver todos
-              </Link>
-            </div>
-            {recommendedCourses.length > 0 ? (
-              <div className="grid gap-6 md:grid-cols-2">
-                {recommendedCourses.map((course, idx) => (
-                  <Link key={course.courseId} href={`/dashboard/available-courses`} className="block h-full">
-                    <CourseCard
-                      {...course}
-                      priority={idx === 0}
-                      courseId={course.courseId}
-                      isFavorite={favorites.has(course.courseId)}
-                      loadingFavorite={loadingFavorite === course.courseId}
-                      onToggleFavorite={(e) => handleToggleFavorite(course.courseId, e)}
-                    />
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center">
-                <BookOpen className="mx-auto h-12 w-12 text-slate-400" />
-                <p className="mt-2 text-slate-500">No hay cursos recomendados disponibles</p>
-                <Link
-                  href="/dashboard/available-courses"
-                  className="mt-4 inline-block rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary/90"
-                >
-                  Explorar cursos
+          {/* Top Courses Section - Recommended (hidden for admin roles) */}
+          {!isAdminRole && (
+            <section>
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-slate-900">Cursos recomendados para ti</h2>
+                <Link href="/dashboard/available-courses" className="text-sm font-medium text-brand-secondary hover:underline">
+                  Ver todos
                 </Link>
               </div>
-            )}
-          </section>
+              {recommendedCourses.length > 0 ? (
+                <div className="grid gap-6 md:grid-cols-2">
+                  {recommendedCourses.map((course, idx) => (
+                    <Link key={course.courseId} href={`/dashboard/available-courses`} className="block h-full">
+                      <CourseCard
+                        {...course}
+                        priority={idx === 0}
+                        courseId={course.courseId}
+                        isFavorite={favorites.has(course.courseId)}
+                        loadingFavorite={loadingFavorite === course.courseId}
+                        onToggleFavorite={(e) => handleToggleFavorite(course.courseId, e)}
+                      />
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center">
+                  <BookOpen className="mx-auto h-12 w-12 text-slate-400" />
+                  <p className="mt-2 text-slate-500">No hay cursos recomendados disponibles</p>
+                  <Link
+                    href="/dashboard/available-courses"
+                    className="mt-4 inline-block rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary/90"
+                  >
+                    Explorar cursos
+                  </Link>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* My Courses Section */}
           <section>
@@ -1013,16 +1018,18 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          {/* Productivity Chart - Lazy Loaded */}
-          <section className="rounded-3xl bg-white p-5 shadow-card-soft">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">Progreso Semanal</h3>
-                <p className="text-sm text-slate-500">Tu actividad de estudio</p>
+          {/* Productivity Chart - Lazy Loaded (hidden for admin roles) */}
+          {!isAdminRole && (
+            <section className="rounded-3xl bg-white p-5 shadow-card-soft">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900">Progreso Semanal</h3>
+                  <p className="text-sm text-slate-500">Tu actividad de estudio</p>
+                </div>
               </div>
-            </div>
-            <ProductivityChartLazy data={productivityData} />
-          </section>
+              <ProductivityChartLazy data={productivityData} />
+            </section>
+          )}
         </div>
       </div>
     </div>
