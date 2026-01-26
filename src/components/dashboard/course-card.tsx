@@ -3,7 +3,7 @@ import { Bookmark, Star, Heart } from "lucide-react";
 import { cn, stripHtmlAndTruncate } from "@/lib/utils";
 
 interface CourseCardProps {
-  level: "Principiante" | "Intermedio" | "Avanzado";
+  level: "Introductorio" | "Intermedio" | "Avanzado";
   title: string;
   description: string;
   students: number;
@@ -20,7 +20,7 @@ interface CourseCardProps {
 }
 
 const levelStyles: Record<string, string> = {
-  Principiante: "bg-emerald-100 text-emerald-700",
+  Introductorio: "bg-emerald-100 text-emerald-700",
   Intermedio: "bg-amber-100 text-amber-700",
   Avanzado: "bg-rose-100 text-rose-700",
 };

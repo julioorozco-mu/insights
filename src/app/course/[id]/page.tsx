@@ -241,7 +241,7 @@ export default function CoursePublicPage() {
               {course.difficulty && (
                 <div className="badge badge-lg badge-primary text-white">
                   {course.difficulty === "beginner"
-                    ? "Principiante"
+                    ? "Introductorio"
                     : course.difficulty === "intermediate"
                     ? "Intermedio"
                     : "Avanzado"}

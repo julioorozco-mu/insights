@@ -152,7 +152,7 @@ const SPECIALIZATIONS = [
   "Marketing",
 ];
 
-const COURSE_LEVELS = ["Principiante", "Intermedio", "Avanzado"];
+const COURSE_LEVELS = ["Introductorio", "Intermedio", "Avanzado"];
 
 const PUBLISH_STATUSES = ["Publicado", "Borrador", "Archivado"];
 
@@ -268,7 +268,7 @@ export default function EditCoursePage() {
   const [tagInput, setTagInput] = useState<string>("");
   const [university, setUniversity] = useState<string>("Cualquier universidad");
   const [specialization, setSpecialization] = useState<string>("Negocios");
-  const [courseLevel, setCourseLevel] = useState<string>("Principiante");
+  const [courseLevel, setCourseLevel] = useState<string>("Introductorio");
   const [isPublished, setIsPublished] = useState<string>("Publicado");
   const [isHidden, setIsHidden] = useState<boolean>(false);
   const [price, setPrice] = useState<string>("0.00");
@@ -353,7 +353,7 @@ export default function EditCoursePage() {
         setSelectedTags(course.tags || []);
         setUniversity(course.university || "Cualquier universidad");
         setSpecialization(course.specialization || "Negocios");
-        setCourseLevel(course.difficulty === "beginner" ? "Principiante" : course.difficulty === "intermediate" ? "Intermedio" : "Avanzado");
+        setCourseLevel(course.difficulty === "beginner" ? "Introductorio" : course.difficulty === "intermediate" ? "Intermedio" : "Avanzado");
         setIsPublished(course.isPublished ? "Publicado" : "Borrador");
         setIsHidden(course.isHidden || false);
         setPrice(course.price?.toFixed(2) || "0.00");
@@ -612,7 +612,7 @@ export default function EditCoursePage() {
       
       // Mapear nivel de curso
       const levelMap: Record<string, "beginner" | "intermediate" | "advanced"> = {
-        "Principiante": "beginner",
+        "Introductorio": "beginner",
         "Intermedio": "intermediate",
         "Avanzado": "advanced"
       };
@@ -810,7 +810,7 @@ export default function EditCoursePage() {
       
       // Mapear nivel de curso
       const levelMap: Record<string, "beginner" | "intermediate" | "advanced"> = {
-        "Principiante": "beginner",
+        "Introductorio": "beginner",
         "Intermedio": "intermediate",
         "Avanzado": "advanced"
       };

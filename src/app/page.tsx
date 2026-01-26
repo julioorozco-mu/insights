@@ -159,6 +159,7 @@ export default function HomePage() {
               alt="Logo UNACH"
               width={180}
               height={60}
+              priority
               className="h-16 w-auto object-contain"
             />
             <Image
@@ -166,6 +167,7 @@ export default function HomePage() {
               alt="Marca UNACH"
               width={120}
               height={60}
+              priority
               className="h-16 w-auto object-contain"
             />
           </div>

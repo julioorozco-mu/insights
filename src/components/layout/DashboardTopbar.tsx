@@ -73,6 +73,7 @@ export function DashboardTopbar({ onToggleSidebar, user, onSignOut }: DashboardT
               alt="Logo UNACH"
               width={180}
               height={60}
+              priority
               className="h-16 w-auto object-contain"
             />
             <Image
@@ -80,6 +81,7 @@ export function DashboardTopbar({ onToggleSidebar, user, onSignOut }: DashboardT
               alt="Marca UNACH"
               width={120}
               height={60}
+              priority
               className="h-16 w-auto object-contain"
             />
           </div>

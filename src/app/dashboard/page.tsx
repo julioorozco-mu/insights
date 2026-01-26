@@ -33,7 +33,7 @@ interface EnrolledCourseData {
 }
 
 interface RecommendedCourse {
-  level: "Principiante" | "Intermedio" | "Avanzado";
+  level: "Introductorio" | "Intermedio" | "Avanzado";
   title: string;
   description: string;
   students: number;
@@ -64,12 +64,12 @@ interface StatItem {
 }
 
 // Función para mapear difficulty a level display en español
-function mapDifficultyToLevel(difficulty?: string): "Principiante" | "Intermedio" | "Avanzado" {
+function mapDifficultyToLevel(difficulty?: string): "Introductorio" | "Intermedio" | "Avanzado" {
   switch (difficulty) {
-    case "beginner": return "Principiante";
+    case "beginner": return "Introductorio";
     case "intermediate": return "Intermedio";
     case "advanced": return "Avanzado";
-    default: return "Principiante";
+    default: return "Introductorio";
   }
 }
 

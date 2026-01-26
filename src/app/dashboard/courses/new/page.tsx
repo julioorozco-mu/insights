@@ -77,7 +77,7 @@ const SPECIALIZATIONS = [
   "Marketing",
 ];
 
-const COURSE_LEVELS = ["Principiante", "Intermedio", "Avanzado"];
+const COURSE_LEVELS = ["Introductorio", "Intermedio", "Avanzado"];
 
 const PUBLISH_STATUSES = ["Publicado", "Borrador", "Archivado"];
 
@@ -199,7 +199,7 @@ export default function NewCoursePage() {
   const [tagInput, setTagInput] = useState<string>("");
   const [university, setUniversity] = useState<string>("Cualquier universidad");
   const [specialization, setSpecialization] = useState<string>("Negocios");
-  const [courseLevel, setCourseLevel] = useState<string>("Principiante");
+  const [courseLevel, setCourseLevel] = useState<string>("Introductorio");
   const [isPublished, setIsPublished] = useState<string>("Borrador");
   const [isHidden, setIsHidden] = useState<boolean>(false);
   const [price, setPrice] = useState<string>("0.00");
@@ -321,7 +321,7 @@ export default function NewCoursePage() {
 
       // Mapear nivel de curso
       const levelMap: Record<string, "beginner" | "intermediate" | "advanced"> = {
-        "Principiante": "beginner",
+        "Introductorio": "beginner",
         "Intermedio": "intermediate",
         "Avanzado": "advanced"
       };
