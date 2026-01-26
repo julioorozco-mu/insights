@@ -1,3 +1,4 @@
+import { memo } from "react";
 import Image from "next/image";
 import { Bookmark, Star, Heart } from "lucide-react";
 import { cn, stripHtmlAndTruncate } from "@/lib/utils";
@@ -25,7 +26,7 @@ const levelStyles: Record<string, string> = {
   Avanzado: "bg-rose-100 text-rose-700",
 };
 
-export function CourseCard(props: CourseCardProps) {
+export const CourseCard = memo(function CourseCard(props: CourseCardProps) {
   const levelClass = levelStyles[props.level] || "bg-slate-100 text-slate-700";
   const cleanDescription = stripHtmlAndTruncate(props.description, 120);
 
@@ -93,4 +94,4 @@ export function CourseCard(props: CourseCardProps) {
       </div>
     </article>
   );
-}
+});

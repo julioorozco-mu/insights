@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import {
   Bar,
   BarChart,
@@ -27,7 +28,7 @@ interface ProductivityChartProps {
   };
 }
 
-export function ProductivityChart({ data, labels }: ProductivityChartProps) {
+export const ProductivityChart = memo(function ProductivityChart({ data, labels }: ProductivityChartProps) {
   const legendLabels = {
     clases: labels?.clases || "Clases",
     autoestudio: labels?.autoestudio || "Autoestudio",
@@ -66,7 +67,7 @@ export function ProductivityChart({ data, labels }: ProductivityChartProps) {
       </div>
     </div>
   );
-}
+});
 
 type CustomTooltipProps = {
   active?: boolean;

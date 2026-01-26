@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { CalendarDays } from "lucide-react";
 
 interface ScheduleCardProps {
@@ -7,7 +8,7 @@ interface ScheduleCardProps {
   time: string;
 }
 
-export function ScheduleCard({ type, title, date, time }: ScheduleCardProps) {
+export const ScheduleCard = memo(function ScheduleCard({ type, title, date, time }: ScheduleCardProps) {
   return (
     <div className="rounded-2xl bg-white p-4 shadow-card-soft">
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -22,4 +23,4 @@ export function ScheduleCard({ type, title, date, time }: ScheduleCardProps) {
       </div>
     </div>
   );
-}
+});

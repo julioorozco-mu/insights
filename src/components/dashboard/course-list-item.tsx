@@ -1,3 +1,4 @@
+import { memo } from "react";
 import Image from "next/image";
 
 interface CourseListItemProps {
@@ -8,7 +9,7 @@ interface CourseListItemProps {
   highlight?: string;
 }
 
-export function CourseListItem({ title, sessions, thumbnail, avatars, highlight }: CourseListItemProps) {
+export const CourseListItem = memo(function CourseListItem({ title, sessions, thumbnail, avatars, highlight }: CourseListItemProps) {
   return (
     <div className="flex items-center gap-4 rounded-2xl bg-white px-4 py-3 shadow-card-soft">
       <div className="h-12 w-12 overflow-hidden rounded-xl">
@@ -40,4 +41,4 @@ export function CourseListItem({ title, sessions, thumbnail, avatars, highlight 
       </div>
     </div>
   );
-}
+});
