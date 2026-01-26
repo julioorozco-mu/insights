@@ -18,3 +18,6 @@
 4 API Security Best Practices (security/api-security-best-practices)
 5 Plotly (scientific/plotly)
 6 Form CRO (business-marketing/form-cro)
+
+
+Como React Performance Optimizer, Backend Architect, Database Architect y Security Auditor usando la skill API Security Best Practices, analiza la primera carga del dashboard student y optimízalo. Verifica el uso de memo, lazy loading y reduce re-renders innecesarios. Actualmente se considera que la primera carga es lenta
