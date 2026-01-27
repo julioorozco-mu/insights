@@ -12,7 +12,7 @@ const DANGEROUS_CHARS = /[<>"'`;\\]/;
 // El verificador puede ser 1 o 2 caracteres, pero el CURP siempre tiene 18 caracteres total
 const CURP_REGEX = /^[A-Z]{4}\d{6}[HM][A-Z]{2}[0-9A-Z]{3}[0-9A-Z]{2}$/;
 
-export const userRoleSchema = z.enum(["student", "speaker", "admin"]);
+export const userRoleSchema = z.enum(["student", "teacher", "admin"]);
 
 export const createUserSchema = z.object({
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
@@ -48,54 +48,54 @@ export const createUserSchema = z.object({
   bio: z.string().optional(),
   expertise: z.array(z.string()).optional(),
 })
-.refine((data) => data.password === data.confirmPassword, {
-  message: "Las contraseñas no coinciden",
-  path: ["confirmPassword"],
-})
-.refine(
-  (data) => {
-    // Solo validar si todos los campos requeridos están presentes
-    if (!data.curp || !data.name || !data.lastName || !data.dateOfBirth || !data.gender || !data.state) {
-      // Si falta algún campo, no validar aún (dejar que otras validaciones manejen campos faltantes)
-      return true;
-    }
-    
-    // Validar CURP contra los datos
-    const validation = validateCURPAgainstData(data.curp, {
-      name: data.name,
-      lastName: data.lastName,
-      dateOfBirth: data.dateOfBirth,
-      gender: data.gender,
-      state: data.state,
-    });
-    
-    // Si la validación falla, retornar false para que Zod muestre el error
-    return validation.isValid;
-  },
-  (data) => {
-    // Solo generar mensaje de error si todos los campos están presentes
-    if (!data.curp || !data.name || !data.lastName || !data.dateOfBirth || !data.gender || !data.state) {
-      return { 
-        message: "Completa todos los campos antes de validar el CURP", 
-        path: ["curp"] 
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Las contraseñas no coinciden",
+    path: ["confirmPassword"],
+  })
+  .refine(
+    (data) => {
+      // Solo validar si todos los campos requeridos están presentes
+      if (!data.curp || !data.name || !data.lastName || !data.dateOfBirth || !data.gender || !data.state) {
+        // Si falta algún campo, no validar aún (dejar que otras validaciones manejen campos faltantes)
+        return true;
+      }
+
+      // Validar CURP contra los datos
+      const validation = validateCURPAgainstData(data.curp, {
+        name: data.name,
+        lastName: data.lastName,
+        dateOfBirth: data.dateOfBirth,
+        gender: data.gender,
+        state: data.state,
+      });
+
+      // Si la validación falla, retornar false para que Zod muestre el error
+      return validation.isValid;
+    },
+    (data) => {
+      // Solo generar mensaje de error si todos los campos están presentes
+      if (!data.curp || !data.name || !data.lastName || !data.dateOfBirth || !data.gender || !data.state) {
+        return {
+          message: "Completa todos los campos antes de validar el CURP",
+          path: ["curp"]
+        };
+      }
+
+      // Obtener el mensaje de error específico de la validación
+      const validation = validateCURPAgainstData(data.curp, {
+        name: data.name,
+        lastName: data.lastName,
+        dateOfBirth: data.dateOfBirth,
+        gender: data.gender,
+        state: data.state,
+      });
+
+      return {
+        message: validation.error || "El CURP no coincide con los datos proporcionados",
+        path: ["curp"],
       };
     }
-    
-    // Obtener el mensaje de error específico de la validación
-    const validation = validateCURPAgainstData(data.curp, {
-      name: data.name,
-      lastName: data.lastName,
-      dateOfBirth: data.dateOfBirth,
-      gender: data.gender,
-      state: data.state,
-    });
-    
-    return {
-      message: validation.error || "El CURP no coincide con los datos proporcionados",
-      path: ["curp"],
-    };
-  }
-);
+  );
 
 export const updateUserSchema = z.object({
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres").optional(),
@@ -138,6 +138,7 @@ export const resetPasswordSchema = z.object({
 });
 
 export type CreateUserInput = z.infer<typeof createUserSchema>;
+export type CreateUserFormInput = z.input<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
