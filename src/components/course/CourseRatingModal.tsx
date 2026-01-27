@@ -22,6 +22,7 @@ export interface CourseRatingModalProps {
   courseName?: string;
   onRatingSubmitted?: (review: CourseReview) => void;
   onRatingDeleted?: () => void;
+  courseProgress?: number; // 0-100, para validar que el curso esté completo
 }
 
 const RATING_LABELS: Record<number, string> = {
@@ -40,6 +41,7 @@ export default function CourseRatingModal({
   courseName,
   onRatingSubmitted,
   onRatingDeleted,
+  courseProgress = 100, // Por defecto permitir si no se especifica
 }: CourseRatingModalProps) {
   // State
   const [rating, setRating] = useState<number>(0);
@@ -182,6 +184,53 @@ export default function CourseRatingModal({
   // Don't render if not open
   if (!isOpen) return null;
 
+  // Validar que el curso esté al 100% antes de permitir reseña
+  if (courseProgress < 100) {
+    return (
+      <>
+        {/* Backdrop */}
+        <div 
+          className="fixed inset-0 bg-black/80 z-50 animate-in fade-in duration-200"
+          onClick={onClose}
+        />
+        
+        {/* Modal */}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+          <div 
+            className="bg-white rounded-lg shadow-2xl w-full max-w-lg pointer-events-auto animate-in zoom-in-95 fade-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors z-10"
+            >
+              <IconX size={24} />
+            </button>
+
+            {/* Content */}
+            <div className="p-8 pt-12">
+              <h2 className="text-2xl font-bold text-gray-900 text-center mb-4">
+                Curso no completado
+              </h2>
+              <p className="text-gray-600 text-center mb-6">
+                Debes completar el curso al 100% para poder dejar una reseña.
+                <br />
+                <span className="font-semibold">Tu progreso actual: {courseProgress}%</span>
+              </p>
+              <button
+                onClick={onClose}
+                className="w-full px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   const displayRating = hoverRating || rating;
   const isEditing = !!existingReview;
 
@@ -255,12 +304,19 @@ export default function CourseRatingModal({
                 </div>
 
                 {/* Comment Field (shows after rating is selected) */}
-                {showCommentField && (
+                {showCommentField && rating > 0 && (
                   <div className="animate-in slide-in-from-top-2 fade-in duration-300">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      {rating === 5 
+                        ? "¿Qué fue lo que más te gustó?" 
+                        : "¿Qué mejorarías del curso?"}
+                    </label>
                     <textarea
                       value={comment}
                       onChange={(e) => setComment(e.target.value)}
-                      placeholder="Escribe una reseña opcional..."
+                      placeholder={rating === 5 
+                        ? "Comparte qué fue lo que más te gustó del curso..." 
+                        : "Comparte qué mejorarías del curso..."}
                       maxLength={2000}
                       rows={4}
                       className="w-full p-4 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-shadow text-gray-700 placeholder-gray-400"

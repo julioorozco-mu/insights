@@ -52,3 +52,35 @@ export function stripHtmlAndTruncate(html: string | null | undefined, maxLength:
 
   return text;
 }
+
+/**
+ * Capitaliza el texto de forma inteligente para títulos y descripciones.
+ * - Primera letra de cada palabra en mayúscula
+ * - Mantiene palabras cortas (artículos, preposiciones) en minúsculas excepto si son la primera palabra
+ * - Respeta acentos y caracteres especiales
+ */
+export function capitalizeText(text: string | null | undefined): string {
+  if (!text) return "";
+
+  // Lista de palabras que deben mantenerse en minúsculas (excepto si son la primera palabra)
+  const lowercaseWords = new Set([
+    "de", "del", "la", "las", "los", "el", "un", "una", "unos", "unas",
+    "y", "o", "e", "u", "a", "en", "por", "para", "con", "sin", "sobre",
+    "entre", "hasta", "desde", "durante", "mediante", "según", "contra"
+  ]);
+
+  // Dividir en palabras
+  const words = text.trim().split(/\s+/);
+  
+  // Capitalizar cada palabra
+  const capitalized = words.map((word, index) => {
+    // Si es la primera palabra o no está en la lista de minúsculas, capitalizar
+    if (index === 0 || !lowercaseWords.has(word.toLowerCase())) {
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }
+    // Mantener en minúsculas si está en la lista
+    return word.toLowerCase();
+  });
+
+  return capitalized.join(" ");
+}

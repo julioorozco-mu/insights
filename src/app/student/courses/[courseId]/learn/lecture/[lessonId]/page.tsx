@@ -2601,9 +2601,25 @@ export default function LessonPlayerPage() {
               {/* Progress Indicator */}
               <div className="hidden md:flex items-center gap-2 text-sm text-gray-300">
                 <button
-                  onClick={() => setIsRatingModalOpen(true)}
-                  className="flex items-center gap-1.5 text-yellow-400 cursor-pointer hover:text-yellow-300 transition-colors group"
-                  title={userRating ? "Editar calificación" : "Calificar este curso"}
+                  onClick={() => {
+                    // Solo permitir reseña si el curso está al 100%
+                    if (visualProgress >= 100) {
+                      setIsRatingModalOpen(true);
+                    } else {
+                      // Mostrar mensaje informativo
+                      alert(`Completa el curso al 100% para dejar una reseña. Tu progreso actual es ${visualProgress}%.`);
+                    }
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 transition-colors group",
+                    visualProgress >= 100
+                      ? "text-yellow-400 cursor-pointer hover:text-yellow-300"
+                      : "text-gray-500 cursor-not-allowed opacity-60"
+                  )}
+                  title={visualProgress >= 100 
+                    ? (userRating ? "Editar calificación" : "Calificar este curso")
+                    : `Completa el curso al 100% para dejar una reseña (${visualProgress}%)`}
+                  disabled={visualProgress < 100}
                 >
                   {loadingRating ? (
                     <IconLoader2 size={16} className="animate-spin" />
@@ -3829,6 +3845,7 @@ export default function LessonPlayerPage() {
           courseId={courseId}
           userId={user.id}
           courseName={courseInfo?.title}
+          courseProgress={visualProgress}
           onRatingSubmitted={(review) => {
             setUserRating(review.rating);
           }}

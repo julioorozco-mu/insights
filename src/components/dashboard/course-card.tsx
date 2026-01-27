@@ -1,7 +1,7 @@
 import { memo } from "react";
 import Image from "next/image";
 import { Bookmark, Star, Heart } from "lucide-react";
-import { cn, stripHtmlAndTruncate } from "@/lib/utils";
+import { cn, stripHtmlAndTruncate, capitalizeText } from "@/lib/utils";
 
 interface CourseCardProps {
   level: "Introductorio" | "Intermedio" | "Avanzado";
@@ -75,9 +75,9 @@ export const CourseCard = memo(function CourseCard(props: CourseCardProps) {
           </span>
         </div>
         {/* Título con altura mínima fija */}
-        <h3 className="min-h-[2.75rem] text-lg font-semibold text-slate-900 line-clamp-2">{props.title}</h3>
+        <h3 className="min-h-[2.75rem] text-lg font-semibold text-slate-900 line-clamp-2">{capitalizeText(props.title)}</h3>
         {/* Descripción con altura fija */}
-        <p className="min-h-[3rem] text-sm text-slate-500 line-clamp-2">{cleanDescription}</p>
+        <p className="min-h-[3rem] text-sm text-slate-500 line-clamp-2">{capitalizeText(cleanDescription)}</p>
         {/* Footer siempre al final */}
         <div className="mt-auto flex items-center justify-between text-sm text-slate-500">
           {props.teacherName ? (

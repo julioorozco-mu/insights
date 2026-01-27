@@ -7,6 +7,7 @@ import { teacherRepository, TeacherData } from "@/lib/repositories/teacherReposi
 import { courseRepository } from "@/lib/repositories/courseRepository";
 import { User } from "@/types/user";
 import { Course } from "@/types/course";
+import { capitalizeText } from "@/lib/utils";
 import {
   Mail,
   Linkedin,
@@ -313,10 +314,10 @@ export function UserProfile({ userId, isPublic = false }: UserProfileProps) {
                       </div>
                       <div className="flex-1 min-w-0 py-1">
                         <h3 className="font-bold text-slate-900 text-lg group-hover:text-[#192170] transition-colors mb-1">
-                          {course.title}
+                          {capitalizeText(course.title)}
                         </h3>
                         <p className="text-sm text-slate-500 line-clamp-2 mb-3">
-                          {course.description}
+                          {capitalizeText(course.description)}
                         </p>
                         <div className="flex items-center gap-4 text-xs text-slate-400">
                           <span className="flex items-center gap-1">

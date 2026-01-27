@@ -7,6 +7,7 @@ import RichTextContent from "@/components/ui/RichTextContent";
 import { Loader } from "@/components/common/Loader";
 import { userRepository } from "@/lib/repositories/userRepository";
 import { courseRepository } from "@/lib/repositories/courseRepository";
+import { capitalizeText } from "@/lib/utils";
 
 interface CoursePreviewSideSheetProps {
   courseId: string | null;
@@ -242,7 +243,7 @@ export default function CoursePreviewSideSheet({
 
               {/* Title */}
               <h1 className="text-2xl font-bold mb-4" style={{ color: COLORS.primary }}>
-                {course.title}
+                {capitalizeText(course.title)}
               </h1>
 
               {/* Description */}
