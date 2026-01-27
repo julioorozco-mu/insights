@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Activity, Clock3, Users, BookOpenCheck, BookOpen, GraduationCap } from "lucide-react";
+import { ChevronLeft, ChevronRight, Activity, Clock3, Users, BookOpenCheck, BookOpen, GraduationCap, Award } from "lucide-react";
 import { CourseCard } from "@/components/dashboard/course-card";
 import { CourseListItem } from "@/components/dashboard/course-list-item";
 import { ScheduleCard } from "@/components/dashboard/schedule-card";
@@ -69,6 +69,8 @@ interface DashboardApiResponse {
     completedCourses: number;
     coursesInProgress: number;
     totalStudyMinutes: number;
+    completedMicrocredentials: number;
+    microcredentialsInProgress: number;
   };
   favorites: string[];
 }
@@ -420,6 +422,22 @@ export default function DashboardPage() {
       const { stats: apiStats } = data;
       const studentStats: StatItem[] = [
         {
+          label: "Microcredenciales",
+          value: `${apiStats.completedMicrocredentials}`,
+          delta: apiStats.completedMicrocredentials > 0 ? "completadas" : "",
+          icon: Award,
+          accent: "bg-amber-100 text-amber-600",
+          deltaColor: apiStats.completedMicrocredentials > 0 ? "text-brand-success" : "text-slate-400",
+        },
+        {
+          label: "Microcursos Completados",
+          value: `${apiStats.completedCourses}`,
+          delta: apiStats.completedCourses > 0 ? "¡Bien!" : "",
+          icon: BookOpenCheck,
+          accent: "bg-brand-secondary/10 text-brand-secondary",
+          deltaColor: "text-brand-success",
+        },
+        {
           label: "Progreso General",
           value: `${apiStats.progressPercentage}%`,
           delta: apiStats.progressPercentage > 50 ? `+${apiStats.progressPercentage - 50}%` : "",
@@ -428,15 +446,7 @@ export default function DashboardPage() {
           deltaColor: apiStats.progressPercentage > 50 ? "text-brand-success" : "text-slate-400",
         },
         {
-          label: "Cursos Completados",
-          value: `${apiStats.completedCourses}`,
-          delta: apiStats.completedCourses > 0 ? "¡Bien!" : "",
-          icon: BookOpenCheck,
-          accent: "bg-brand-secondary/10 text-brand-secondary",
-          deltaColor: "text-brand-success",
-        },
-        {
-          label: "Cursos En Progreso",
+          label: "Cursos en Progreso",
           value: `${apiStats.coursesInProgress}`,
           delta: "",
           icon: BookOpen,
@@ -1010,16 +1020,14 @@ export default function DashboardPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               {stats.map((stat) => (
-                <div key={stat.label} className="rounded-2xl border border-slate-100 p-4">
-                  <div className="flex items-center gap-3">
-                    <span className={`flex h-8 w-8 items-center justify-center rounded-full ${stat.accent}`}>
-                      <stat.icon className="h-4 w-4" />
-                    </span>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{stat.label}</p>
-                  </div>
-                  <div className="mt-3 flex items-end justify-between">
+                <div key={stat.label} className="rounded-2xl border border-slate-100 p-4 flex flex-col items-center">
+                  <span className={`flex h-8 w-8 items-center justify-center rounded-full ${stat.accent}`}>
+                    <stat.icon className="h-4 w-4" />
+                  </span>
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500 text-center min-h-[2rem] flex items-center justify-center">{stat.label}</p>
+                  <div className="mt-2 flex flex-col items-center justify-center">
                     <p className="text-2xl font-semibold text-slate-900">{stat.value}</p>
-                    <span className={`text-xs font-semibold ${stat.deltaColor}`}>{stat.delta}</span>
+                    <span className={`text-xs font-semibold ${stat.deltaColor} min-h-[1.25rem]`}>{stat.delta || '\u00A0'}</span>
                   </div>
                 </div>
               ))}

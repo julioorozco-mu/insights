@@ -61,6 +61,8 @@ interface DashboardStats {
   completedCourses: number;
   coursesInProgress: number;
   totalStudyMinutes: number;
+  completedMicrocredentials: number;
+  microcredentialsInProgress: number;
 }
 
 interface DashboardResponse {
@@ -143,13 +145,15 @@ export async function GET(req: NextRequest) {
           completedCourses: 0,
           coursesInProgress: 0,
           totalStudyMinutes: 0,
+          completedMicrocredentials: 0,
+          microcredentialsInProgress: 0,
         },
         favorites: [],
       } as DashboardResponse);
     }
 
-    // 2. Parallel fetch: enrollments, favorites, all published courses
-    const [enrollmentsResult, favoritesResult, allCoursesResult] = await Promise.all([
+    // 2. Parallel fetch: enrollments, favorites, all published courses, microcredential enrollments
+    const [enrollmentsResult, favoritesResult, allCoursesResult, microcredentialEnrollmentsResult] = await Promise.all([
       // Get enrollments with course data in a single query using JOIN
       supabase
         .from(TABLES.STUDENT_ENROLLMENTS)
@@ -187,6 +191,23 @@ export async function GET(req: NextRequest) {
         .from(TABLES.COURSES)
         .select('id, title, description, thumbnail_url, cover_image_url, difficulty, average_rating, reviews_count, created_at, teacher_ids')
         .eq('is_active', true),
+
+      // Get microcredential enrollments for this student with microcredential course IDs
+      supabase
+        .from('microcredential_enrollments')
+        .select(`
+          id,
+          level_1_completed,
+          level_2_completed,
+          badge_unlocked,
+          status,
+          microcredential_id,
+          microcredentials!inner (
+            course_level_1_id,
+            course_level_2_id
+          )
+        `)
+        .eq('student_id', student.id),
     ]);
 
     if (enrollmentsResult.error) {
@@ -197,6 +218,7 @@ export async function GET(req: NextRequest) {
     const enrollmentsData = enrollmentsResult.data || [];
     const favoritesData = favoritesResult.data || [];
     const allCourses = allCoursesResult.data || [];
+    const microcredentialEnrollments = microcredentialEnrollmentsResult.data || [];
 
     const favoriteIds = new Set(favoritesData.map((f: { course_id: string }) => f.course_id));
     const enrolledCourseIds = new Set(enrollmentsData.map((e: { course_id: string }) => e.course_id));
@@ -326,10 +348,47 @@ export async function GET(req: NextRequest) {
 
     // 6. Calculate stats
     const completedCourses = enrolledCourses.filter(e => e.progressPercent >= 100).length;
-    const totalProgress = enrolledCourses.reduce((sum, e) => sum + e.progressPercent, 0);
-    const progressPercentage = enrolledCourses.length > 0
-      ? Math.round(totalProgress / enrolledCourses.length)
-      : 0;
+
+    // Calculate microcredential stats
+    const completedMicrocredentials = microcredentialEnrollments.filter(
+      (m: any) => m.badge_unlocked === true
+    ).length;
+    const microcredentialsInProgress = microcredentialEnrollments.filter(
+      (m: any) => m.status === 'in_progress' && !m.badge_unlocked
+    ).length;
+
+    // Calculate progress percentage based on microcredentials
+    // Use actual course progress for each level of the microcredential
+    let progressPercentage = 0;
+    if (microcredentialEnrollments.length > 0) {
+      // Create a map of course progress from enrolled courses
+      const courseProgressMap = new Map<string, number>();
+      for (const enrolled of enrolledCourses) {
+        courseProgressMap.set(enrolled.course.id, enrolled.progressPercent);
+      }
+
+      // Calculate progress for each microcredential based on its courses' progress
+      const totalMicrocredentialProgress = microcredentialEnrollments.reduce((sum: number, m: any) => {
+        const microcredential = m.microcredentials;
+        if (!microcredential) return sum;
+
+        const level1CourseId = microcredential.course_level_1_id;
+        const level2CourseId = microcredential.course_level_2_id;
+
+        // Get progress for each level's course
+        const level1Progress = courseProgressMap.get(level1CourseId) || 0;
+        const level2Progress = courseProgressMap.get(level2CourseId) || 0;
+
+        // Average of both levels (each level is 50% of the total)
+        const microcredentialProgress = (level1Progress + level2Progress) / 2;
+        return sum + microcredentialProgress;
+      }, 0);
+      progressPercentage = Math.round(totalMicrocredentialProgress / microcredentialEnrollments.length);
+    } else if (enrolledCourses.length > 0) {
+      // Fallback to course progress if no microcredentials
+      const totalProgress = enrolledCourses.reduce((sum, e) => sum + e.progressPercent, 0);
+      progressPercentage = Math.round(totalProgress / enrolledCourses.length);
+    }
 
     // 7. Build recommended courses (exclude enrolled)
     const availableCourses = allCourses.filter(c => !enrolledCourseIds.has(c.id));
@@ -433,6 +492,8 @@ export async function GET(req: NextRequest) {
         completedCourses,
         coursesInProgress: enrolledCourses.length - completedCourses,
         totalStudyMinutes,
+        completedMicrocredentials,
+        microcredentialsInProgress,
       },
       favorites: Array.from(favoriteIds),
     };
