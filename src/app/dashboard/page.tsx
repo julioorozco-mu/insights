@@ -52,6 +52,8 @@ interface DashboardApiResponse {
     rating: number;
     reviewsCount: number;
     thumbnail: string;
+    teacherName?: string;
+    teacherAvatarUrl?: string;
   }[];
   scheduleItems: {
     type: string;
@@ -101,6 +103,8 @@ interface RecommendedCourse {
   mentor: string;
   thumbnail: string;
   courseId: string;
+  teacherName?: string;
+  teacherAvatarUrl?: string;
 }
 
 interface ScheduleItem {
@@ -388,6 +392,8 @@ export default function DashboardPage() {
         mentor: "Instructor",
         thumbnail: item.thumbnail,
         courseId: item.courseId,
+        teacherName: item.teacherName,
+        teacherAvatarUrl: item.teacherAvatarUrl,
       }));
 
       setRecommendedCourses(transformedRecommended);
@@ -788,7 +794,7 @@ export default function DashboardPage() {
           {!isAdminRole && (
             <section>
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-slate-900">Cursos recomendados para ti</h2>
+                <h2 className="text-xl font-semibold text-slate-900">Microcursos recomendados para ti</h2>
                 <Link href="/dashboard/available-courses" className="text-sm font-medium text-brand-secondary hover:underline">
                   Ver todos
                 </Link>
@@ -804,6 +810,8 @@ export default function DashboardPage() {
                         isFavorite={favorites.has(course.courseId)}
                         loadingFavorite={loadingFavorite === course.courseId}
                         onToggleFavorite={(e) => handleToggleFavorite(course.courseId, e)}
+                        teacherName={course.teacherName}
+                        teacherAvatarUrl={course.teacherAvatarUrl}
                       />
                     </Link>
                   ))}

@@ -18,6 +18,8 @@ interface CourseCardProps {
   isFavorite?: boolean;
   loadingFavorite?: boolean;
   onToggleFavorite?: (e: React.MouseEvent) => void;
+  teacherName?: string;
+  teacherAvatarUrl?: string;
 }
 
 const levelStyles: Record<string, string> = {
@@ -78,7 +80,28 @@ export const CourseCard = memo(function CourseCard(props: CourseCardProps) {
         <p className="min-h-[3rem] text-sm text-slate-500 line-clamp-2">{cleanDescription}</p>
         {/* Footer siempre al final */}
         <div className="mt-auto flex items-center justify-between text-sm text-slate-500">
-          <span className="text-brand-primary font-semibold">{props.mentor}</span>
+          {props.teacherName ? (
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded-full overflow-hidden flex-shrink-0">
+                {props.teacherAvatarUrl ? (
+                  <Image
+                    src={props.teacherAvatarUrl}
+                    alt={props.teacherName}
+                    width={24}
+                    height={24}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-brand-primary text-white text-xs font-semibold">
+                    {props.teacherName.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+              <span className="text-brand-primary font-semibold truncate max-w-[120px]">{props.teacherName}</span>
+            </div>
+          ) : (
+            <span className="text-brand-primary font-semibold">{props.mentor}</span>
+          )}
           {props.rating > 0 ? (
             <span className="flex items-center gap-1">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
@@ -88,7 +111,7 @@ export const CourseCard = memo(function CourseCard(props: CourseCardProps) {
               )}
             </span>
           ) : (
-            <span className="text-xs text-slate-400 italic">Sin calificaciones</span>
+            <span className="text-xs text-slate-400 italic">Sin reseñas</span>
           )}
         </div>
       </div>

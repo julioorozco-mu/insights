@@ -42,6 +42,8 @@ interface RecommendedCourse {
   rating: number;
   reviewsCount: number;
   thumbnail: string;
+  teacherName?: string;
+  teacherAvatarUrl?: string;
 }
 
 interface ScheduleItem {
@@ -183,7 +185,7 @@ export async function GET(req: NextRequest) {
       // Get all active courses for recommendations (matching available-courses page behavior)
       supabase
         .from(TABLES.COURSES)
-        .select('id, title, description, thumbnail_url, cover_image_url, difficulty, average_rating, reviews_count, created_at')
+        .select('id, title, description, thumbnail_url, cover_image_url, difficulty, average_rating, reviews_count, created_at, teacher_ids')
         .eq('is_active', true),
     ]);
 
@@ -373,17 +375,54 @@ export async function GET(req: NextRequest) {
       lessonsCountMap.set(row.course_id, (lessonsCountMap.get(row.course_id) || 0) + 1);
     }
 
-    const recommendedCourses: RecommendedCourse[] = sortedAvailableCourses.slice(0, 4).map(course => ({
-      courseId: course.id,
-      level: mapDifficultyToLevel(course.difficulty),
-      title: course.title,
-      description: cleanDescription(course.description),
-      students: countsMap.get(course.id) || 0,
-      lessons: lessonsCountMap.get(course.id) || 0,
-      rating: course.average_rating || 0,
-      reviewsCount: course.reviews_count || 0,
-      thumbnail: course.thumbnail_url || course.cover_image_url || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80',
-    }));
+    // Get teacher data for recommended courses
+    const recommendedCoursesData = sortedAvailableCourses.slice(0, 4);
+    const teacherIds = new Set<string>();
+    for (const course of recommendedCoursesData) {
+      const courseWithTeachers = course as any;
+      if (courseWithTeachers.teacher_ids && Array.isArray(courseWithTeachers.teacher_ids) && courseWithTeachers.teacher_ids.length > 0) {
+        teacherIds.add(courseWithTeachers.teacher_ids[0]);
+      }
+    }
+
+    const teacherIdsArray = Array.from(teacherIds);
+    const teachersMap = new Map<string, { name: string; lastName?: string; avatarUrl?: string }>();
+
+    if (teacherIdsArray.length > 0) {
+      const { data: teachersData } = await supabase
+        .from(TABLES.USERS)
+        .select('id, name, last_name, avatar_url')
+        .in('id', teacherIdsArray);
+
+      for (const teacher of teachersData || []) {
+        teachersMap.set(teacher.id, {
+          name: teacher.name,
+          lastName: teacher.last_name,
+          avatarUrl: teacher.avatar_url,
+        });
+      }
+    }
+
+    const recommendedCourses: RecommendedCourse[] = recommendedCoursesData.map(course => {
+      const courseWithTeachers = course as any;
+      const teacherId = courseWithTeachers.teacher_ids?.[0];
+      const teacher = teacherId ? teachersMap.get(teacherId) : null;
+      const teacherFullName = teacher ? `${teacher.name}${teacher.lastName ? ' ' + teacher.lastName : ''}`.trim() : undefined;
+
+      return {
+        courseId: course.id,
+        level: mapDifficultyToLevel(course.difficulty),
+        title: course.title,
+        description: cleanDescription(course.description),
+        students: countsMap.get(course.id) || 0,
+        lessons: lessonsCountMap.get(course.id) || 0,
+        rating: course.average_rating || 0,
+        reviewsCount: course.reviews_count || 0,
+        thumbnail: course.thumbnail_url || course.cover_image_url || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80',
+        teacherName: teacherFullName,
+        teacherAvatarUrl: teacher?.avatarUrl,
+      };
+    });
 
     const response: DashboardResponse = {
       enrolledCourses,
