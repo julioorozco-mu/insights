@@ -161,6 +161,7 @@ export class UserRepository {
     if (data.gender !== undefined) updateData.gender = data.gender;
     if (data.state !== undefined) updateData.state = data.state;
     if (data.municipality !== undefined) updateData.municipality = data.municipality;
+    if (data.curp !== undefined) updateData.curp = data.curp ? data.curp.toUpperCase().trim() : null;
     if (data.avatarUrl !== undefined) updateData.avatar_url = data.avatarUrl;
     if (data.bio !== undefined) updateData.bio = data.bio;
     if (data.socialLinks !== undefined) updateData.social_links = data.socialLinks;

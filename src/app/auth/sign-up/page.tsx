@@ -4,10 +4,12 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { AlertTriangle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createUserSchema, CreateUserInput } from "@/lib/validators/userSchema";
+import { validateCURPAgainstData } from "@/lib/utils/curpValidator";
 import { MunicipalitySelector } from "@/components/MunicipalitySelector";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { APP_NAME } from "@/utils/constants";
@@ -24,6 +26,11 @@ export default function SignUpPage() {
   const [emailChecking, setEmailChecking] = useState(false);
   const [emailExists, setEmailExists] = useState(false);
   const [emailValidated, setEmailValidated] = useState(false);
+
+  // Estados para validación de CURP
+  const [curpChecking, setCurpChecking] = useState(false);
+  const [curpExists, setCurpExists] = useState(false);
+  const [curpValidatedExists, setCurpValidatedExists] = useState(false);
   
   // Ref para el input de email para detectar autocompletado
   const emailInputRef = useRef<HTMLInputElement>(null);
@@ -61,6 +68,8 @@ export default function SignUpPage() {
     handleSubmit,
     watch,
     setValue,
+    setError: setFormFieldError,
+    clearErrors,
     formState: { errors },
   } = useForm<CreateUserInput>({
     resolver: zodResolver(createUserSchema),
@@ -73,6 +82,83 @@ export default function SignUpPage() {
   const confirmPassword = watch("confirmPassword");
   const dateOfBirth = watch("dateOfBirth");
   const email = watch("email");
+  const curp = watch("curp");
+  const name = watch("name");
+  const lastName = watch("lastName");
+  const gender = watch("gender");
+  const state = watch("state");
+
+  // Verificar si todos los campos requeridos para validar CURP están llenos
+  // dateOfBirth debe estar en formato yyyy-MM-dd (formato interno de react-hook-form)
+  const canValidateCURP = !!(
+    name &&
+    name.trim().length >= 2 &&
+    lastName &&
+    lastName.trim().length >= 2 &&
+    dateOfBirth &&
+    dateOfBirth.trim().length > 0 &&
+    gender &&
+    gender !== "" &&
+    state &&
+    state !== ""
+  );
+
+  // Estado para rastrear si el CURP ha sido validado manualmente
+  const [curpValidated, setCurpValidated] = useState(false);
+  const [curpValidationResult, setCurpValidationResult] = useState<{ isValid: boolean; error?: string } | null>(null);
+
+  // Revalidar CURP cuando cambian los campos requeridos (solo validación de formato y datos)
+  useEffect(() => {
+    if (curp && curp.length === 18 && canValidateCURP) {
+      // Validar manualmente
+      const validationData = {
+        name: name || "",
+        lastName: lastName || "",
+        dateOfBirth: dateOfBirth || "",
+        gender: gender || "",
+        state: state || "",
+      };
+      
+      console.log("[SignUp Component] Validando CURP con datos:", {
+        curp,
+        ...validationData,
+        canValidateCURP,
+      });
+      
+      const validation = validateCURPAgainstData(curp, validationData);
+      
+      setCurpValidationResult(validation);
+      setCurpValidated(true);
+      
+      // Si la validación falla, establecer el error en el formulario
+      if (!validation.isValid) {
+        setValue("curp", curp, { shouldValidate: true });
+        // Forzar el error manualmente (solo si no es error de existencia)
+        if (!errors.curp?.message?.includes("ya está registrado")) {
+          setFormFieldError("curp", {
+            type: "manual",
+            message: validation.error || "El CURP no coincide con los datos proporcionados",
+          });
+        }
+      } else {
+        // Si es válido, limpiar errores de validación (pero mantener error de existencia si existe)
+        if (!errors.curp?.message?.includes("ya está registrado")) {
+          clearErrors("curp");
+        }
+        // NO llamar checkCURPExists aquí para evitar loops infinitos
+        // Se llamará solo en onBlur
+      }
+    } else {
+      setCurpValidated(false);
+      setCurpValidationResult(null);
+      // Limpiar errores si el CURP no está completo
+      if (curp && curp.length < 18) {
+        clearErrors("curp");
+        setCurpValidatedExists(false);
+        setCurpExists(false);
+      }
+    }
+  }, [name, lastName, dateOfBirth, gender, state, curp, canValidateCURP, setValue, setFormFieldError, clearErrors]);
 
   // Función para verificar si el email ya existe
   const checkEmailExists = async (emailToCheck: string) => {
@@ -102,6 +188,48 @@ export default function SignUpPage() {
       setEmailValidated(false);
     } finally {
       setEmailChecking(false);
+    }
+  };
+
+  // Función para verificar si el CURP ya existe
+  const checkCURPExists = async (curpToCheck: string) => {
+    if (!curpToCheck || curpToCheck.trim().length !== 18) {
+      setCurpValidatedExists(false);
+      setCurpExists(false);
+      return;
+    }
+
+    // Evitar múltiples llamadas simultáneas
+    if (curpChecking) {
+      return;
+    }
+
+    setCurpChecking(true);
+    try {
+      const normalizedCURP = curpToCheck.trim().toUpperCase();
+      const response = await fetch(`/api/auth/check-curp?curp=${encodeURIComponent(normalizedCURP)}`);
+      const data = await response.json();
+      
+      setCurpExists(data.exists);
+      setCurpValidatedExists(true);
+      
+      // Si el CURP ya existe, establecer error en el formulario
+      if (data.exists) {
+        setFormFieldError("curp", {
+          type: "manual",
+          message: "Este CURP ya está registrado. Si es tu CURP, contacta al administrador.",
+        });
+      } else {
+        // Si no existe, limpiar el error de existencia (pero mantener otros errores de validación)
+        if (errors.curp?.message?.includes("ya está registrado")) {
+          clearErrors("curp");
+        }
+      }
+    } catch (err) {
+      console.error("Error checking CURP:", err);
+      setCurpValidatedExists(false);
+    } finally {
+      setCurpChecking(false);
     }
   };
 
@@ -255,8 +383,12 @@ export default function SignUpPage() {
   const onSubmit = async (data: CreateUserInput) => {
     if (loading || isRedirecting) return;
     
-    // Verificar si el email ya existe antes de continuar
-    if (emailExists) {
+    // Validar que el email no esté duplicado antes de enviar
+    if (emailValidated && emailExists) {
+      setFormFieldError("email", {
+        type: "manual",
+        message: "Este correo electrónico ya está registrado",
+      });
       setError("Este correo electrónico ya está registrado. Por favor usa otro.");
       return;
     }
@@ -265,7 +397,62 @@ export default function SignUpPage() {
     if (!emailValidated && data.email) {
       await checkEmailExists(data.email);
       if (emailExists) {
+        setFormFieldError("email", {
+          type: "manual",
+          message: "Este correo electrónico ya está registrado",
+        });
         setError("Este correo electrónico ya está registrado. Por favor usa otro.");
+        return;
+      }
+    }
+
+    // Verificar email nuevamente antes de enviar (última validación)
+    if (data.email) {
+      try {
+        const response = await fetch(`/api/auth/check-email?email=${encodeURIComponent(data.email)}`);
+        const emailData = await response.json();
+        if (emailData.exists) {
+          setFormFieldError("email", {
+            type: "manual",
+            message: "Este correo electrónico ya está registrado",
+          });
+          setError("Este correo electrónico ya está registrado. Por favor usa otro.");
+          return;
+        }
+      } catch (err) {
+        console.error("Error verificando email antes de enviar:", err);
+        setError("Error al verificar el correo electrónico. Por favor intenta de nuevo.");
+        return;
+      }
+    }
+
+    // Validar que el CURP no esté duplicado antes de enviar
+    if (curpValidatedExists && curpExists) {
+      setFormFieldError("curp", {
+        type: "manual",
+        message: "Este CURP ya está registrado. Si es tu CURP, contacta al administrador.",
+      });
+      setError("Este CURP ya está registrado. Si es tu CURP, contacta al administrador.");
+      return;
+    }
+
+    // Verificar CURP nuevamente antes de enviar (última validación)
+    if (data.curp && data.curp.length === 18) {
+      const normalizedCURP = data.curp.toUpperCase().trim();
+      try {
+        const response = await fetch(`/api/auth/check-curp?curp=${encodeURIComponent(normalizedCURP)}`);
+        const curpData = await response.json();
+        if (curpData.exists) {
+          setFormFieldError("curp", {
+            type: "manual",
+            message: "Este CURP ya está registrado. Si es tu CURP, contacta al administrador.",
+          });
+          setError("Este CURP ya está registrado. Si es tu CURP, contacta al administrador.");
+          return;
+        }
+      } catch (err) {
+        console.error("Error verificando CURP antes de enviar:", err);
+        setError("Error al verificar el CURP. Por favor intenta de nuevo.");
         return;
       }
     }
@@ -286,8 +473,22 @@ export default function SignUpPage() {
         }
       }, 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al crear la cuenta");
+      const errorMessage = err instanceof Error ? err.message : "Error al crear la cuenta";
+      setError(errorMessage);
       setLoading(false);
+      
+      // Si el error es de CURP o email duplicado, establecer el error en el campo correspondiente
+      if (errorMessage.includes("CURP")) {
+        setFormFieldError("curp", {
+          type: "manual",
+          message: errorMessage,
+        });
+      } else if (errorMessage.includes("correo") || errorMessage.includes("email") || errorMessage.includes("Email")) {
+        setFormFieldError("email", {
+          type: "manual",
+          message: errorMessage,
+        });
+      }
     }
   };
 
@@ -342,6 +543,9 @@ export default function SignUpPage() {
                   className="input input-bordered"
                   placeholder="Juan"
                   autoComplete="off"
+                  onChange={(e) => {
+                    setValue("name", e.target.value);
+                  }}
                 />
                 {errors.name && (
                   <label className="label">
@@ -360,6 +564,9 @@ export default function SignUpPage() {
                   className="input input-bordered"
                   placeholder="Pérez García"
                   autoComplete="off"
+                  onChange={(e) => {
+                    setValue("lastName", e.target.value);
+                  }}
                 />
                 {errors.lastName && (
                   <label className="label">
@@ -377,7 +584,18 @@ export default function SignUpPage() {
                 </label>
                 <DatePicker
                   value={dateOfBirth}
-                  onChange={(date) => setValue("dateOfBirth", date)}
+                  onChange={(date) => {
+                    setValue("dateOfBirth", date, { shouldValidate: true, shouldDirty: true });
+                    // Forzar re-render para actualizar canValidateCURP
+                    if (date) {
+                      // Trigger validation después de un pequeño delay para asegurar que el estado se actualice
+                      setTimeout(() => {
+                        if (curp && curp.length === 18) {
+                          setValue("curp", curp, { shouldValidate: true });
+                        }
+                      }, 100);
+                    }
+                  }}
                   placeholder="DD/MM/AAAA"
                   maxDate={new Date()}
                   error={!!errors.dateOfBirth}
@@ -400,6 +618,189 @@ export default function SignUpPage() {
                   disabled
                   placeholder="Se calculará automáticamente"
                 />
+              </div>
+            </div>
+
+            {/* Estado y Municipio */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className="form-control">
+                <label className="label">
+                  <span className="label-text">Estado *</span>
+                </label>
+                <select 
+                  value={selectedState}
+                  onChange={(e) => {
+                    setSelectedState(e.target.value);
+                    setSelectedMunicipality("");
+                    setValue("state", e.target.value);
+                  }}
+                  className="select select-bordered"
+                >
+                  <option value="">Selecciona un estado...</option>
+                  <option value="Estado de México">Estado de México</option>
+                  <option value="Ciudad de México">Ciudad de México</option>
+                  <option disabled>──────────</option>
+                  <option value="Aguascalientes">Aguascalientes</option>
+                  <option value="Baja California">Baja California</option>
+                  <option value="Baja California Sur">Baja California Sur</option>
+                  <option value="Campeche">Campeche</option>
+                  <option value="Chiapas">Chiapas</option>
+                  <option value="Chihuahua">Chihuahua</option>
+                  <option value="Coahuila">Coahuila</option>
+                  <option value="Colima">Colima</option>
+                  <option value="Durango">Durango</option>
+                  <option value="Guanajuato">Guanajuato</option>
+                  <option value="Guerrero">Guerrero</option>
+                  <option value="Hidalgo">Hidalgo</option>
+                  <option value="Jalisco">Jalisco</option>
+                  <option value="Michoacán">Michoacán</option>
+                  <option value="Morelos">Morelos</option>
+                  <option value="Nayarit">Nayarit</option>
+                  <option value="Nuevo León">Nuevo León</option>
+                  <option value="Oaxaca">Oaxaca</option>
+                  <option value="Puebla">Puebla</option>
+                  <option value="Querétaro">Querétaro</option>
+                  <option value="Quintana Roo">Quintana Roo</option>
+                  <option value="San Luis Potosí">San Luis Potosí</option>
+                  <option value="Sinaloa">Sinaloa</option>
+                  <option value="Sonora">Sonora</option>
+                  <option value="Tabasco">Tabasco</option>
+                  <option value="Tamaulipas">Tamaulipas</option>
+                  <option value="Tlaxcala">Tlaxcala</option>
+                  <option value="Veracruz">Veracruz</option>
+                  <option value="Yucatán">Yucatán</option>
+                  <option value="Zacatecas">Zacatecas</option>
+                </select>
+                {errors.state && (
+                  <label className="label">
+                    <span className="label-text-alt text-error">{errors.state.message}</span>
+                  </label>
+                )}
+              </div>
+
+              <div className="form-control">
+                <MunicipalitySelector
+                  state={selectedState}
+                  value={selectedMunicipality}
+                  onChange={(municipality) => {
+                    setSelectedMunicipality(municipality);
+                    setValue("municipality", municipality);
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Género */}
+            <div className="form-control mb-4">
+              <label className="label">
+                <span className="label-text">Género *</span>
+              </label>
+              <select 
+                {...register("gender")} 
+                className="select select-bordered"
+                onChange={(e) => {
+                  setValue("gender", e.target.value as "male" | "female" | "other");
+                }}
+              >
+                <option value="">Selecciona...</option>
+                <option value="male">Masculino</option>
+                <option value="female">Femenino</option>
+                <option value="other">Otro</option>
+              </select>
+              {errors.gender && (
+                <label className="label">
+                  <span className="label-text-alt text-error">{errors.gender.message}</span>
+                </label>
+              )}
+            </div>
+
+            {/* CURP */}
+            <div className="form-control mb-4">
+              <label className="label">
+                <span className="label-text">CURP *</span>
+                <span className="label-text-alt text-base-content/60">(Clave Única de Registro de Población)</span>
+              </label>
+              <input
+                type="text"
+                {...register("curp")}
+                disabled={!canValidateCURP}
+                className={`input input-bordered uppercase ${
+                  !canValidateCURP
+                    ? "input-disabled bg-base-200"
+                    : curp && curp.length === 18 && curpValidated && curpValidationResult?.isValid && !errors.curp && curpValidatedExists && !curpExists
+                    ? "input-success"
+                    : curp && (errors.curp || (curpValidated && !curpValidationResult?.isValid) || (curpValidatedExists && curpExists))
+                    ? "input-error"
+                    : ""
+                }`}
+                placeholder={canValidateCURP ? "XXXX000000XXXXXX00" : "Completa los campos anteriores primero"}
+                autoComplete="off"
+                maxLength={18}
+                onChange={(e) => {
+                  if (!canValidateCURP) return;
+                  // Convertir a mayúsculas automáticamente
+                  const upperValue = e.target.value.toUpperCase();
+                  setValue("curp", upperValue, { shouldValidate: true });
+                }}
+                onBlur={async (e) => {
+                  if (!canValidateCURP) return;
+                  const upperValue = e.target.value.toUpperCase();
+                  // Validación en tiempo real cuando el usuario sale del campo
+                  if (upperValue.length === 18 && !curpChecking) {
+                    // Solo verificar si el CURP ya existe si no se está verificando actualmente
+                    await checkCURPExists(upperValue);
+                  }
+                }}
+              />
+              {!canValidateCURP && (
+                <label className="label">
+                  <span className="label-text-alt text-warning flex items-center gap-1">
+                    <AlertTriangle className="w-4 h-4" />
+                    Completa primero: Nombre, Apellidos, Fecha de Nacimiento, Género y Estado
+                  </span>
+                </label>
+              )}
+              {canValidateCURP && curp && (
+                <label className="label">
+                  <span className="label-text-alt">
+                    {curp.length}/18 caracteres
+                  </span>
+                </label>
+              )}
+              {curpChecking && (
+                <label className="label">
+                  <span className="label-text-alt text-base-content/60">
+                    Verificando CURP...
+                  </span>
+                </label>
+              )}
+              {canValidateCURP && errors.curp && (
+                <label className="label">
+                  <span className="label-text-alt text-error">{errors.curp.message}</span>
+                </label>
+              )}
+              {canValidateCURP && curp && curp.length === 18 && curpValidated && curpValidationResult?.isValid && !errors.curp && curpValidatedExists && !curpExists && (
+                <label className="label">
+                  <span className="label-text-alt text-success">
+                    ✓ CURP válido y disponible
+                  </span>
+                </label>
+              )}
+              <div className="mt-2">
+                <p className="text-xs text-base-content/60">
+                  Ejemplo de formato: <span className="font-mono font-semibold">XXXX000000XXXXXX00</span>
+                </p>
+                <p className="text-xs text-base-content/60 mt-1">
+                  ¿No conoces tu CURP?{" "}
+                  <a 
+                    href="https://www.gob.mx/curp/" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="link link-primary underline"
+                  >
+                    Consulta tu CURP aquí
+                  </a>
+                </p>
               </div>
             </div>
 
@@ -491,111 +892,23 @@ export default function SignUpPage() {
               </div>
             </div>
 
-            {/* Nombre de Usuario y Género */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div className="form-control">
+            {/* Nombre de Usuario */}
+            <div className="form-control mb-4">
+              <label className="label">
+                <span className="label-text">Nombre de Usuario *</span>
+              </label>
+              <input
+                type="text"
+                {...register("username")}
+                className="input input-bordered"
+                placeholder="juanperez"
+                autoComplete="off"
+              />
+              {errors.username && (
                 <label className="label">
-                  <span className="label-text">Nombre de Usuario *</span>
+                  <span className="label-text-alt text-error">{errors.username.message}</span>
                 </label>
-                <input
-                  type="text"
-                  {...register("username")}
-                  className="input input-bordered"
-                  placeholder="juanperez"
-                  autoComplete="off"
-                />
-                {errors.username && (
-                  <label className="label">
-                    <span className="label-text-alt text-error">{errors.username.message}</span>
-                  </label>
-                )}
-              </div>
-
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Género *</span>
-                </label>
-                <select {...register("gender")} className="select select-bordered">
-                  <option value="">Selecciona...</option>
-                  <option value="male">Masculino</option>
-                  <option value="female">Femenino</option>
-                  <option value="other">Otro</option>
-                </select>
-                {errors.gender && (
-                  <label className="label">
-                    <span className="label-text-alt text-error">{errors.gender.message}</span>
-                  </label>
-                )}
-              </div>
-            </div>
-
-            {/* Estado y Municipio */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Estado *</span>
-                </label>
-                <select 
-                  value={selectedState}
-                  onChange={(e) => {
-                    setSelectedState(e.target.value);
-                    setSelectedMunicipality("");
-                    setValue("state", e.target.value);
-                  }}
-                  className="select select-bordered"
-                >
-                  <option value="">Selecciona un estado...</option>
-                  <option value="Estado de México">Estado de México</option>
-                  <option value="Ciudad de México">Ciudad de México</option>
-                  <option disabled>──────────</option>
-                  <option value="Aguascalientes">Aguascalientes</option>
-                  <option value="Baja California">Baja California</option>
-                  <option value="Baja California Sur">Baja California Sur</option>
-                  <option value="Campeche">Campeche</option>
-                  <option value="Chiapas">Chiapas</option>
-                  <option value="Chihuahua">Chihuahua</option>
-                  <option value="Coahuila">Coahuila</option>
-                  <option value="Colima">Colima</option>
-                  <option value="Durango">Durango</option>
-                  <option value="Guanajuato">Guanajuato</option>
-                  <option value="Guerrero">Guerrero</option>
-                  <option value="Hidalgo">Hidalgo</option>
-                  <option value="Jalisco">Jalisco</option>
-                  <option value="Michoacán">Michoacán</option>
-                  <option value="Morelos">Morelos</option>
-                  <option value="Nayarit">Nayarit</option>
-                  <option value="Nuevo León">Nuevo León</option>
-                  <option value="Oaxaca">Oaxaca</option>
-                  <option value="Puebla">Puebla</option>
-                  <option value="Querétaro">Querétaro</option>
-                  <option value="Quintana Roo">Quintana Roo</option>
-                  <option value="San Luis Potosí">San Luis Potosí</option>
-                  <option value="Sinaloa">Sinaloa</option>
-                  <option value="Sonora">Sonora</option>
-                  <option value="Tabasco">Tabasco</option>
-                  <option value="Tamaulipas">Tamaulipas</option>
-                  <option value="Tlaxcala">Tlaxcala</option>
-                  <option value="Veracruz">Veracruz</option>
-                  <option value="Yucatán">Yucatán</option>
-                  <option value="Zacatecas">Zacatecas</option>
-                </select>
-                {errors.state && (
-                  <label className="label">
-                    <span className="label-text-alt text-error">{errors.state.message}</span>
-                  </label>
-                )}
-              </div>
-
-              <div className="form-control">
-                <MunicipalitySelector
-                  state={selectedState}
-                  value={selectedMunicipality}
-                  onChange={(municipality) => {
-                    setSelectedMunicipality(municipality);
-                    setValue("municipality", municipality);
-                  }}
-                />
-              </div>
+              )}
             </div>
 
             {/* Contraseña */}
@@ -669,9 +982,21 @@ export default function SignUpPage() {
             <button 
               type="submit" 
               className="btn btn-primary w-full btn-lg text-white" 
-              disabled={loading || emailExists || emailChecking}
+              disabled={
+                loading || 
+                isRedirecting ||
+                emailExists || 
+                emailChecking ||
+                curpExists ||
+                curpChecking ||
+                !!errors.curp?.message?.includes("ya está registrado") ||
+                !!errors.email?.message?.includes("ya está registrado")
+              }
             >
-              {loading ? "Creando cuenta..." : emailChecking ? "Verificando email..." : "Crear Cuenta"}
+              {loading ? "Creando cuenta..." : 
+               emailChecking ? "Verificando email..." : 
+               curpChecking ? "Verificando CURP..." :
+               "Crear Cuenta"}
             </button>
           </form>
 

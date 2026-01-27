@@ -379,18 +379,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               gender: data.gender,
               state: data.state,
               municipality: data.municipality,
+              curp: data.curp,
             }),
           });
 
           if (!updateResponse.ok) {
             const errorData = await updateResponse.json();
             console.error("Error actualizando perfil del usuario:", errorData);
+            
+            // Si el error es por CURP o email duplicado, lanzar error específico
+            if (errorData.error) {
+              const errorMessage = errorData.error;
+              // Lanzar error para que se muestre al usuario
+              throw new Error(errorMessage);
+            }
+            
+            throw new Error(errorData.error || "Error al actualizar el perfil del usuario");
           } else {
             console.log("[SignUp] Perfil del usuario actualizado correctamente");
           }
         } catch (userError) {
           console.error("Error actualizando datos del usuario:", userError);
-          // No lanzamos error para no interrumpir el registro
+          // Si es error de CURP o email duplicado, lanzarlo para que se muestre
+          if (userError instanceof Error && 
+              (userError.message.includes("CURP") || 
+               userError.message.includes("correo") || 
+               userError.message.includes("email"))) {
+            throw userError;
+          }
+          // Para otros errores, no interrumpir el registro
           // Los datos básicos ya fueron creados por el trigger
         }
 

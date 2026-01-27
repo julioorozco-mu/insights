@@ -1,10 +1,16 @@
 import { z } from "zod";
+import { validateCURPAgainstData } from "@/lib/utils/curpValidator";
 
 // Expresión regular para sanitizar email (prevenir inyecciones)
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 // Caracteres peligrosos que no deberían estar en inputs de auth
 const DANGEROUS_CHARS = /[<>"'`;\\]/;
+
+// Expresión regular para validar formato de CURP mexicano
+// Formato: 4 letras (apellidos y nombre) + 6 dígitos (fecha) + 1 letra (género) + 2 letras (estado) + 3 caracteres alfanuméricos (homonimia) + 2 dígitos/letras (verificador)
+// El verificador puede ser 1 o 2 caracteres, pero el CURP siempre tiene 18 caracteres total
+const CURP_REGEX = /^[A-Z]{4}\d{6}[HM][A-Z]{2}[0-9A-Z]{3}[0-9A-Z]{2}$/;
 
 export const userRoleSchema = z.enum(["student", "speaker", "admin"]);
 
@@ -20,15 +26,76 @@ export const createUserSchema = z.object({
   }),
   state: z.string().min(1, "Selecciona un estado"),
   municipality: z.string().optional(),
+  curp: z.string()
+    .min(1, "El CURP es requerido")
+    .max(18, "El CURP debe tener exactamente 18 caracteres")
+    .refine((val) => {
+      const normalized = val.trim().toUpperCase();
+      return normalized.length === 18;
+    }, {
+      message: "El CURP debe tener exactamente 18 caracteres",
+    })
+    .refine((val) => {
+      const normalized = val.trim().toUpperCase();
+      return CURP_REGEX.test(normalized);
+    }, {
+      message: "El formato del CURP no es válido",
+    })
+    .transform((val) => val.trim().toUpperCase()),
   password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
   confirmPassword: z.string().min(1, "Confirma tu contraseña"),
   role: userRoleSchema.optional().default("student"),
   bio: z.string().optional(),
   expertise: z.array(z.string()).optional(),
-}).refine((data) => data.password === data.confirmPassword, {
+})
+.refine((data) => data.password === data.confirmPassword, {
   message: "Las contraseñas no coinciden",
   path: ["confirmPassword"],
-});
+})
+.refine(
+  (data) => {
+    // Solo validar si todos los campos requeridos están presentes
+    if (!data.curp || !data.name || !data.lastName || !data.dateOfBirth || !data.gender || !data.state) {
+      // Si falta algún campo, no validar aún (dejar que otras validaciones manejen campos faltantes)
+      return true;
+    }
+    
+    // Validar CURP contra los datos
+    const validation = validateCURPAgainstData(data.curp, {
+      name: data.name,
+      lastName: data.lastName,
+      dateOfBirth: data.dateOfBirth,
+      gender: data.gender,
+      state: data.state,
+    });
+    
+    // Si la validación falla, retornar false para que Zod muestre el error
+    return validation.isValid;
+  },
+  (data) => {
+    // Solo generar mensaje de error si todos los campos están presentes
+    if (!data.curp || !data.name || !data.lastName || !data.dateOfBirth || !data.gender || !data.state) {
+      return { 
+        message: "Completa todos los campos antes de validar el CURP", 
+        path: ["curp"] 
+      };
+    }
+    
+    // Obtener el mensaje de error específico de la validación
+    const validation = validateCURPAgainstData(data.curp, {
+      name: data.name,
+      lastName: data.lastName,
+      dateOfBirth: data.dateOfBirth,
+      gender: data.gender,
+      state: data.state,
+    });
+    
+    return {
+      message: validation.error || "El CURP no coincide con los datos proporcionados",
+      path: ["curp"],
+    };
+  }
+);
 
 export const updateUserSchema = z.object({
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres").optional(),

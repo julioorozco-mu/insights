@@ -13,6 +13,7 @@ interface UpdateProfileRequest {
   gender?: string;
   state?: string;
   municipality?: string;
+  curp?: string;
 }
 
 export async function POST(req: Request) {
@@ -28,6 +29,57 @@ export async function POST(req: Request) {
 
     const supabaseAdmin = getSupabaseAdmin();
 
+    // Validar que el email no esté duplicado (si se está cambiando)
+    if (data.email) {
+      const { data: existingEmailUser, error: emailCheckError } = await supabaseAdmin
+        .from(TABLES.USERS)
+        .select("id, email")
+        .eq("email", data.email.toLowerCase().trim())
+        .neq("id", data.userId) // Excluir el usuario actual
+        .maybeSingle();
+
+      if (emailCheckError) {
+        console.error("[update-user-profile] Error verificando email:", emailCheckError);
+        return NextResponse.json(
+          { error: "Error al verificar email", details: emailCheckError.message },
+          { status: 500 }
+        );
+      }
+
+      if (existingEmailUser) {
+        return NextResponse.json(
+          { error: "Este correo electrónico ya está registrado" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validar que el CURP no esté duplicado (si se está proporcionando)
+    if (data.curp) {
+      const normalizedCURP = data.curp.toUpperCase().trim();
+      const { data: existingCURPUser, error: curpCheckError } = await supabaseAdmin
+        .from(TABLES.USERS)
+        .select("id, curp")
+        .eq("curp", normalizedCURP)
+        .neq("id", data.userId) // Excluir el usuario actual
+        .maybeSingle();
+
+      if (curpCheckError) {
+        console.error("[update-user-profile] Error verificando CURP:", curpCheckError);
+        return NextResponse.json(
+          { error: "Error al verificar CURP", details: curpCheckError.message },
+          { status: 500 }
+        );
+      }
+
+      if (existingCURPUser) {
+        return NextResponse.json(
+          { error: "Este CURP ya está registrado" },
+          { status: 400 }
+        );
+      }
+    }
+
     // Preparar datos para actualizar
     const updateData: Record<string, unknown> = {
       name: data.name,
@@ -39,6 +91,7 @@ export async function POST(req: Request) {
       gender: data.gender || null,
       state: data.state || null,
       municipality: data.municipality || null,
+      curp: data.curp ? data.curp.toUpperCase().trim() : null,
     };
 
     console.log("[update-user-profile] Actualizando usuario:", data.userId, updateData);

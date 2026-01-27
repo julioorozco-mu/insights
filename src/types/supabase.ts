@@ -40,6 +40,7 @@ export interface Database {
           gender: GenderType | null;
           state: string | null;
           municipality: string | null;
+          curp: string | null;
           avatar_url: string | null;
           bio: string | null;
           social_links: Json | null;
@@ -59,6 +60,7 @@ export interface Database {
           gender?: GenderType | null;
           state?: string | null;
           municipality?: string | null;
+          curp?: string | null;
           avatar_url?: string | null;
           bio?: string | null;
           social_links?: Json | null;
@@ -78,6 +80,7 @@ export interface Database {
           gender?: GenderType | null;
           state?: string | null;
           municipality?: string | null;
+          curp?: string | null;
           avatar_url?: string | null;
           bio?: string | null;
           social_links?: Json | null;
