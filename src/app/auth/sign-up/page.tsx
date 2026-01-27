@@ -4,15 +4,57 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Sparkles, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { createUserSchema, CreateUserInput } from "@/lib/validators/userSchema";
+import { createUserSchema, CreateUserInput, CreateUserFormInput } from "@/lib/validators/userSchema";
 import { validateCURPAgainstData } from "@/lib/utils/curpValidator";
 import { MunicipalitySelector } from "@/components/MunicipalitySelector";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { APP_NAME } from "@/utils/constants";
+
+// Función auxiliar para generar sugerencias de nombre de usuario
+const generateUsernameSuggestions = (name: string | undefined, lastName: string | undefined, email: string | undefined): string[] => {
+  const suggestions: Set<string> = new Set();
+
+  const clean = (str: string) => str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+
+  const n = clean((name || "").split(" ")[0]);
+  const l = clean((lastName || "").split(" ")[0]);
+  const emailPrefix = email ? clean(email.split("@")[0]) : "";
+
+  const randomSuffix = () => Math.floor(Math.random() * 9999).toString();
+  const year = new Date().getFullYear().toString().slice(-2);
+
+  // Estrategias básicas (deterministas)
+  if (n && l) {
+    suggestions.add(`${n}${l}`);
+    suggestions.add(`${n}.${l}`);
+    suggestions.add(`${n}_${l}`);
+    suggestions.add(`${l}${n}`);
+    suggestions.add(`${n}${l}${year}`);
+    suggestions.add(`${n.charAt(0)}${l}`);
+    suggestions.add(`${n}${l.charAt(0)}`);
+  }
+
+  if (emailPrefix) {
+    suggestions.add(emailPrefix);
+    suggestions.add(`${emailPrefix}${year}`);
+    suggestions.add(`${emailPrefix}_${year}`);
+  }
+
+  // Agregar variantes aleatorias para asegurar variedad
+  if (n) suggestions.add(`${n}${randomSuffix()}`);
+  if (l) suggestions.add(`${l}${randomSuffix()}`);
+  if (n && l) {
+    suggestions.add(`${n}${l}${randomSuffix()}`);
+    suggestions.add(`${n}.${l}.${randomSuffix()}`);
+  }
+  if (emailPrefix) suggestions.add(`${emailPrefix}${randomSuffix()}`);
+
+  return Array.from(suggestions);
+};
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -21,7 +63,8 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [authTimeout, setAuthTimeout] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
-  
+  const [usernameManuallyEdited, setUsernameManuallyEdited] = useState(false);
+
   // Estados para validación de email
   const [emailChecking, setEmailChecking] = useState(false);
   const [emailExists, setEmailExists] = useState(false);
@@ -31,10 +74,10 @@ export default function SignUpPage() {
   const [curpChecking, setCurpChecking] = useState(false);
   const [curpExists, setCurpExists] = useState(false);
   const [curpValidatedExists, setCurpValidatedExists] = useState(false);
-  
+
   // Ref para el input de email para detectar autocompletado
   const emailInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Redirigir usuarios ya logueados al dashboard (después del registro o si ya están autenticados)
   useEffect(() => {
     if (!authLoading && (user || session) && !isRedirecting) {
@@ -71,7 +114,7 @@ export default function SignUpPage() {
     setError: setFormFieldError,
     clearErrors,
     formState: { errors },
-  } = useForm<CreateUserInput>({
+  } = useForm<CreateUserFormInput>({
     resolver: zodResolver(createUserSchema),
     defaultValues: {
       role: "student",
@@ -98,7 +141,6 @@ export default function SignUpPage() {
     dateOfBirth &&
     dateOfBirth.trim().length > 0 &&
     gender &&
-    gender !== "" &&
     state &&
     state !== ""
   );
@@ -118,18 +160,18 @@ export default function SignUpPage() {
         gender: gender || "",
         state: state || "",
       };
-      
+
       console.log("[SignUp Component] Validando CURP con datos:", {
         curp,
         ...validationData,
         canValidateCURP,
       });
-      
+
       const validation = validateCURPAgainstData(curp, validationData);
-      
+
       setCurpValidationResult(validation);
       setCurpValidated(true);
-      
+
       // Si la validación falla, establecer el error en el formulario
       if (!validation.isValid) {
         setValue("curp", curp, { shouldValidate: true });
@@ -180,7 +222,7 @@ export default function SignUpPage() {
     try {
       const response = await fetch(`/api/auth/check-email?email=${encodeURIComponent(emailToCheck)}`);
       const data = await response.json();
-      
+
       setEmailExists(data.exists);
       setEmailValidated(true);
     } catch (err) {
@@ -209,10 +251,10 @@ export default function SignUpPage() {
       const normalizedCURP = curpToCheck.trim().toUpperCase();
       const response = await fetch(`/api/auth/check-curp?curp=${encodeURIComponent(normalizedCURP)}`);
       const data = await response.json();
-      
+
       setCurpExists(data.exists);
       setCurpValidatedExists(true);
-      
+
       // Si el CURP ya existe, establecer error en el formulario
       if (data.exists) {
         setFormFieldError("curp", {
@@ -244,7 +286,7 @@ export default function SignUpPage() {
   useEffect(() => {
     // Debug: verificar que el email se está capturando
     console.log("[EmailValidation] Email value from watch:", email);
-    
+
     // Si el email está vacío, limpiar estados
     if (!email || email.trim() === "") {
       setEmailValidated(false);
@@ -290,7 +332,7 @@ export default function SignUpPage() {
     // Agregar listeners para múltiples eventos que pueden disparar autocompletado
     inputElement.addEventListener("input", handleInputChange);
     inputElement.addEventListener("change", handleInputChange);
-    
+
     // Verificar periódicamente si el valor cambió (fallback para autocompletado del navegador)
     const intervalId = setInterval(() => {
       const currentValue = inputElement.value;
@@ -306,6 +348,83 @@ export default function SignUpPage() {
     };
   }, [email, setValue]);
 
+  // Autogenerar nombre de usuario automáticamente cuando se llenan los datos básicos
+  useEffect(() => {
+    // Si el usuario ya editó manualmente el campo, no lo tocamos automáticamente
+    if (usernameManuallyEdited) return;
+
+    // Verificar si tenemos datos suficientes (nombre y apellido son los más críticos)
+    if (name && name.length >= 2 && lastName && lastName.length >= 2) {
+      const suggestions = generateUsernameSuggestions(name, lastName, email);
+
+      if (suggestions.length > 0) {
+        // Usar la primera sugerencia como default
+        // Solo actualizamos si el campo está vacío o si no ha sido editado manualmente
+        // (La verificación de usernameManuallyEdited al inicio ya cubre esto, pero es bueno ser explícito en la intención)
+        setValue("username", suggestions[0], { shouldValidate: true, shouldDirty: true });
+      }
+    }
+  }, [name, lastName, email, usernameManuallyEdited, setValue]);
+
+  // Lógica para autogenerar nombre de usuario (Botón manual)
+  const handleGenerateUsername = (e: React.MouseEvent) => {
+    e.preventDefault();
+
+    // Obtener valores actuales
+    const currentName = watch("name");
+    const currentLastName = watch("lastName");
+    const currentEmail = watch("email");
+    const currentUsername = watch("username");
+
+    // Validar que haya datos suficientes
+    if ((!currentName || currentName.length < 2) &&
+      (!currentLastName || currentLastName.length < 2) &&
+      (!currentEmail || currentEmail.length < 3)) {
+      setError("Ingresa nombre, apellido o email para generar sugerencias");
+      // Limpiar el error después de 3 segundos
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+
+    // Marcar como editado manualmente para evitar sobreescritura automática posterior
+    setUsernameManuallyEdited(true);
+
+    const suggestions = generateUsernameSuggestions(currentName, currentLastName, currentEmail);
+
+    // Si no se generaron sugerencias (raro si pasó validación), salir
+    if (suggestions.length === 0) return;
+
+    let nextUsername = "";
+
+    // Si ya tiene un username y está en la lista, ir al siguiente
+    if (currentUsername && suggestions.includes(currentUsername)) {
+      const currentIndex = suggestions.indexOf(currentUsername);
+      const nextIndex = (currentIndex + 1) % suggestions.length;
+      nextUsername = suggestions[nextIndex];
+    } else {
+      // Si no tiene username o el actual no está en la lista, elegir uno aleatorio o el primero
+      // Preferimos aleatorio para dar sensación de "nuevas ideas" si el usuario borró y volvió a dar click
+      // O simplemente el primero si está vacío
+      if (!currentUsername) {
+        nextUsername = suggestions[0];
+      } else {
+        // Si tiene uno custom y quiere sugerencias, darle una aleatoria de la lista
+        const randomIndex = Math.floor(Math.random() * suggestions.length);
+        nextUsername = suggestions[randomIndex];
+        // Asegurar que sea diferente al actual si es posible
+        if (nextUsername === currentUsername && suggestions.length > 1) {
+          nextUsername = suggestions[(randomIndex + 1) % suggestions.length];
+        }
+      }
+    }
+
+    setValue("username", nextUsername, { shouldValidate: true, shouldDirty: true });
+    // Limpiar errores específicos de username si existían
+    if (errors.username) {
+      clearErrors("username");
+    }
+  };
+
   // Calcular edad automáticamente
   useEffect(() => {
     if (dateOfBirth) {
@@ -313,11 +432,11 @@ export default function SignUpPage() {
       const today = new Date();
       let calculatedAge = today.getFullYear() - birthDate.getFullYear();
       const monthDiff = today.getMonth() - birthDate.getMonth();
-      
+
       if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
         calculatedAge--;
       }
-      
+
       setAge(calculatedAge);
     }
   }, [dateOfBirth]);
@@ -330,20 +449,20 @@ export default function SignUpPage() {
     }
 
     let score = 0;
-    
+
     // Longitud
     if (password.length >= 8) score++;
     if (password.length >= 12) score++;
-    
+
     // Mayúsculas
     if (/[A-Z]/.test(password)) score++;
-    
+
     // Minúsculas
     if (/[a-z]/.test(password)) score++;
-    
+
     // Números
     if (/[0-9]/.test(password)) score++;
-    
+
     // Caracteres especiales
     if (/[^A-Za-z0-9]/.test(password)) score++;
 
@@ -368,7 +487,7 @@ export default function SignUpPage() {
   // PERO: si pasa el timeout y no hay session/user, mostrar la página
   const isAuthenticated = !!(user || session);
   const shouldShowLoader = isRedirecting || isAuthenticated || (authLoading && !authTimeout);
-  
+
   if (shouldShowLoader) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -380,9 +499,13 @@ export default function SignUpPage() {
     );
   }
 
-  const onSubmit = async (data: CreateUserInput) => {
+  const onSubmit = async (data: CreateUserFormInput) => {
+    // Los datos ya fueron validados y transformados por Zod a través del resolver
+    // Podemos tratarlos como CreateUserInput (output type) de forma segura
+    const validatedData = data as CreateUserInput;
+
     if (loading || isRedirecting) return;
-    
+
     // Validar que el email no esté duplicado antes de enviar
     if (emailValidated && emailExists) {
       setFormFieldError("email", {
@@ -394,8 +517,8 @@ export default function SignUpPage() {
     }
 
     // Si no se ha validado el email, verificarlo primero
-    if (!emailValidated && data.email) {
-      await checkEmailExists(data.email);
+    if (!emailValidated && validatedData.email) {
+      await checkEmailExists(validatedData.email);
       if (emailExists) {
         setFormFieldError("email", {
           type: "manual",
@@ -407,9 +530,9 @@ export default function SignUpPage() {
     }
 
     // Verificar email nuevamente antes de enviar (última validación)
-    if (data.email) {
+    if (validatedData.email) {
       try {
-        const response = await fetch(`/api/auth/check-email?email=${encodeURIComponent(data.email)}`);
+        const response = await fetch(`/api/auth/check-email?email=${encodeURIComponent(validatedData.email)}`);
         const emailData = await response.json();
         if (emailData.exists) {
           setFormFieldError("email", {
@@ -437,8 +560,8 @@ export default function SignUpPage() {
     }
 
     // Verificar CURP nuevamente antes de enviar (última validación)
-    if (data.curp && data.curp.length === 18) {
-      const normalizedCURP = data.curp.toUpperCase().trim();
+    if (validatedData.curp && validatedData.curp.length === 18) {
+      const normalizedCURP = validatedData.curp.toUpperCase().trim();
       try {
         const response = await fetch(`/api/auth/check-curp?curp=${encodeURIComponent(normalizedCURP)}`);
         const curpData = await response.json();
@@ -456,12 +579,12 @@ export default function SignUpPage() {
         return;
       }
     }
-    
+
     try {
       setLoading(true);
       setError(null);
-      await signUp(data);
-      
+      await signUp(validatedData);
+
       // El AuthContext ahora maneja automáticamente el inicio de sesión después del registro
       // El useEffect de arriba se encargará de redirigir cuando detecte la sesión
       // No necesitamos hacer nada más aquí, solo esperar
@@ -476,7 +599,7 @@ export default function SignUpPage() {
       const errorMessage = err instanceof Error ? err.message : "Error al crear la cuenta";
       setError(errorMessage);
       setLoading(false);
-      
+
       // Si el error es de CURP o email duplicado, establecer el error en el campo correspondiente
       if (errorMessage.includes("CURP")) {
         setFormFieldError("curp", {
@@ -515,7 +638,7 @@ export default function SignUpPage() {
               className="h-16 w-auto object-contain"
             />
           </div>
-          
+
           <div className="text-center mb-6">
             <div className="mb-4">
               <h1 className="text-3xl font-bold text-primary">{APP_NAME}</h1>
@@ -627,7 +750,7 @@ export default function SignUpPage() {
                 <label className="label">
                   <span className="label-text">Estado *</span>
                 </label>
-                <select 
+                <select
                   value={selectedState}
                   onChange={(e) => {
                     setSelectedState(e.target.value);
@@ -695,8 +818,8 @@ export default function SignUpPage() {
               <label className="label">
                 <span className="label-text">Género *</span>
               </label>
-              <select 
-                {...register("gender")} 
+              <select
+                {...register("gender")}
                 className="select select-bordered"
                 onChange={(e) => {
                   setValue("gender", e.target.value as "male" | "female" | "other");
@@ -724,15 +847,14 @@ export default function SignUpPage() {
                 type="text"
                 {...register("curp")}
                 disabled={!canValidateCURP}
-                className={`input input-bordered uppercase ${
-                  !canValidateCURP
-                    ? "input-disabled bg-base-200"
-                    : curp && curp.length === 18 && curpValidated && curpValidationResult?.isValid && !errors.curp && curpValidatedExists && !curpExists
+                className={`input input-bordered uppercase ${!canValidateCURP
+                  ? "input-disabled bg-base-200"
+                  : curp && curp.length === 18 && curpValidated && curpValidationResult?.isValid && !errors.curp && curpValidatedExists && !curpExists
                     ? "input-success"
                     : curp && (errors.curp || (curpValidated && !curpValidationResult?.isValid) || (curpValidatedExists && curpExists))
-                    ? "input-error"
-                    : ""
-                }`}
+                      ? "input-error"
+                      : ""
+                  }`}
                 placeholder={canValidateCURP ? "XXXX000000XXXXXX00" : "Completa los campos anteriores primero"}
                 autoComplete="off"
                 maxLength={18}
@@ -792,9 +914,9 @@ export default function SignUpPage() {
                 </p>
                 <p className="text-xs text-base-content/60 mt-1">
                   ¿No conoces tu CURP?{" "}
-                  <a 
-                    href="https://www.gob.mx/curp/" 
-                    target="_blank" 
+                  <a
+                    href="https://www.gob.mx/curp/"
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="link link-primary underline"
                   >
@@ -829,13 +951,12 @@ export default function SignUpPage() {
                       // Actualizar el valor inmediatamente
                       setValue("email", e.target.value, { shouldValidate: true });
                     }}
-                    className={`input input-bordered w-full ${
-                      emailValidated 
-                        ? emailExists 
-                          ? "input-error" 
-                          : "input-success" 
-                        : ""
-                    }`}
+                    className={`input input-bordered w-full ${emailValidated
+                      ? emailExists
+                        ? "input-error"
+                        : "input-success"
+                      : ""
+                      }`}
                     placeholder="tu@email.com"
                     autoComplete="email"
                   />
@@ -845,9 +966,8 @@ export default function SignUpPage() {
                     </span>
                   )}
                   {emailValidated && !emailChecking && (
-                    <span className={`absolute right-3 top-1/2 -translate-y-1/2 ${
-                      emailExists ? "text-error" : "text-success"
-                    }`}>
+                    <span className={`absolute right-3 top-1/2 -translate-y-1/2 ${emailExists ? "text-error" : "text-success"
+                      }`}>
                       {emailExists ? "✗" : "✓"}
                     </span>
                   )}
@@ -897,13 +1017,30 @@ export default function SignUpPage() {
               <label className="label">
                 <span className="label-text">Nombre de Usuario *</span>
               </label>
-              <input
-                type="text"
-                {...register("username")}
-                className="input input-bordered"
-                placeholder="juanperez"
-                autoComplete="off"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  {...register("username", {
+                    onChange: () => setUsernameManuallyEdited(true)
+                  })}
+                  className="input input-bordered flex-1"
+                  placeholder="juanperez"
+                  autoComplete="username"
+                />
+                <button
+                  type="button"
+                  onClick={handleGenerateUsername}
+                  className="btn btn-square btn-outline btn-primary"
+                  title="Generar nombre de usuario automáticamente"
+                >
+                  <Sparkles className="w-5 h-5" />
+                </button>
+              </div>
+              <label className="label">
+                <span className="label-text-alt text-base-content/60">
+                  Haz clic en <Sparkles className="w-3 h-3 inline mx-0.5" /> para generar ideas basadas en tus datos
+                </span>
+              </label>
               {errors.username && (
                 <label className="label">
                   <span className="label-text-alt text-error">{errors.username.message}</span>
@@ -926,9 +1063,9 @@ export default function SignUpPage() {
               {password && passwordStrength.label && (
                 <div className="mt-2">
                   <div className="flex items-center gap-2">
-                    <progress 
-                      className={`progress progress-${passwordStrength.color} w-full`} 
-                      value={passwordStrength.score} 
+                    <progress
+                      className={`progress progress-${passwordStrength.color} w-full`}
+                      value={passwordStrength.score}
                       max="6"
                     ></progress>
                     <span className={`text-sm font-semibold text-${passwordStrength.color}`}>
@@ -979,13 +1116,13 @@ export default function SignUpPage() {
               )}
             </div>
 
-            <button 
-              type="submit" 
-              className="btn btn-primary w-full btn-lg text-white" 
+            <button
+              type="submit"
+              className="btn btn-primary w-full btn-lg text-white"
               disabled={
-                loading || 
+                loading ||
                 isRedirecting ||
-                emailExists || 
+                emailExists ||
                 emailChecking ||
                 curpExists ||
                 curpChecking ||
@@ -993,10 +1130,10 @@ export default function SignUpPage() {
                 !!errors.email?.message?.includes("ya está registrado")
               }
             >
-              {loading ? "Creando cuenta..." : 
-               emailChecking ? "Verificando email..." : 
-               curpChecking ? "Verificando CURP..." :
-               "Crear Cuenta"}
+              {loading ? "Creando cuenta..." :
+                emailChecking ? "Verificando email..." :
+                  curpChecking ? "Verificando CURP..." :
+                    "Crear Cuenta"}
             </button>
           </form>
 
