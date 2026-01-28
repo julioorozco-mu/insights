@@ -182,18 +182,25 @@ export function MicrocredentialDetailDrawer({
                     module.teacherIds?.forEach((id: string) => teacherIds.add(id));
                 });
 
-                const teachersMap = new Map();
-                for (const teacherId of teacherIds) {
+                // ✅ OPTIMIZACIÓN: Cargar todos los teachers en paralelo
+                const teacherPromises = Array.from(teacherIds).map(async (teacherId) => {
                     try {
                         const res = await fetch(`/api/users/${teacherId}`);
                         if (res.ok) {
                             const data = await res.json();
-                            teachersMap.set(teacherId, data.user);
+                            return { id: teacherId, user: data.user };
                         }
                     } catch (error) {
                         console.error(`Error loading teacher ${teacherId}:`, error);
                     }
-                }
+                    return null;
+                });
+
+                const results = await Promise.all(teacherPromises);
+                const teachersMap = new Map();
+                results.filter(Boolean).forEach((result: any) => {
+                    teachersMap.set(result.id, result.user);
+                });
                 setSpeakers(teachersMap);
             } catch (error) {
                 console.error('Error loading course data:', error);
@@ -214,24 +221,13 @@ export function MicrocredentialDetailDrawer({
 
         setLoadingPreview(true);
         try {
+            // El endpoint getCoursePreview ahora incluye speakers directamente
             const courseRes = await fetch(`/api/student/getCoursePreview?courseId=${courseId}`);
             if (courseRes.ok) {
                 const courseData = await courseRes.json();
 
-                // Cargar instructor
-                let teacher = null;
-                const speakerIds = courseData.course?.speakerIds || courseData.course?.teacherIds || [];
-                if (speakerIds.length > 0) {
-                    try {
-                        const res = await fetch(`/api/users/${speakerIds[0]}`);
-                        if (res.ok) {
-                            const data = await res.json();
-                            teacher = data.user;
-                        }
-                    } catch (error) {
-                        console.error('Error loading teacher:', error);
-                    }
-                }
+                // Usar el primer speaker de la lista (ya viene en la respuesta)
+                const teacher = courseData.speakers?.[0] || null;
 
                 setLevelPreviewData({
                     course: courseData.course,

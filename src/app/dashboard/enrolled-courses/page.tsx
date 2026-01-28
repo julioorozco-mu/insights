@@ -1,13 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, memo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
-import { courseRepository } from "@/lib/repositories/courseRepository";
-import { lessonRepository } from "@/lib/repositories/lessonRepository";
-import { userRepository } from "@/lib/repositories/userRepository";
 import { Loader } from "@/components/common/Loader";
-import { IconBook, IconStar, IconStarFilled, IconHeart, IconHeartFilled, IconLock } from "@tabler/icons-react";
+import { IconBook, IconStarFilled, IconHeart, IconHeartFilled, IconLock } from "@tabler/icons-react";
 
 interface Speaker {
   id: string;
@@ -64,6 +61,22 @@ interface CourseRating {
   averageRating: number;
   reviewsCount: number;
 }
+
+// Componente memoizado para renderizar estrellas (rerender-memo)
+const StarRating = memo(({ rating, reviewsCount, size = 14 }: { rating: number; reviewsCount: number; size?: number }) => {
+  return (
+    <div className="flex items-center gap-1.5">
+      <IconStarFilled size={size} className="text-yellow-500" />
+      <span className="text-sm font-semibold text-slate-900">
+        {rating > 0 ? rating.toFixed(1) : '—'}
+      </span>
+      <span className="text-sm text-slate-500">
+        ({reviewsCount} {reviewsCount === 1 ? 'review' : 'reviews'})
+      </span>
+    </div>
+  );
+});
+StarRating.displayName = 'StarRating';
 
 export default function EnrolledCoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
@@ -144,55 +157,9 @@ export default function EnrolledCoursesPage() {
     });
   };
 
-  // Función para obtener el rating de un curso
-  const fetchCourseRating = async (courseId: string): Promise<CourseRating> => {
-    try {
-      const response = await fetch(`/api/student/rating?courseId=${courseId}`);
-      if (response.ok) {
-        const data = await response.json();
-        return {
-          averageRating: data.courseStats?.average_rating || 0,
-          reviewsCount: data.courseStats?.reviews_count || 0,
-        };
-      }
-    } catch (error) {
-      console.error(`Error fetching rating for course ${courseId}:`, error);
-    }
-    return { averageRating: 0, reviewsCount: 0 };
-  };
-
-  // Función para renderizar las estrellas
-  const renderStars = (rating: number) => {
-    const stars = [];
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 >= 0.5;
-
-    for (let i = 0; i < 5; i++) {
-      if (i < fullStars) {
-        stars.push(
-          <IconStarFilled key={i} size={14} className="text-yellow-500" />
-        );
-      } else if (i === fullStars && hasHalfStar) {
-        stars.push(
-          <div key={i} className="relative">
-            <IconStar size={14} className="text-yellow-500" />
-            <div className="absolute inset-0 overflow-hidden w-1/2">
-              <IconStarFilled size={14} className="text-yellow-500" />
-            </div>
-          </div>
-        );
-      } else {
-        stars.push(
-          <IconStar key={i} size={14} className="text-yellow-500" />
-        );
-      }
-    }
-    return stars;
-  };
-
-  const getCourseRating = (courseId: string): CourseRating => {
+  const getCourseRating = useCallback((courseId: string): CourseRating => {
     return courseRatings.get(courseId) || { averageRating: 0, reviewsCount: 0 };
-  };
+  }, [courseRatings]);
 
   // Función para obtener el progreso de un curso
   const fetchCourseProgress = async (courseId: string): Promise<CourseProgress | null> => {
@@ -284,120 +251,101 @@ export default function EnrolledCoursesPage() {
       if (!user) return;
 
       try {
-        // Obtener inscripciones del estudiante usando API student (sesión)
-        const enrollmentsRes = await fetch(`/api/student/getEnrollments`);
+        // ✅ OPTIMIZACIÓN: Usar endpoint consolidado que elimina N+1 queries
+        const [coursesRes, favoritesRes] = await Promise.all([
+          fetch(`/api/student/enrolled-courses-full`),
+          fetch(`/api/student/favorites?userId=${user.id}`)
+        ]);
 
-        if (!enrollmentsRes.ok) {
+        // Procesar favoritos
+        if (favoritesRes.ok) {
+          const favData = await favoritesRes.json();
+          const favIds = new Set<string>((favData.favorites || []).map((f: any) => f.course_id));
+          setFavorites(favIds);
+        }
+
+        if (!coursesRes.ok) {
           setCourses([]);
           return;
         }
 
-        const enrollmentsData = await enrollmentsRes.json();
-        const enrollments: Enrollment[] = enrollmentsData.enrollments || [];
+        const data = await coursesRes.json();
+        const enrolledCourses = data.courses || [];
 
-        if (enrollments.length === 0) {
+        if (enrolledCourses.length === 0) {
           setCourses([]);
           setLoading(false);
           return;
         }
 
-        // Obtener información de cada curso con conteo real de lecciones
-        const coursesPromises = enrollments.map(async (enrollment) => {
-          const course = await courseRepository.findById(enrollment.courseId);
-          if (course) {
-            // Obtener conteo real de lecciones desde la tabla lessons
-            const lessons = await lessonRepository.findByCourseId(course.id);
-            const activeLessons = lessons.filter(l => l.isActive !== false);
-
-            return {
-              id: course.id,
-              title: course.title,
-              description: course.description,
-              coverImageUrl: course.coverImageUrl,
-              speakerIds: course.speakerIds,
-              lessonCount: activeLessons.length,
-              createdAt: course.createdAt,
-              startDate: course.startDate,
-            } as Course;
-          }
-          return null;
-        });
-
-        const coursesData = (await Promise.all(coursesPromises)).filter(
-          (course): course is Course => course !== null
-        );
+        // Transformar datos del endpoint a la estructura local
+        const coursesData: Course[] = enrolledCourses.map((c: any) => ({
+          id: c.courseId,
+          title: c.title,
+          description: c.description,
+          coverImageUrl: c.coverImageUrl,
+          speakerIds: c.teacher ? [c.teacher.id] : [],
+          lessonCount: c.lessonCount || 0,
+          createdAt: c.enrolledAt,
+          startDate: undefined,
+        }));
 
         setCourses(coursesData);
 
-        // Cargar información de los speakers
-        const speakerIds = new Set<string>();
-        coursesData.forEach(course => {
-          course.speakerIds?.forEach(id => speakerIds.add(id));
-        });
-
-        const speakersMap = new Map<string, Speaker>();
-        for (const speakerId of speakerIds) {
-          const userData = await userRepository.findById(speakerId);
-          if (userData) {
-            speakersMap.set(speakerId, {
-              id: userData.id,
-              name: userData.name,
-              lastName: '',
-              email: userData.email,
-              avatarUrl: userData.avatarUrl,
-            });
-          }
-        }
-        setSpeakers(speakersMap);
-
-        // Cargar ratings de todos los cursos
+        // Ratings desde el endpoint consolidado
         const ratingsMap = new Map<string, CourseRating>();
-        await Promise.all(
-          coursesData.map(async (course) => {
-            const rating = await fetchCourseRating(course.id);
-            ratingsMap.set(course.id, rating);
-          })
-        );
+        enrolledCourses.forEach((c: any) => {
+          ratingsMap.set(c.courseId, {
+            averageRating: c.averageRating || 0,
+            reviewsCount: c.reviewsCount || 0,
+          });
+        });
         setCourseRatings(ratingsMap);
 
-        // Cargar progreso de todos los cursos
-        const progressMap = new Map<string, CourseProgress>();
-        await Promise.all(
-          coursesData.map(async (course) => {
-            const progress = await fetchCourseProgress(course.id);
-            if (progress) {
-              progressMap.set(course.id, progress);
-            }
-          })
-        );
-        setCourseProgress(progressMap);
+        // Speakers desde el endpoint consolidado
+        const speakersMap = new Map<string, Speaker>();
+        enrolledCourses.forEach((c: any) => {
+          if (c.teacher) {
+            speakersMap.set(c.teacher.id, {
+              id: c.teacher.id,
+              name: c.teacher.name,
+              lastName: '',
+              email: '',
+              avatarUrl: c.teacher.avatarUrl,
+            });
+          }
+        });
+        setSpeakers(speakersMap);
 
-        // Cargar información de acceso (verificar si es microcredencial y está bloqueado)
+        // Access info desde el endpoint consolidado
         const accessMap = new Map<string, CourseAccessInfo>();
-        await Promise.all(
-          coursesData.map(async (course) => {
-            try {
-              const response = await fetch(`/api/student/check-course-access?courseId=${course.id}`);
-              if (response.ok) {
-                const data = await response.json();
-                if (data.isMicrocredentialCourse) {
-                  accessMap.set(course.id, {
-                    isMicrocredentialCourse: data.isMicrocredentialCourse,
-                    isLevel2Locked: data.isLevel2Locked,
-                    microcredentialId: data.microcredentialId,
-                    levelNumber: data.levelNumber,
-                  });
-                }
-              }
-            } catch (error) {
-              console.error(`Error checking access for course ${course.id}:`, error);
-            }
-          })
-        );
+        enrolledCourses.forEach((c: any) => {
+          if (c.microcredentialAccess?.isMicrocredentialCourse) {
+            accessMap.set(c.courseId, {
+              isMicrocredentialCourse: true,
+              isLevel2Locked: c.microcredentialAccess.isLevel2Locked,
+              microcredentialId: c.microcredentialAccess.microcredentialId,
+              levelNumber: c.microcredentialAccess.levelNumber,
+            });
+          }
+        });
         setCourseAccessInfo(accessMap);
 
-        // Cargar favoritos
-        await fetchFavorites();
+        // ✅ NOTA: El progreso detallado todavía requiere la llamada separada
+        // porque incluye información de subsecciones que es compleja
+        const progressResults = await Promise.all(
+          coursesData.map(async (course) => {
+            const progress = await fetchCourseProgress(course.id);
+            return { courseId: course.id, progress };
+          })
+        );
+
+        const progressMap = new Map<string, CourseProgress>();
+        progressResults.forEach(r => {
+          if (r.progress) progressMap.set(r.courseId, r.progress);
+        });
+        setCourseProgress(progressMap);
+
       } catch (error) {
         console.error("Error loading enrolled courses:", error);
       } finally {
@@ -583,16 +531,11 @@ export default function EnrolledCoursesPage() {
                     </div>
                   )}
 
-                  {/* Rating */}
-                  <div className="flex items-center gap-1.5 mt-2">
-                    <IconStarFilled size={14} className="text-yellow-500" />
-                    <span className="text-sm font-semibold text-slate-900">
-                      {rating.averageRating > 0 ? rating.averageRating.toFixed(1) : '—'}
-                    </span>
-                    <span className="text-sm text-slate-500">
-                      ({rating.reviewsCount} {rating.reviewsCount === 1 ? 'review' : 'reviews'})
-                    </span>
-                  </div>
+                  {/* Rating - usando componente memoizado */}
+                  <StarRating
+                    rating={rating.averageRating}
+                    reviewsCount={rating.reviewsCount}
+                  />
 
                   {/* Link para ver progreso por sección */}
                   {progress && progress.lessons.length > 0 && !isLocked && (

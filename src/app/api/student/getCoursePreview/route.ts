@@ -43,11 +43,11 @@ export async function GET(req: NextRequest) {
     }
 
     // Permitir acceso a estudiantes, admins y teachers
-    if (authUser.role !== 'student' && 
-        authUser.role !== 'admin' && 
-        authUser.role !== 'superadmin' && 
-        authUser.role !== 'support' && 
-        authUser.role !== 'teacher') {
+    if (authUser.role !== 'student' &&
+      authUser.role !== 'admin' &&
+      authUser.role !== 'superadmin' &&
+      authUser.role !== 'support' &&
+      authUser.role !== 'teacher') {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
     }
 
@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
     // Obtener lecciones del curso (solo información básica para preview)
     // No filtrar por is_active para mostrar todas las lecciones con contenido
     console.log(`[getCoursePreview API] Querying lessons for courseId: ${courseId}`);
-    
+
     const { data: lessonsData, error: lessonsError } = await supabaseAdmin
       .from(TABLES.LESSONS)
       .select('id, title, description, order, content, section_id, is_active, is_published, course_id')
@@ -136,18 +136,18 @@ export async function GET(req: NextRequest) {
           .from(TABLES.LESSONS)
           .select('id, title, course_id')
           .limit(5);
-        
+
         if (!allLessonsError && allLessons) {
           console.log(`[getCoursePreview API] Sample lessons in DB:`, allLessons);
         }
-        
+
         // Verificar si hay lecciones con course_id diferente (por si hay problema de formato)
         const { data: lessonsByString, error: stringError } = await supabaseAdmin
           .from(TABLES.LESSONS)
           .select('id, title, course_id')
           .eq('course_id', courseId.toString())
           .limit(5);
-        
+
         if (!stringError && lessonsByString) {
           console.log(`[getCoursePreview API] Lessons found with string courseId:`, lessonsByString.length);
         }
@@ -158,7 +158,7 @@ export async function GET(req: NextRequest) {
       // Parsear content para obtener subsecciones
       let parsedContent = null;
       let subsections: { id: string; title: string }[] = [];
-      
+
       if (l.content) {
         try {
           const contentData = typeof l.content === 'string' ? JSON.parse(l.content) : l.content;
@@ -169,7 +169,7 @@ export async function GET(req: NextRequest) {
             hasSubsections: contentData?.subsections ? Array.isArray(contentData.subsections) : false,
             subsectionsCount: contentData?.subsections?.length || 0,
           });
-          
+
           if (contentData && contentData.subsections && Array.isArray(contentData.subsections)) {
             parsedContent = contentData;
             // Mapear todas las subsecciones, similar a getLessonsByCourse
@@ -188,7 +188,7 @@ export async function GET(req: NextRequest) {
       } else {
         console.log(`[getCoursePreview API] Lesson ${l.id} (${l.title}): No content field`);
       }
-      
+
       return {
         id: l.id,
         title: l.title || '',
@@ -201,7 +201,7 @@ export async function GET(req: NextRequest) {
         isActive: l.is_active,
       };
     });
-    
+
     console.log(`[getCoursePreview API] Total lessons: ${lessons.length}, Lessons with subsections: ${lessons.filter(l => l.subsections.length > 0).length}`);
     console.log(`[getCoursePreview API] Lessons summary:`, lessons.map(l => ({
       id: l.id,
@@ -221,9 +221,33 @@ export async function GET(req: NextRequest) {
       console.error('[getCoursePreview API] Error counting enrollments:', enrolledError);
     }
 
-    return NextResponse.json({ 
-      course, 
+    // Obtener información de los speakers/teachers
+    let speakers: any[] = [];
+    const speakerIds = course.speakerIds || [];
+
+    if (speakerIds.length > 0) {
+      const { data: usersData, error: usersError } = await supabaseAdmin
+        .from(TABLES.USERS)
+        .select('id, name, last_name, email, avatar_url')
+        .in('id', speakerIds);
+
+      if (usersError) {
+        console.error('[getCoursePreview API] Error loading speakers:', usersError);
+      } else {
+        speakers = (usersData || []).map((u: any) => ({
+          id: u.id,
+          name: u.name || '',
+          lastName: u.last_name || '',
+          email: u.email || '',
+          avatarUrl: u.avatar_url || null,
+        }));
+      }
+    }
+
+    return NextResponse.json({
+      course,
       lessons,
+      speakers,
       enrolledCount: enrolledCount || 0
     }, { status: 200 });
   } catch (e: any) {

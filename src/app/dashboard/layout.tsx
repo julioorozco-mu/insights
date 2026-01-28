@@ -75,10 +75,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     // Solo actuar cuando ya no esté cargando
     if (loading) return;
-    
+
     // Marcar que ya verificamos la autenticación
     setAuthChecked(true);
-    
+
     // Si no hay usuario ni sesión, redirigir
     if (!user && !session && !hasRedirected.current) {
       hasRedirected.current = true;
@@ -119,24 +119,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen bg-brand-background overflow-hidden">
       {/* Sidebar - Fixed */}
-      <DashboardSidebar 
+      <DashboardSidebar
         isOpen={sidebarOpen}
         isCollapsed={sidebarCollapsed}
         onClose={() => setSidebarOpen(false)}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         user={user}
       />
-      
+
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Top Bar - Fixed at top */}
-        <DashboardTopbar 
+        <DashboardTopbar
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           sidebarCollapsed={sidebarCollapsed}
           user={user}
           onSignOut={signOut}
         />
-        
+
         {/* Main Content - Only this scrolls */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 sm:px-6 lg:px-10">
           {children}

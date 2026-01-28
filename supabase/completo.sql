@@ -550,6 +550,72 @@ $$;
 ALTER FUNCTION "public"."set_course_review_updated_at"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."sync_existing_course_progress"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    v_level1_progress INTEGER;
+    v_level2_progress INTEGER;
+    v_course_level_1_id UUID;
+    v_course_level_2_id UUID;
+BEGIN
+    -- Obtener IDs de cursos de la microcredencial
+    SELECT course_level_1_id, course_level_2_id 
+    INTO v_course_level_1_id, v_course_level_2_id
+    FROM public.microcredentials 
+    WHERE id = NEW.microcredential_id;
+    
+    -- Verificar progreso existente del Nivel 1
+    SELECT COALESCE(progress, 0) INTO v_level1_progress
+    FROM public.student_enrollments
+    WHERE student_id = NEW.student_id 
+    AND course_id = v_course_level_1_id;
+    
+    -- Verificar progreso existente del Nivel 2
+    SELECT COALESCE(progress, 0) INTO v_level2_progress
+    FROM public.student_enrollments
+    WHERE student_id = NEW.student_id 
+    AND course_id = v_course_level_2_id;
+    
+    -- Si no hay inscripción previa, tratar como 0
+    v_level1_progress := COALESCE(v_level1_progress, 0);
+    v_level2_progress := COALESCE(v_level2_progress, 0);
+    
+    -- Sincronizar Nivel 1 si ya está completado
+    IF v_level1_progress = 100 THEN
+        NEW.level_1_completed := true;
+        NEW.level_1_completed_at := NOW();
+        NEW.level_2_unlocked := true;
+        NEW.level_2_unlocked_at := NOW();
+    END IF;
+    
+    -- Sincronizar Nivel 2 si ya está completado
+    IF v_level2_progress = 100 THEN
+        NEW.level_2_completed := true;
+        NEW.level_2_completed_at := NOW();
+    END IF;
+    
+    -- Si ambos están completos, desbloquear badge
+    IF v_level1_progress = 100 AND v_level2_progress = 100 THEN
+        NEW.status := 'completed';
+        NEW.completed_at := NOW();
+        NEW.badge_unlocked := true;
+        NEW.badge_unlocked_at := NOW();
+    END IF;
+    
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."sync_existing_course_progress"() OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."sync_existing_course_progress"() IS 'Sincroniza el progreso de cursos existentes al crear inscripción a microcredencial. 
+Se ejecuta BEFORE INSERT para modificar los valores antes de guardar.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."update_course_rating_stats"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -1616,7 +1682,9 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "is_verified" boolean DEFAULT false,
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
-    "municipality" character varying(255)
+    "municipality" character varying(255),
+    "curp" character varying(18),
+    CONSTRAINT "users_curp_format_check" CHECK ((("curp" IS NULL) OR (("curp")::"text" ~ '^[A-Z]{4}[0-9]{6}[A-Z]{6}[A-Z0-9]{2}$'::"text")))
 );
 
 
@@ -1624,6 +1692,10 @@ ALTER TABLE "public"."users" OWNER TO "postgres";
 
 
 COMMENT ON TABLE "public"."users" IS 'Usuarios base del sistema MicroCert';
+
+
+
+COMMENT ON COLUMN "public"."users"."curp" IS 'CURP (Clave Única de Registro de Población) - 18 caracteres alfanuméricos';
 
 
 
@@ -2323,6 +2395,14 @@ CREATE INDEX "idx_video_recordings_course" ON "public"."video_recordings" USING 
 
 
 CREATE INDEX "idx_video_recordings_lesson" ON "public"."video_recordings" USING "btree" ("lesson_id");
+
+
+
+CREATE UNIQUE INDEX "users_curp_unique_idx" ON "public"."users" USING "btree" ("curp") WHERE ("curp" IS NOT NULL);
+
+
+
+CREATE OR REPLACE TRIGGER "before_microcredential_enrollment_insert" BEFORE INSERT ON "public"."microcredential_enrollments" FOR EACH ROW EXECUTE FUNCTION "public"."sync_existing_course_progress"();
 
 
 
@@ -3693,6 +3773,12 @@ GRANT ALL ON FUNCTION "public"."handle_user_role_jwt"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."set_course_review_updated_at"() TO "anon";
 GRANT ALL ON FUNCTION "public"."set_course_review_updated_at"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_course_review_updated_at"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sync_existing_course_progress"() TO "anon";
+GRANT ALL ON FUNCTION "public"."sync_existing_course_progress"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sync_existing_course_progress"() TO "service_role";
 
 
 

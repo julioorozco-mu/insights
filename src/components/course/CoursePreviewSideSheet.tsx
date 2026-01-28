@@ -5,7 +5,6 @@ import { Course } from "@/types/course";
 import { IconX, IconBook, IconCalendar, IconUser, IconListDetails, IconClock, IconUsers } from "@tabler/icons-react";
 import RichTextContent from "@/components/ui/RichTextContent";
 import { Loader } from "@/components/common/Loader";
-import { userRepository } from "@/lib/repositories/userRepository";
 import { courseRepository } from "@/lib/repositories/courseRepository";
 import { capitalizeText } from "@/lib/utils";
 
@@ -45,6 +44,47 @@ export default function CoursePreviewSideSheet({
   const [speakers, setSpeakers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [enrolledCount, setEnrolledCount] = useState<number>(0);
+  const [topbarHeight, setTopbarHeight] = useState(0);
+
+  // Calcular altura del topbar y bloquear scroll del main content
+  useEffect(() => {
+    if (!isOpen) {
+      // Restaurar scroll cuando se cierra
+      const mainContent = document.querySelector('main');
+      if (mainContent) {
+        mainContent.style.overflow = '';
+      }
+      return;
+    }
+
+    // Bloquear scroll del main content cuando está abierto
+    const mainContent = document.querySelector('main');
+    if (mainContent) {
+      mainContent.style.overflow = 'hidden';
+    }
+
+    // Calcular altura del topbar
+    const topbar = document.querySelector<HTMLElement>('[data-dashboard-topbar]');
+    if (!topbar) {
+      setTopbarHeight(0);
+      return;
+    }
+
+    const update = () => setTopbarHeight(Math.ceil(topbar.getBoundingClientRect().height));
+    update();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(update);
+    observer.observe(topbar);
+
+    return () => {
+      observer.disconnect();
+      // Restaurar scroll al desmontar
+      if (mainContent) {
+        mainContent.style.overflow = '';
+      }
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || !courseId) {
@@ -59,63 +99,33 @@ export default function CoursePreviewSideSheet({
       setLoading(true);
       try {
         // Cargar información del curso usando la API de preview para estudiantes
+        // Este endpoint ya incluye: curso, lecciones, speakers y enrolledCount
         const courseRes = await fetch(`/api/student/getCoursePreview?courseId=${courseId}`);
-        let loadedCourse: Course | null = null;
-        
+
         if (courseRes.ok) {
           const courseData = await courseRes.json();
-          loadedCourse = courseData.course;
-          setCourse(loadedCourse);
-          
-          // Cargar lecciones desde la misma respuesta
-          if (courseData.lessons) {
-            console.log('[CoursePreviewSideSheet] Loaded lessons:', courseData.lessons.length);
-            console.log('[CoursePreviewSideSheet] Lessons data:', courseData.lessons.map((l: any) => ({
-              id: l.id,
-              title: l.title,
-              hasContent: !!l.content,
-              hasSubsections: !!l.subsections,
-              subsectionsCount: l.subsections?.length || 0,
-              hasParsedContent: !!l.parsedContent
-            })));
-            setLessons(courseData.lessons || []);
-          } else {
-            console.log('[CoursePreviewSideSheet] No lessons in response');
-          }
-          
-          // Cargar número de inscritos
-          if (typeof courseData.enrolledCount === 'number') {
-            setEnrolledCount(courseData.enrolledCount);
-          }
+
+          // Establecer curso
+          setCourse(courseData.course);
+
+          // Establecer lecciones
+          setLessons(courseData.lessons || []);
+
+          // Establecer speakers directamente desde la respuesta (ya no hacemos N+1 calls)
+          setSpeakers(courseData.speakers || []);
+
+          // Establecer número de inscritos
+          setEnrolledCount(courseData.enrolledCount || 0);
         } else {
           // Si falla la API de preview, intentar con el repositorio como fallback
           try {
             const allCourses = await courseRepository.findAll();
-            loadedCourse = allCourses.find(c => c.id === courseId) || null;
+            const loadedCourse = allCourses.find(c => c.id === courseId) || null;
             if (loadedCourse) {
               setCourse(loadedCourse);
             }
           } catch (error) {
             console.error("Error loading course from repository:", error);
-          }
-        }
-
-        // Cargar speakers/instructores
-        if (loadedCourse) {
-          const speakerIds = loadedCourse.speakerIds || [];
-          if (speakerIds.length > 0) {
-            const speakersData = await Promise.all(
-              speakerIds.map(async (id: string) => {
-                try {
-                  const user = await userRepository.findById(id);
-                  return user;
-                } catch (error) {
-                  console.error(`Error loading speaker ${id}:`, error);
-                  return null;
-                }
-              })
-            );
-            setSpeakers(speakersData.filter(Boolean));
           }
         }
       } catch (error) {
@@ -136,7 +146,7 @@ export default function CoursePreviewSideSheet({
     const hours = dateObj.getUTCHours();
     const minutes = dateObj.getUTCMinutes();
     const localDate = new Date(year, month, day, hours, minutes);
-    
+
     return {
       date: localDate.toLocaleDateString('es-MX', {
         year: 'numeric',
@@ -164,12 +174,12 @@ export default function CoursePreviewSideSheet({
     if (lesson.subsections && Array.isArray(lesson.subsections) && lesson.subsections.length > 0) {
       return { subsections: lesson.subsections };
     }
-    
+
     // Si no hay subsecciones parseadas, intentar parsear el contenido
     if (lesson.parsedContent && lesson.parsedContent.subsections) {
       return lesson.parsedContent;
     }
-    
+
     // Fallback: parsear desde el string de contenido
     if (!lesson.content) return null;
     try {
@@ -198,16 +208,21 @@ export default function CoursePreviewSideSheet({
 
   return (
     <>
-      {/* Overlay */}
+      {/* Overlay - fixed debajo del topbar */}
       <div
         className="fixed inset-0 bg-black/50 z-40 transition-opacity"
+        style={{ top: topbarHeight ? `${topbarHeight}px` : 0 }}
         onClick={onClose}
       />
-      
-      {/* Side Sheet */}
+
+      {/* Side Sheet - fixed debajo del topbar, altura completa */}
       <div
-        className="fixed right-0 top-0 h-full w-full max-w-2xl bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out overflow-hidden flex flex-col"
-        style={{ transform: isOpen ? 'translateX(0)' : 'translateX(100%)' }}
+        className="fixed right-0 w-full max-w-2xl bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out overflow-hidden flex flex-col"
+        style={{
+          top: topbarHeight ? `${topbarHeight}px` : 0,
+          height: topbarHeight ? `calc(100dvh - ${topbarHeight}px)` : '100dvh',
+          transform: isOpen ? 'translateX(0)' : 'translateX(100%)'
+        }}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: COLORS.accent.border }}>
@@ -373,7 +388,7 @@ export default function CoursePreviewSideSheet({
                       const lessonContent = parseLessonContent(lesson);
                       const subsections = lessonContent?.subsections || [];
                       const subsectionsCount = subsections.length;
-                      
+
                       // Debug logging para todas las lecciones
                       console.log(`[CoursePreviewSideSheet] Rendering lesson ${index + 1}:`, {
                         id: lesson.id,
@@ -386,7 +401,7 @@ export default function CoursePreviewSideSheet({
                         finalSubsectionsCount: subsectionsCount,
                         contentPreview: lesson.content ? lesson.content.substring(0, 100) : 'no content'
                       });
-                      
+
                       return (
                         <div
                           key={lesson.id}
@@ -422,7 +437,7 @@ export default function CoursePreviewSideSheet({
                                   </p>
                                   <ul className="list-disc list-inside space-y-1">
                                     {subsections.map((subsection: any, subIndex: number) => (
-                                      <li 
+                                      <li
                                         key={subsection.id || `sub-${lesson.id}-${subIndex}`}
                                         className="text-xs ml-2"
                                         style={{ color: COLORS.text.secondary }}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback, memo } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,7 +23,15 @@ import {
   IconHeartFilled
 } from "@tabler/icons-react";
 import { userRepository } from "@/lib/repositories/userRepository";
-import CoursePreviewSideSheet from "@/components/course/CoursePreviewSideSheet";
+
+// Dynamic import para bundle optimization (bundle-dynamic-imports)
+// No mostrar skeleton hasta que realmente se abra el drawer
+const CoursePreviewSideSheet = dynamic(
+  () => import("@/components/course/CoursePreviewSideSheet"),
+  {
+    ssr: false
+  }
+);
 
 interface Enrollment {
   id: string;
@@ -45,6 +54,50 @@ interface CourseRating {
   averageRating: number;
   reviewsCount: number;
 }
+
+// Componente memoizado para renderizar estrellas (rerender-memo)
+const StarRating = memo(({ rating, reviewsCount }: { rating: number; reviewsCount: number }) => {
+  const stars = useMemo(() => {
+    const result = [];
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 >= 0.5;
+
+    for (let i = 0; i < 5; i++) {
+      if (i < fullStars) {
+        result.push(
+          <IconStarFilled key={i} size={16} className="text-yellow-500" />
+        );
+      } else if (i === fullStars && hasHalfStar) {
+        result.push(
+          <div key={i} className="relative">
+            <IconStar size={16} className="text-yellow-500" />
+            <div className="absolute inset-0 overflow-hidden w-1/2">
+              <IconStarFilled size={16} className="text-yellow-500" />
+            </div>
+          </div>
+        );
+      } else {
+        result.push(
+          <IconStar key={i} size={16} className="text-yellow-500" />
+        );
+      }
+    }
+    return result;
+  }, [rating]);
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-0.5">{stars}</div>
+      <span className="text-sm font-medium">
+        {rating > 0 ? rating.toFixed(1) : '—'}
+      </span>
+      <span className="text-xs text-base-content/60">
+        ({reviewsCount} {reviewsCount === 1 ? 'reseña' : 'reseñas'})
+      </span>
+    </div>
+  );
+});
+StarRating.displayName = 'StarRating';
 
 export default function AvailableCoursesPage() {
   const router = useRouter();
@@ -114,35 +167,32 @@ export default function AvailableCoursesPage() {
     }
   };
 
-  // Función para obtener el rating de un curso
-  const fetchCourseRating = async (courseId: string): Promise<CourseRating> => {
-    try {
-      const response = await fetch(`/api/student/rating?courseId=${courseId}`);
-      if (response.ok) {
-        const data = await response.json();
-        return {
-          averageRating: data.courseStats?.average_rating || 0,
-          reviewsCount: data.courseStats?.reviews_count || 0,
-        };
-      }
-    } catch (error) {
-      console.error(`Error fetching rating for course ${courseId}:`, error);
-    }
-    return { averageRating: 0, reviewsCount: 0 };
-  };
+  // Extraer rating desde los datos cacheados del curso (server-serialization)
+  // Los ratings ya están cacheados en courses.average_rating y courses.reviews_count
+  const getCourseRatingFromCache = useCallback((course: Course): CourseRating => {
+    return {
+      averageRating: (course as any).averageRating ?? (course as any).average_rating ?? 0,
+      reviewsCount: (course as any).reviewsCount ?? (course as any).reviews_count ?? 0,
+    };
+  }, []);
 
   useEffect(() => {
     const loadData = async () => {
       if (!user) return;
 
       try {
-        // Cargar todos los cursos activos
-        const allCourses = await courseRepository.findAll();
+        // ✅ OPTIMIZACIÓN: Ejecutar TODAS las llamadas independientes en paralelo (async-parallel)
+        const [allCourses, enrollmentsRes, favoritesRes] = await Promise.all([
+          courseRepository.findAll(),
+          fetch(`/api/student/getEnrollments`),
+          fetch(`/api/student/favorites?userId=${user.id}`)
+        ]);
+
+        // Procesar cursos activos
         const activeCourses = allCourses.filter(c => c.isActive);
         setCourses(activeCourses);
 
-        // Cargar inscripciones del estudiante usando API student (sesión)
-        const enrollmentsRes = await fetch(`/api/student/getEnrollments`);
+        // Procesar inscripciones
         if (enrollmentsRes.ok) {
           const enrollmentsData = await enrollmentsRes.json();
           setEnrollments(enrollmentsData.enrollments || []);
@@ -150,39 +200,47 @@ export default function AvailableCoursesPage() {
           setEnrollments([]);
         }
 
-        // Cargar información de los speakers
-        const speakerIds = new Set<string>();
-        activeCourses.forEach(course => {
-          course.speakerIds?.forEach(id => speakerIds.add(id));
-        });
-
-        const speakersMap = new Map<string, Speaker>();
-        for (const speakerId of speakerIds) {
-          const user = await userRepository.findById(speakerId);
-          if (user) {
-            speakersMap.set(speakerId, {
-              id: user.id,
-              name: user.name,
-              lastName: '',
-              email: user.email,
-              avatarUrl: user.avatarUrl,
-            });
-          }
+        // Procesar favoritos
+        if (favoritesRes.ok) {
+          const favData = await favoritesRes.json();
+          const favIds = new Set<string>((favData.favorites || []).map((f: any) => f.course_id));
+          setFavorites(favIds);
         }
-        setSpeakers(speakersMap);
 
-        // Cargar ratings de todos los cursos
+        // ✅ OPTIMIZACIÓN: Usar ratings cacheados desde course (server-serialization)
+        // Los ratings ya vienen en courses.average_rating y courses.reviews_count
         const ratingsMap = new Map<string, CourseRating>();
-        await Promise.all(
-          activeCourses.map(async (course) => {
-            const rating = await fetchCourseRating(course.id);
-            ratingsMap.set(course.id, rating);
-          })
-        );
+        activeCourses.forEach(course => {
+          ratingsMap.set(course.id, getCourseRatingFromCache(course));
+        });
         setCourseRatings(ratingsMap);
 
-        // Cargar favoritos
-        await fetchFavorites();
+        // ✅ OPTIMIZACIÓN: Cargar speakers en paralelo (async-parallel)
+        const speakerIds = [...new Set(activeCourses.flatMap(c => c.speakerIds || []))];
+        const speakersData = await Promise.all(
+          speakerIds.map(async (speakerId) => {
+            try {
+              const userData = await userRepository.findById(speakerId);
+              if (userData) {
+                return {
+                  id: userData.id,
+                  name: userData.name,
+                  lastName: '',
+                  email: userData.email,
+                  avatarUrl: userData.avatarUrl,
+                } as Speaker;
+              }
+            } catch (error) {
+              console.error(`Error loading speaker ${speakerId}:`, error);
+            }
+            return null;
+          })
+        );
+
+        const speakersMap = new Map<string, Speaker>();
+        speakersData.filter(Boolean).forEach(s => speakersMap.set(s!.id, s!));
+        setSpeakers(speakersMap);
+
       } catch (error) {
         console.error("Error loading courses:", error);
       } finally {
@@ -191,7 +249,7 @@ export default function AvailableCoursesPage() {
     };
 
     loadData();
-  }, [user]);
+  }, [user, getCourseRatingFromCache]);
 
   // Efecto para abrir automáticamente el drawer si viene el parámetro previewCourse
   useEffect(() => {
@@ -235,38 +293,10 @@ export default function AvailableCoursesPage() {
     return `${dateStr} • ${timeStr}`;
   };
 
-  // Función para renderizar las estrellas
-  const renderStars = (rating: number) => {
-    const stars = [];
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 >= 0.5;
-
-    for (let i = 0; i < 5; i++) {
-      if (i < fullStars) {
-        stars.push(
-          <IconStarFilled key={i} size={16} className="text-yellow-500" />
-        );
-      } else if (i === fullStars && hasHalfStar) {
-        stars.push(
-          <div key={i} className="relative">
-            <IconStar size={16} className="text-yellow-500" />
-            <div className="absolute inset-0 overflow-hidden w-1/2">
-              <IconStarFilled size={16} className="text-yellow-500" />
-            </div>
-          </div>
-        );
-      } else {
-        stars.push(
-          <IconStar key={i} size={16} className="text-yellow-500" />
-        );
-      }
-    }
-    return stars;
-  };
-
-  const getCourseRating = (courseId: string): CourseRating => {
+  // Función memoizada para obtener rating
+  const getCourseRating = useCallback((courseId: string): CourseRating => {
     return courseRatings.get(courseId) || { averageRating: 0, reviewsCount: 0 };
-  };
+  }, [courseRatings]);
 
   const handleEnroll = async (courseId: string) => {
     if (!user) return;
@@ -341,7 +371,7 @@ export default function AvailableCoursesPage() {
   const availableCourses = courses.filter(c => !isEnrolled(c.id));
 
   return (
-    <div>
+    <>
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Cursos Disponibles</h1>
         <p className="text-base-content/70">
@@ -451,20 +481,12 @@ export default function AvailableCoursesPage() {
                     ) : null;
                   })()}
 
-                  {/* Rating del curso */}
+                  {/* Rating del curso - usando componente memoizado */}
                   {(() => {
                     const rating = getCourseRating(course.id);
                     return (
-                      <div className="flex items-center gap-2 mt-2">
-                        <div className="flex items-center gap-0.5">
-                          {renderStars(rating.averageRating)}
-                        </div>
-                        <span className="text-sm font-medium">
-                          {rating.averageRating > 0 ? rating.averageRating.toFixed(1) : '—'}
-                        </span>
-                        <span className="text-xs text-base-content/60">
-                          ({rating.reviewsCount} {rating.reviewsCount === 1 ? 'reseña' : 'reseñas'})
-                        </span>
+                      <div className="mt-2">
+                        <StarRating rating={rating.averageRating} reviewsCount={rating.reviewsCount} />
                       </div>
                     );
                   })()}
@@ -532,14 +554,16 @@ export default function AvailableCoursesPage() {
         </div>
       )}
 
-      {/* Course Preview Side Sheet */}
-      <CoursePreviewSideSheet
-        courseId={previewCourseId}
-        isOpen={!!previewCourseId}
-        onClose={() => setPreviewCourseId(null)}
-        onEnroll={handleEnroll}
-        enrolling={!!enrolling}
-      />
-    </div>
+      {/* Course Preview Side Sheet - Solo renderizar cuando hay un curso seleccionado */}
+      {previewCourseId && (
+        <CoursePreviewSideSheet
+          courseId={previewCourseId}
+          isOpen={!!previewCourseId}
+          onClose={() => setPreviewCourseId(null)}
+          onEnroll={handleEnroll}
+          enrolling={!!enrolling}
+        />
+      )}
+    </>
   );
 }

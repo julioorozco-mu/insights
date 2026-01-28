@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { courseRepository } from "@/lib/repositories/courseRepository";
 import { userRepository } from "@/lib/repositories/userRepository";
 import { Loader } from "@/components/common/Loader";
-import { 
-  IconBook, 
-  IconCalendarCheck, 
+import {
+  IconBook,
+  IconCalendarCheck,
   IconCertificate,
   IconPlayerPlay,
   IconHeart,
@@ -70,7 +70,7 @@ export default function CompletedCoursesPage() {
     e.preventDefault();
     e.stopPropagation();
     if (!user || loadingFavorite) return;
-    
+
     setLoadingFavorite(courseId);
     try {
       if (favorites.has(courseId)) {
@@ -111,8 +111,8 @@ export default function CompletedCoursesPage() {
         const testData = await testResponse.json();
         if (testData.completedTests && testData.completedTests.length > 0) {
           // Ordenar por fecha y obtener la más reciente
-          const sortedTests = testData.completedTests.sort((a: any, b: any) => 
-            new Date(b.completed_at || b.createdAt).getTime() - 
+          const sortedTests = testData.completedTests.sort((a: any, b: any) =>
+            new Date(b.completed_at || b.createdAt).getTime() -
             new Date(a.completed_at || a.createdAt).getTime()
           );
           return sortedTests[0].completed_at || sortedTests[0].createdAt;
@@ -121,7 +121,7 @@ export default function CompletedCoursesPage() {
     } catch (error) {
       console.log('No test completion data found');
     }
-    
+
     return null;
   };
 
@@ -130,9 +130,19 @@ export default function CompletedCoursesPage() {
       if (!user) return;
 
       try {
-        // Obtener inscripciones del estudiante
-        const enrollmentsRes = await fetch(`/api/student/getEnrollments`);
-        
+        // ✅ OPTIMIZACIÓN: Ejecutar llamadas independientes en paralelo (async-parallel)
+        const [enrollmentsRes, favoritesRes] = await Promise.all([
+          fetch(`/api/student/getEnrollments`),
+          fetch(`/api/student/favorites?userId=${user.id}`)
+        ]);
+
+        // Procesar favoritos
+        if (favoritesRes.ok) {
+          const favData = await favoritesRes.json();
+          const favIds = new Set<string>((favData.favorites || []).map((f: any) => f.course_id));
+          setFavorites(favIds);
+        }
+
         if (!enrollmentsRes.ok) {
           setCourses([]);
           return;
@@ -140,28 +150,43 @@ export default function CompletedCoursesPage() {
 
         const enrollmentsData = await enrollmentsRes.json();
         const enrollments: Enrollment[] = enrollmentsData.enrollments || [];
-        
+
         // Filtrar solo los cursos con progreso 100%
         const completedEnrollments = enrollments.filter(e => e.progress >= 100);
-        
+
         if (completedEnrollments.length === 0) {
           setCourses([]);
           setLoading(false);
           return;
         }
 
-        // Obtener información de cada curso completado
+        // ✅ OPTIMIZACIÓN: Cargar cursos y fechas de finalización en paralelo
         const coursesPromises = completedEnrollments.map(async (enrollment) => {
-          const course = await courseRepository.findById(enrollment.courseId);
+          // Ejecutar ambas llamadas en paralelo por cada enrollment
+          const [course, completedTestsRes] = await Promise.all([
+            courseRepository.findById(enrollment.courseId),
+            fetch(`/api/student/getCompletedTests?courseId=${enrollment.courseId}`)
+          ]);
+
           if (course) {
-            // Intentar obtener fecha de finalización desde evaluaciones
-            let completedAt = await getCompletionDate(course.id);
-            
+            // Obtener fecha de finalización desde evaluaciones
+            let completedAt: string | null = null;
+            if (completedTestsRes.ok) {
+              const testData = await completedTestsRes.json();
+              if (testData.completedTests && testData.completedTests.length > 0) {
+                const sortedTests = testData.completedTests.sort((a: any, b: any) =>
+                  new Date(b.completed_at || b.createdAt).getTime() -
+                  new Date(a.completed_at || a.createdAt).getTime()
+                );
+                completedAt = sortedTests[0].completed_at || sortedTests[0].createdAt;
+              }
+            }
+
             // Si no hay fecha de evaluación, usar la fecha de actualización del enrollment
             if (!completedAt) {
               completedAt = enrollment.updatedAt || enrollment.completedAt || new Date().toISOString();
             }
-            
+
             return {
               id: course.id,
               title: course.title,
@@ -179,35 +204,37 @@ export default function CompletedCoursesPage() {
         );
 
         // Ordenar por fecha de finalización (más recientes primero)
-        coursesData.sort((a, b) => 
+        coursesData.sort((a, b) =>
           new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
         );
 
         setCourses(coursesData);
 
-        // Cargar información de los speakers
-        const speakerIds = new Set<string>();
-        coursesData.forEach(course => {
-          course.speakerIds?.forEach(id => speakerIds.add(id));
-        });
+        // ✅ OPTIMIZACIÓN: Cargar speakers en paralelo
+        const speakerIds = [...new Set(coursesData.flatMap(c => c.speakerIds || []))];
+        const speakersData = await Promise.all(
+          speakerIds.map(async (speakerId) => {
+            try {
+              const userData = await userRepository.findById(speakerId);
+              if (userData) {
+                return {
+                  id: userData.id,
+                  name: userData.name,
+                  lastName: '',
+                  email: userData.email,
+                  avatarUrl: userData.avatarUrl,
+                } as Speaker;
+              }
+            } catch (error) {
+              console.error(`Error loading speaker ${speakerId}:`, error);
+            }
+            return null;
+          })
+        );
 
         const speakersMap = new Map<string, Speaker>();
-        for (const speakerId of speakerIds) {
-          const userData = await userRepository.findById(speakerId);
-          if (userData) {
-            speakersMap.set(speakerId, {
-              id: userData.id,
-              name: userData.name,
-              lastName: '',
-              email: userData.email,
-              avatarUrl: userData.avatarUrl,
-            });
-          }
-        }
+        speakersData.filter(Boolean).forEach(s => speakersMap.set(s!.id, s!));
         setSpeakers(speakersMap);
-
-        // Cargar favoritos
-        await fetchFavorites();
       } catch (error) {
         console.error("Error loading completed courses:", error);
       } finally {
@@ -280,8 +307,8 @@ export default function CompletedCoursesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {courses.map((course) => (
-            <div 
-              key={course.id} 
+            <div
+              key={course.id}
               className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow"
             >
               <figure className="h-48 bg-base-300 relative">
@@ -296,13 +323,13 @@ export default function CompletedCoursesPage() {
                     <IconBook size={64} stroke={2} />
                   </div>
                 )}
-                
+
                 {/* Badge de completado */}
                 <div className="absolute top-3 right-3 bg-success text-white rounded-full px-3 py-1 shadow-lg flex items-center gap-1">
                   <IconTrophy size={16} />
                   <span className="text-sm font-bold">100%</span>
                 </div>
-                
+
                 {/* Botón de favorito */}
                 <button
                   onClick={(e) => handleToggleFavorite(course.id, e)}
@@ -319,10 +346,10 @@ export default function CompletedCoursesPage() {
                   )}
                 </button>
               </figure>
-              
+
               <div className="card-body">
                 <h2 className="card-title text-lg">{course.title}</h2>
-                
+
                 {/* Instructor */}
                 {(() => {
                   const speaker = getCourseSpeaker(course);
@@ -356,14 +383,14 @@ export default function CompletedCoursesPage() {
 
                 {/* Acciones */}
                 <div className="card-actions justify-between mt-4 pt-4 border-t border-base-200">
-                  <Link 
+                  <Link
                     href={`/dashboard/student/courses/${course.id}`}
                     className="btn btn-outline btn-sm flex-1"
                   >
                     <IconPlayerPlay size={16} />
                     Revisar contenido
                   </Link>
-                  <Link 
+                  <Link
                     href={`/dashboard/credentials`}
                     className="btn btn-success btn-sm"
                   >

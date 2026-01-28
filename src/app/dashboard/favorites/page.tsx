@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, memo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader } from "@/components/common/Loader";
-import { 
-  Heart, 
-  HeartOff, 
-  BookOpen, 
-  Star, 
+import {
+  Heart,
+  HeartOff,
+  BookOpen,
+  Star,
   Clock,
   Trash2,
   ExternalLink,
@@ -57,7 +57,7 @@ export default function FavoritesPage() {
   useEffect(() => {
     const fetchFavorites = async () => {
       if (!user) return;
-      
+
       try {
         const response = await fetch(`/api/student/favorites?userId=${user.id}`);
         if (response.ok) {
@@ -74,16 +74,17 @@ export default function FavoritesPage() {
     fetchFavorites();
   }, [user]);
 
-  const handleRemoveFavorite = async (courseId: string) => {
+  // useCallback para evitar re-renders innecesarios (rerender-memo)
+  const handleRemoveFavorite = useCallback(async (courseId: string) => {
     if (!user || removingId) return;
-    
+
     setRemovingId(courseId);
     try {
       const response = await fetch(
         `/api/student/favorites?courseId=${courseId}&userId=${user.id}`,
         { method: 'DELETE' }
       );
-      
+
       if (response.ok) {
         setFavorites(prev => prev.filter(f => f.course_id !== courseId));
       }
@@ -92,7 +93,7 @@ export default function FavoritesPage() {
     } finally {
       setRemovingId(null);
     }
-  };
+  }, [user, removingId]);
 
   if (loading) {
     return <Loader />;
@@ -113,10 +114,10 @@ export default function FavoritesPage() {
             <div className="w-24 h-24 bg-error/10 rounded-full flex items-center justify-center mb-6">
               <HeartOff className="w-12 h-12 text-error/60" />
             </div>
-            
+
             <h2 className="text-2xl font-bold mb-2">No tienes favoritos aún</h2>
             <p className="text-base-content/70 max-w-md mb-8">
-              Explora las microcredenciales disponibles y marca las que te interesen 
+              Explora las microcredenciales disponibles y marca las que te interesen
               como favoritas para acceder a ellas fácilmente.
             </p>
 
@@ -148,7 +149,7 @@ export default function FavoritesPage() {
 
               const hasDiscount = course.sale_percentage && course.sale_percentage > 0;
               const originalPrice = course.price || 0;
-              const discountedPrice = hasDiscount 
+              const discountedPrice = hasDiscount
                 ? originalPrice * (1 - (course.sale_percentage || 0) / 100)
                 : originalPrice;
 
@@ -170,7 +171,7 @@ export default function FavoritesPage() {
                         <BookOpen className="w-16 h-16 text-white/50" />
                       </div>
                     )}
-                    
+
                     {/* Favorite badge */}
                     <div className="absolute top-3 right-3">
                       <button
@@ -291,7 +292,7 @@ export default function FavoritesPage() {
                         <Trash2 className="w-4 h-4" />
                         Quitar
                       </button>
-                      <Link 
+                      <Link
                         href={`/dashboard/student/courses/${course.id}`}
                         className="btn btn-primary btn-sm text-white gap-1"
                       >
