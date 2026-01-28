@@ -554,6 +554,45 @@ async function checkCourseAccessForStudent(
     return { isMicrocredentialCourse: false, isLevel2Locked: false };
 }
 
+/**
+ * Busca si un curso pertenece a ALGUNA microcredencial (sin importar inscripciones)
+ * Útil para determinar si redirigir al catálogo de microcredenciales
+ */
+async function findMicrocredentialByCourseId(
+    courseId: string
+): Promise<{
+    microcredentialId: string;
+    microcredentialSlug: string;
+    microcredentialTitle: string;
+    levelNumber: 1 | 2;
+} | null> {
+    const supabase = getSupabaseAdmin();
+
+    // Buscar microcredenciales activas donde el curso sea L1 o L2
+    const { data, error } = await supabase
+        .from(TABLES.MICROCREDENTIALS)
+        .select('id, slug, title, course_level_1_id, course_level_2_id')
+        .eq('is_active', true)
+        .or(`course_level_1_id.eq.${courseId},course_level_2_id.eq.${courseId}`)
+        .maybeSingle();
+
+    if (error) {
+        console.error('[microcredentialRepository] Error finding MC by course:', error);
+        return null;
+    }
+
+    if (!data) return null;
+
+    const levelNumber: 1 | 2 = data.course_level_1_id === courseId ? 1 : 2;
+
+    return {
+        microcredentialId: data.id,
+        microcredentialSlug: data.slug,
+        microcredentialTitle: data.title,
+        levelNumber,
+    };
+}
+
 // ============================================================================
 // EXPORTS
 // ============================================================================
@@ -575,4 +614,5 @@ export const microcredentialRepository = {
     verifyPayment,
     getPendingPayments,
     checkCourseAccessForStudent,
+    findMicrocredentialByCourseId,
 };

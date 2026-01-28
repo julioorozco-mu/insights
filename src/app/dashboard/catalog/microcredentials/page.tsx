@@ -5,7 +5,8 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader } from '@/components/common/Loader';
 import { MicrocredentialCard, MicrocredentialDetailDrawer } from '@/components/microcredential';
@@ -14,11 +15,13 @@ import { IconAward, IconSearch, IconFilter } from '@tabler/icons-react';
 
 export default function MicrocredentialsCatalogPage() {
     const { user } = useAuth();
+    const searchParams = useSearchParams();
     const [microcredentials, setMicrocredentials] = useState<MicrocredentialWithCourses[]>([]);
     const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filter, setFilter] = useState<'all' | 'free' | 'paid'>('all');
+    const [hasAutoOpened, setHasAutoOpened] = useState(false);
 
     // Estado para el drawer de detalles
     const [selectedMicrocredential, setSelectedMicrocredential] = useState<MicrocredentialWithCourses | null>(null);
@@ -54,6 +57,30 @@ export default function MicrocredentialsCatalogPage() {
 
         loadData();
     }, [user]);
+
+    // Efecto para abrir automáticamente el drawer si viene el parámetro openMc
+    useEffect(() => {
+        if (hasAutoOpened || loading || microcredentials.length === 0) return;
+
+        const openMcParam = searchParams.get('openMc');
+        if (openMcParam) {
+            // Buscar por slug o por id
+            const mcToOpen = microcredentials.find(
+                mc => mc.slug === openMcParam || mc.id === openMcParam
+            );
+
+            if (mcToOpen) {
+                setSelectedMicrocredential(mcToOpen);
+                setIsDrawerOpen(true);
+                setHasAutoOpened(true);
+
+                // Limpiar el parámetro de la URL sin recargar la página
+                const url = new URL(window.location.href);
+                url.searchParams.delete('openMc');
+                window.history.replaceState({}, '', url.toString());
+            }
+        }
+    }, [searchParams, microcredentials, loading, hasAutoOpened]);
 
     // Filtrar microcredenciales
     const filteredMicrocredentials = microcredentials.filter(mc => {

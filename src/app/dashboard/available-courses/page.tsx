@@ -2,17 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { courseRepository } from "@/lib/repositories/courseRepository";
 import { Course } from "@/types/course";
 import { Loader } from "@/components/common/Loader";
 import { formatDate } from "@/utils/formatDate";
 import { stripHtmlAndTruncate } from "@/lib/utils";
-import { 
-  IconBook, 
-  IconClock, 
-  IconUsers, 
+import {
+  IconBook,
+  IconClock,
+  IconUsers,
   IconCheck,
   IconPlayerPlay,
   IconCalendar,
@@ -48,6 +48,7 @@ interface CourseRating {
 
 export default function AvailableCoursesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [courses, setCourses] = useState<Course[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [speakers, setSpeakers] = useState<Map<string, Speaker>>(new Map());
@@ -59,6 +60,7 @@ export default function AvailableCoursesPage() {
   const [previewCourseId, setPreviewCourseId] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [loadingFavorite, setLoadingFavorite] = useState<string | null>(null);
+  const [hasAutoOpened, setHasAutoOpened] = useState(false);
   const { user } = useAuth();
 
   // Función para cargar favoritos
@@ -80,7 +82,7 @@ export default function AvailableCoursesPage() {
   const handleToggleFavorite = async (courseId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!user || loadingFavorite) return;
-    
+
     setLoadingFavorite(courseId);
     try {
       if (favorites.has(courseId)) {
@@ -191,6 +193,23 @@ export default function AvailableCoursesPage() {
     loadData();
   }, [user]);
 
+  // Efecto para abrir automáticamente el drawer si viene el parámetro previewCourse
+  useEffect(() => {
+    if (hasAutoOpened || loading) return;
+
+    const previewCourseParam = searchParams.get('previewCourse');
+    if (previewCourseParam) {
+      // Abrir el drawer con el ID del curso (el componente CoursePreviewSideSheet maneja la carga)
+      setPreviewCourseId(previewCourseParam);
+      setHasAutoOpened(true);
+
+      // Limpiar el parámetro de la URL sin recargar la página
+      const url = new URL(window.location.href);
+      url.searchParams.delete('previewCourse');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [searchParams, loading, hasAutoOpened]);
+
   const isEnrolled = (courseId: string) => {
     return enrollments.some(e => e.courseId === courseId);
   };
@@ -203,13 +222,13 @@ export default function AvailableCoursesPage() {
   const formatCourseDateTime = (course: Course): string | null => {
     if (!course.startDate) return null;
     const date = new Date(course.startDate);
-    const dateStr = date.toLocaleDateString('es-MX', { 
-      day: 'numeric', 
-      month: 'short', 
-      year: 'numeric' 
+    const dateStr = date.toLocaleDateString('es-MX', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
     });
-    const timeStr = date.toLocaleTimeString('es-MX', { 
-      hour: '2-digit', 
+    const timeStr = date.toLocaleTimeString('es-MX', {
+      hour: '2-digit',
       minute: '2-digit',
       hour12: true
     });
@@ -254,7 +273,7 @@ export default function AvailableCoursesPage() {
 
     try {
       setEnrolling(courseId);
-      
+
       // Usar API student para inscribirse
       const res = await fetch('/api/student/enrollStudent', {
         method: 'POST',
@@ -292,7 +311,7 @@ export default function AvailableCoursesPage() {
       // Mostrar modal de éxito
       setEnrolledCourseId(courseId);
       setShowSuccessModal(true);
-      
+
       // Redirigir después de 3 segundos
       setTimeout(() => {
         router.push(`/dashboard/student/courses/${courseId}`);
@@ -348,7 +367,7 @@ export default function AvailableCoursesPage() {
         <h2 className="text-2xl font-bold mb-4">
           Cursos Disponibles para Inscripción
         </h2>
-        
+
         {availableCourses.length === 0 ? (
           <div className="card bg-base-100 shadow-xl">
             <div className="card-body text-center py-12">
@@ -356,7 +375,7 @@ export default function AvailableCoursesPage() {
                 <IconBook size={64} stroke={2} />
               </div>
               <h2 className="text-2xl font-bold mb-2">
-                {enrolledCourses.length > 0 
+                {enrolledCourses.length > 0
                   ? '¡Ya estás inscrito en todos los cursos disponibles!'
                   : 'No hay cursos disponibles'}
               </h2>
@@ -370,17 +389,17 @@ export default function AvailableCoursesPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {availableCourses.map((course) => (
-              <div 
-                key={course.id} 
+              <div
+                key={course.id}
                 className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow cursor-pointer"
                 onClick={() => setPreviewCourseId(course.id)}
               >
                 <figure className="h-48 bg-base-300 relative">
                   {course.coverImageUrl ? (
-                    <img 
-                      src={course.coverImageUrl} 
-                      alt={course.title} 
-                      className="w-full h-full object-cover" 
+                    <img
+                      src={course.coverImageUrl}
+                      alt={course.title}
+                      className="w-full h-full object-cover"
                     />
                   ) : (
                     <div className="flex items-center justify-center w-full h-full text-primary">
@@ -408,7 +427,7 @@ export default function AvailableCoursesPage() {
                   <p className="text-sm text-base-content/70 line-clamp-2">
                     {stripHtmlAndTruncate(course.description, 120)}
                   </p>
-                  
+
                   {/* Instructor */}
                   {(() => {
                     const speaker = getCourseSpeaker(course);

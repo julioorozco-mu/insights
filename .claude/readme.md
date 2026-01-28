@@ -8,7 +8,8 @@
 6 React Performance Optimizer (web-tools/react-performance-optimizer)
 7 Fullstack Developer (development-team/fullstack-developer)
 8 Security Auditor (security/security-auditor)
-
+9 Architect Review (development-team/architect-review)
+10 Api Architect (api-design/api-architect)
 
 🎨 SKILLS INSTALADOS (6 total):
 

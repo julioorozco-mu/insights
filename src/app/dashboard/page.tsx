@@ -812,7 +812,7 @@ export default function DashboardPage() {
               {recommendedCourses.length > 0 ? (
                 <div className="grid gap-6 md:grid-cols-2">
                   {recommendedCourses.map((course, idx) => (
-                    <Link key={course.courseId} href={`/dashboard/available-courses`} className="block h-full">
+                    <Link key={course.courseId} href={`/dashboard/student/courses/${course.courseId}`} className="block h-full">
                       <CourseCard
                         {...course}
                         priority={idx === 0}

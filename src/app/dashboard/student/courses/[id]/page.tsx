@@ -9,8 +9,8 @@ import { TABLES } from "@/utils/constants";
 import { courseRepository } from "@/lib/repositories/courseRepository";
 import { Loader } from "@/components/common/Loader";
 import RichTextContent from "@/components/ui/RichTextContent";
-import { 
-  IconBook, 
+import {
+  IconBook,
   IconPlayerPlay,
   IconClock,
   IconChevronDown,
@@ -162,11 +162,11 @@ export default function StudentCoursePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  
+
   // Modo preview para maestros/admins (no requiere inscripción)
   // Teachers y admins siempre tienen acceso sin inscripción
-  const isPreviewMode = searchParams.get("preview") === "true" || 
-    user?.role === "teacher" || 
+  const isPreviewMode = searchParams.get("preview") === "true" ||
+    user?.role === "teacher" ||
     user?.role === "admin";
   const [course, setCourse] = useState<FullCourse | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -219,7 +219,54 @@ export default function StudentCoursePage() {
       if (!user) return;
 
       try {
-        // Cargar curso
+        // ==================================================
+        // CONTROL DE ACCESO: Verificar microcredenciales PRIMERO
+        // (antes de cualquier consulta que pueda fallar por RLS)
+        // ==================================================
+        const isPreview = searchParams.get("preview") === "true" ||
+          user?.role === "teacher" ||
+          user?.role === "admin";
+
+        if (!isPreview) {
+          const accessRes = await fetch(`/api/student/check-course-access?courseId=${params.id}`);
+
+          if (accessRes.ok) {
+            const accessData = await accessRes.json();
+
+            // Si el curso existe y hay redirección sugerida
+            if (accessData.courseExists && accessData.redirectTo) {
+              // CASO B: Curso pertenece a MC pero el estudiante NO está inscrito
+              if (accessData.redirectTo === 'microcredential-catalog' && accessData.redirectUrl) {
+                console.log('[CourseAccess] Redirigiendo al catálogo de microcredenciales:', accessData.message);
+                router.replace(accessData.redirectUrl);
+                return;
+              }
+
+              // CASO C: Curso NO pertenece a ninguna MC
+              if (accessData.redirectTo === 'available-courses' && accessData.redirectUrl) {
+                console.log('[CourseAccess] Redirigiendo a cursos disponibles:', accessData.message);
+                router.replace(accessData.redirectUrl);
+                return;
+              }
+            }
+
+            // Si es curso de MC y el L2 está bloqueado
+            if (accessData.isMicrocredentialCourse && accessData.isLevel2Locked) {
+              alert('Debes completar el Nivel 1 primero para acceder a este curso.');
+              router.push('/dashboard/enrolled-courses');
+              return;
+            }
+
+            // Si no hay acceso permitido y no es un curso libre
+            if (!accessData.canAccess && accessData.isMicrocredentialCourse) {
+              console.log('[CourseAccess] Acceso denegado:', accessData.message);
+              router.push('/dashboard/enrolled-courses');
+              return;
+            }
+          }
+        }
+
+        // Cargar curso (solo se ejecuta si pasó la verificación de acceso)
         const courseData = await courseRepository.findById(params.id as string);
         if (!courseData) {
           router.push('/dashboard/enrolled-courses');
@@ -257,7 +304,7 @@ export default function StudentCoursePage() {
                   const json = await res.json();
                   if (json?.dataUrl) return json.dataUrl as string;
                 }
-              } catch {}
+              } catch { }
               try {
                 return await convertImageToPngDataUrl(url);
               } catch {
@@ -284,7 +331,7 @@ export default function StudentCoursePage() {
         let enrollmentData: any = null;
         if (!isPreviewMode) {
           const enrollmentRes = await fetch(`/api/student/check-enrollment?courseId=${params.id}`);
-          
+
           if (!enrollmentRes.ok) {
             console.error('Error verificando inscripción');
             alert('Error al verificar tu inscripción. Por favor recarga la página.');
@@ -292,7 +339,7 @@ export default function StudentCoursePage() {
           }
 
           enrollmentData = await enrollmentRes.json();
-          
+
           if (!enrollmentData.isEnrolled) {
             alert('No estás inscrito en este curso');
             router.push('/dashboard/enrolled-courses');
@@ -307,7 +354,7 @@ export default function StudentCoursePage() {
             });
             setCompletedLessons(completedLessonsSet);
           }
-          
+
           // Cargar progreso de subsecciones
           // Primero cargar desde subsectionProgress
           const subsectionSet = new Set<string>();
@@ -319,7 +366,7 @@ export default function StudentCoursePage() {
               }
             });
           }
-          
+
           // Si una lección está en completedLessons, todas sus subsecciones están completadas
           // Esto se actualizará después de cargar las lecciones, pero por ahora marcamos un placeholder
           // que se resolverá cuando se carguen las lecciones
@@ -328,14 +375,14 @@ export default function StudentCoursePage() {
 
         // Cargar lecciones usando API (bypaseando RLS)
         // En modo preview, agregamos el parámetro para saltar validación de inscripción
-        const lessonsUrl = isPreviewMode 
+        const lessonsUrl = isPreviewMode
           ? `/api/student/getLessons?courseId=${params.id}&preview=true`
           : `/api/student/getLessons?courseId=${params.id}`;
         const lessonsRes = await fetch(lessonsUrl);
-        
+
         if (lessonsRes.ok) {
           const { lessons: allLessonsData } = await lessonsRes.json();
-          
+
           if (allLessonsData && allLessonsData.length > 0) {
             const lessonsData = allLessonsData
               .filter((lessonData: any) => lessonData.isActive !== false) // Solo lecciones activas
@@ -359,95 +406,34 @@ export default function StudentCoursePage() {
                 content: lessonData.content, // Agregar contenido con subsecciones
               } as Lesson))
               .sort((a: Lesson, b: Lesson) => a.order - b.order);
-            
+
             setLessons(lessonsData);
 
-          // Actualizar completedSubsections: si una lección está completada, marcar todas sus subsecciones
-          if (enrollmentData && enrollmentData.completedLessons) {
-            setCompletedSubsections(prev => {
-              const updated = new Set(prev);
-              const completedLessonsArray = Array.isArray(enrollmentData.completedLessons) 
-                ? enrollmentData.completedLessons 
-                : [];
-              lessonsData.forEach((lesson: Lesson) => {
-                if (completedLessonsArray.includes(lesson.id)) {
-                  const lessonContent = parseLessonContent(lesson.content);
-                  const subsectionsCount = lessonContent?.subsections.length || 0;
-                  // Marcar todas las subsecciones como completadas
-                  for (let i = 0; i < subsectionsCount; i++) {
-                    updated.add(`${lesson.id}-sub-${i}`);
+            // Actualizar completedSubsections: si una lección está completada, marcar todas sus subsecciones
+            if (enrollmentData && enrollmentData.completedLessons) {
+              setCompletedSubsections(prev => {
+                const updated = new Set(prev);
+                const completedLessonsArray = Array.isArray(enrollmentData.completedLessons)
+                  ? enrollmentData.completedLessons
+                  : [];
+                lessonsData.forEach((lesson: Lesson) => {
+                  if (completedLessonsArray.includes(lesson.id)) {
+                    const lessonContent = parseLessonContent(lesson.content);
+                    const subsectionsCount = lessonContent?.subsections.length || 0;
+                    // Marcar todas las subsecciones como completadas
+                    for (let i = 0; i < subsectionsCount; i++) {
+                      updated.add(`${lesson.id}-sub-${i}`);
+                    }
                   }
-                }
+                });
+                return updated;
               });
-              return updated;
-            });
-          }
-
-          // Cargar encuestas/respuestas por lección y calcular gating
-          const map: Record<string, any> = {};
-          for (const l of lessonsData) {
-            map[l.id] = {
-              entrySurvey: null,
-              exitSurvey: null,
-              entryResponse: null,
-              exitResponse: null,
-              canAnswerEntry: false,
-              canAnswerExit: false,
-            };
-
-            // Encuesta de entrada
-            if ((l as any).entrySurveyId) {
-              const { data: sDoc } = await supabaseClient
-                .from(TABLES.SURVEYS)
-                .select('*')
-                .eq('id', (l as any).entrySurveyId)
-                .single();
-              if (sDoc) {
-                map[l.id].entrySurvey = { id: sDoc.id, title: sDoc.title, type: sDoc.type, questions: sDoc.questions } as Survey;
-                const { data: respQ } = await supabaseClient
-                  .from(TABLES.SURVEY_RESPONSES)
-                  .select('*')
-                  .eq('survey_id', sDoc.id)
-                  .eq('user_id', user.id)
-                  .limit(1);
-                if (respQ && respQ.length > 0) {
-                  map[l.id].entryResponse = { id: respQ[0].id, surveyId: respQ[0].survey_id, answers: respQ[0].answers } as any;
-                }
-              }
             }
 
-            // Encuesta de salida
-            if ((l as any).exitSurveyId) {
-              const { data: sDoc } = await supabaseClient
-                .from(TABLES.SURVEYS)
-                .select('*')
-                .eq('id', (l as any).exitSurveyId)
-                .single();
-              if (sDoc) {
-                map[l.id].exitSurvey = { id: sDoc.id, title: sDoc.title, type: sDoc.type, questions: sDoc.questions } as Survey;
-                const { data: respQ } = await supabaseClient
-                  .from(TABLES.SURVEY_RESPONSES)
-                  .select('*')
-                  .eq('survey_id', sDoc.id)
-                  .eq('user_id', user.id)
-                  .limit(1);
-                if (respQ && respQ.length > 0) {
-                  map[l.id].exitResponse = { id: respQ[0].id, surveyId: respQ[0].survey_id, answers: respQ[0].answers } as any;
-                }
-              }
-            }
-          }
-
-          const computeGating = (base: Record<string, any>) => {
-            const sorted = [...lessonsData];
-            const requireSequential = !!courseData.certificateRules?.requireSequentialLessons;
-            const exitAfterStart = !!courseData.certificateRules?.exitSurveyAfterLessonStart;
-            const now = new Date();
-            const newMap: Record<string, any> = { ...base };
-            let priorDone = true;
-
-            for (const lesson of sorted) {
-              const d = newMap[lesson.id] || {
+            // Cargar encuestas/respuestas por lección y calcular gating
+            const map: Record<string, any> = {};
+            for (const l of lessonsData) {
+              map[l.id] = {
                 entrySurvey: null,
                 exitSurvey: null,
                 entryResponse: null,
@@ -455,30 +441,91 @@ export default function StudentCoursePage() {
                 canAnswerEntry: false,
                 canAnswerExit: false,
               };
-              // canAnswerEntry: si no requiere secuencial, siempre puede; si requiere, debe haber completado la lección anterior
-              d.canAnswerEntry = !requireSequential || priorDone;
-              // canAnswerExit: si exitAfterStart, solo después de la fecha de inicio de la lección
-              let exitAllowed = true;
-              if (exitAfterStart && lesson.scheduledDate) {
-                const lessonStart = new Date(lesson.scheduledDate);
-                exitAllowed = now >= lessonStart;
-              }
-              d.canAnswerExit = d.canAnswerEntry && exitAllowed;
 
-              // Actualizar priorDone para la siguiente lección
-              if (requireSequential) {
-                const entryDone = !d.entrySurvey || !!d.entryResponse;
-                const exitDone = !d.exitSurvey || !!d.exitResponse;
-                priorDone = entryDone && exitDone;
+              // Encuesta de entrada
+              if ((l as any).entrySurveyId) {
+                const { data: sDoc } = await supabaseClient
+                  .from(TABLES.SURVEYS)
+                  .select('*')
+                  .eq('id', (l as any).entrySurveyId)
+                  .single();
+                if (sDoc) {
+                  map[l.id].entrySurvey = { id: sDoc.id, title: sDoc.title, type: sDoc.type, questions: sDoc.questions } as Survey;
+                  const { data: respQ } = await supabaseClient
+                    .from(TABLES.SURVEY_RESPONSES)
+                    .select('*')
+                    .eq('survey_id', sDoc.id)
+                    .eq('user_id', user.id)
+                    .limit(1);
+                  if (respQ && respQ.length > 0) {
+                    map[l.id].entryResponse = { id: respQ[0].id, surveyId: respQ[0].survey_id, answers: respQ[0].answers } as any;
+                  }
+                }
               }
 
-              newMap[lesson.id] = d;
+              // Encuesta de salida
+              if ((l as any).exitSurveyId) {
+                const { data: sDoc } = await supabaseClient
+                  .from(TABLES.SURVEYS)
+                  .select('*')
+                  .eq('id', (l as any).exitSurveyId)
+                  .single();
+                if (sDoc) {
+                  map[l.id].exitSurvey = { id: sDoc.id, title: sDoc.title, type: sDoc.type, questions: sDoc.questions } as Survey;
+                  const { data: respQ } = await supabaseClient
+                    .from(TABLES.SURVEY_RESPONSES)
+                    .select('*')
+                    .eq('survey_id', sDoc.id)
+                    .eq('user_id', user.id)
+                    .limit(1);
+                  if (respQ && respQ.length > 0) {
+                    map[l.id].exitResponse = { id: respQ[0].id, surveyId: respQ[0].survey_id, answers: respQ[0].answers } as any;
+                  }
+                }
+              }
             }
-            return newMap;
-          };
 
-          const gatedMap = computeGating(map);
-          setLessonSurveyData(gatedMap);
+            const computeGating = (base: Record<string, any>) => {
+              const sorted = [...lessonsData];
+              const requireSequential = !!courseData.certificateRules?.requireSequentialLessons;
+              const exitAfterStart = !!courseData.certificateRules?.exitSurveyAfterLessonStart;
+              const now = new Date();
+              const newMap: Record<string, any> = { ...base };
+              let priorDone = true;
+
+              for (const lesson of sorted) {
+                const d = newMap[lesson.id] || {
+                  entrySurvey: null,
+                  exitSurvey: null,
+                  entryResponse: null,
+                  exitResponse: null,
+                  canAnswerEntry: false,
+                  canAnswerExit: false,
+                };
+                // canAnswerEntry: si no requiere secuencial, siempre puede; si requiere, debe haber completado la lección anterior
+                d.canAnswerEntry = !requireSequential || priorDone;
+                // canAnswerExit: si exitAfterStart, solo después de la fecha de inicio de la lección
+                let exitAllowed = true;
+                if (exitAfterStart && lesson.scheduledDate) {
+                  const lessonStart = new Date(lesson.scheduledDate);
+                  exitAllowed = now >= lessonStart;
+                }
+                d.canAnswerExit = d.canAnswerEntry && exitAllowed;
+
+                // Actualizar priorDone para la siguiente lección
+                if (requireSequential) {
+                  const entryDone = !d.entrySurvey || !!d.entryResponse;
+                  const exitDone = !d.exitSurvey || !!d.exitResponse;
+                  priorDone = entryDone && exitDone;
+                }
+
+                newMap[lesson.id] = d;
+              }
+              return newMap;
+            };
+
+            const gatedMap = computeGating(map);
+            setLessonSurveyData(gatedMap);
           }
         }
 
@@ -591,7 +638,7 @@ export default function StudentCoursePage() {
     const hours = dateObj.getUTCHours();
     const minutes = dateObj.getUTCMinutes();
     const localDate = new Date(year, month, day, hours, minutes);
-    
+
     return {
       date: localDate.toLocaleDateString('es-MX', {
         year: 'numeric',
@@ -608,7 +655,7 @@ export default function StudentCoursePage() {
   const formatLessonDateTime = (lesson: Lesson) => {
     const dateStr = lesson.startDate || lesson.scheduledStartTime || lesson.scheduledDate;
     if (!dateStr) return null;
-    
+
     const dateObj = new Date(dateStr);
     const year = dateObj.getUTCFullYear();
     const month = dateObj.getUTCMonth();
@@ -616,7 +663,7 @@ export default function StudentCoursePage() {
     const hours = dateObj.getUTCHours();
     const minutes = dateObj.getUTCMinutes();
     const localDate = new Date(year, month, day, hours, minutes);
-    
+
     return localDate.toLocaleDateString('es-MX', {
       weekday: 'short',
       month: 'short',
@@ -712,9 +759,9 @@ export default function StudentCoursePage() {
     currentSurvey.questions.forEach((question) => {
       if (question.isRequired) {
         const answer = surveyAnswers[question.id];
-        if (!answer || 
-            (typeof answer === 'string' && answer.trim() === '') ||
-            (Array.isArray(answer) && answer.length === 0)) {
+        if (!answer ||
+          (typeof answer === 'string' && answer.trim() === '') ||
+          (Array.isArray(answer) && answer.length === 0)) {
           unansweredRequired.push(question.questionText);
         }
       }
@@ -733,7 +780,7 @@ export default function StudentCoursePage() {
     if (currentSurvey.type === 'exit' && !currentResponse) {
       const now = new Date();
       let lessonStartTime: Date | null = null;
-      
+
       if (currentLessonId) {
         const currentLesson = lessons.find(l => l.id === currentLessonId);
         if (currentLesson) {
@@ -759,15 +806,15 @@ export default function StudentCoursePage() {
           lessonStartTime = new Date(year, month, day, hours, minutes);
         }
       }
-      
+
       if (lessonStartTime) {
         const oneHourAfterStart = new Date(lessonStartTime.getTime() + 60 * 60 * 1000);
-        
+
         if (now < oneHourAfterStart) {
           const timeRemaining = oneHourAfterStart.getTime() - now.getTime();
           const hoursRemaining = Math.floor(timeRemaining / (60 * 60 * 1000));
           const minutesRemaining = Math.floor((timeRemaining % (60 * 60 * 1000)) / (60 * 1000));
-          
+
           setSurveyResultType('error');
           setSurveyResultMessage(
             `La encuesta de salida estará disponible 1 hora después del inicio de la lección.\n\n` +
@@ -798,7 +845,7 @@ export default function StudentCoursePage() {
         answers,
         submittedAt: new Date().toISOString(),
       };
-      
+
       if (currentLessonId) {
         responseData.lessonId = currentLessonId;
       }
@@ -831,7 +878,7 @@ export default function StudentCoursePage() {
         .select('id')
         .single();
       if (insertError) throw insertError;
-      
+
       const newResponse = { id: docRef?.id, ...responseData } as SurveyResponse;
       if (currentLessonId && lessonSurveyData[currentLessonId]) {
         const map = { ...lessonSurveyData } as Record<string, any>;
@@ -892,7 +939,7 @@ export default function StudentCoursePage() {
         .from(TABLES.FILE_ATTACHMENTS)
         .select('*')
         .in('id', lesson.resourceIds);
-      
+
       const resources = (resourcesData || []).map((data: any) => ({
         id: data.id,
         title: data.metadata?.title || data.name || 'Sin título',
@@ -901,7 +948,7 @@ export default function StudentCoursePage() {
         fileName: data.name,
         fileSize: data.size,
       })) as Resource[];
-      
+
       setCurrentLessonResources(resources);
       setShowResourcesModal(true);
     } catch (error) {
@@ -920,10 +967,10 @@ export default function StudentCoursePage() {
   };
 
   const canPreview = (fileType: string) => {
-    return fileType.includes('pdf') || 
-           fileType.includes('image') || 
-           fileType.includes('video') ||
-           fileType.includes('audio');
+    return fileType.includes('pdf') ||
+      fileType.includes('image') ||
+      fileType.includes('video') ||
+      fileType.includes('audio');
   };
 
   // Calcular estadísticas del curso
@@ -963,12 +1010,12 @@ export default function StudentCoursePage() {
     <div className="min-h-screen" style={{ backgroundColor: COLORS.background }}>
       {/* Container principal - Single Column Layout */}
       <div className="max-w-[900px] mx-auto py-8 px-4 sm:px-6">
-        
+
         {/* Botón Volver */}
-        <button 
+        <button
           onClick={() => router.push(isPreviewMode ? `/dashboard/courses/${params.id}/edit` : '/dashboard/enrolled-courses')}
           className="flex items-center gap-2 mb-6 px-4 py-2 rounded-full transition-all duration-200 hover:shadow-md"
-          style={{ 
+          style={{
             backgroundColor: COLORS.surface,
             color: COLORS.primary,
             border: `1px solid ${COLORS.accent.border}`,
@@ -979,9 +1026,9 @@ export default function StudentCoursePage() {
         </button>
 
         {/* ===== COURSE HEADER CARD ===== */}
-        <div 
+        <div
           className="rounded-2xl overflow-hidden mb-6"
-          style={{ 
+          style={{
             backgroundColor: COLORS.surface,
             boxShadow: '0 10px 30px rgba(15,23,42,0.10)',
           }}
@@ -994,28 +1041,28 @@ export default function StudentCoursePage() {
                 alt={course.title}
                 className="w-full h-full object-cover"
               />
-              <div 
+              <div
                 className="absolute inset-0"
-                style={{ 
+                style={{
                   background: 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 50%)',
                 }}
               />
             </div>
           )}
-          
+
           {/* Contenido del header */}
           <div className="p-6 sm:p-8">
             {/* Título */}
-            <h1 
+            <h1
               className="text-2xl sm:text-3xl font-bold mb-3"
               style={{ color: COLORS.primary, lineHeight: 1.25 }}
             >
               {course.title}
             </h1>
-            
+
             {/* Descripción */}
             {course.description && (
-              <RichTextContent 
+              <RichTextContent
                 html={course.description}
                 className="text-base mb-6"
               />
@@ -1026,7 +1073,7 @@ export default function StudentCoursePage() {
               {/* Ponentes */}
               {speakers.length > 0 && (
                 <div className="flex items-center gap-3">
-                  <div 
+                  <div
                     className="w-10 h-10 rounded-full flex items-center justify-center"
                     style={{ backgroundColor: COLORS.accent.primarySoft }}
                   >
@@ -1038,8 +1085,8 @@ export default function StudentCoursePage() {
                     </p>
                     <div className="flex items-center gap-2 flex-wrap">
                       {speakers.map((speaker, idx) => (
-                        <span 
-                          key={speaker.id || idx} 
+                        <span
+                          key={speaker.id || idx}
                           className="text-sm font-medium"
                           style={{ color: COLORS.text.primary }}
                         >
@@ -1055,7 +1102,7 @@ export default function StudentCoursePage() {
               {/* Fecha */}
               {course.startDate && (
                 <div className="flex items-center gap-3">
-                  <div 
+                  <div
                     className="w-10 h-10 rounded-full flex items-center justify-center"
                     style={{ backgroundColor: COLORS.accent.primarySoft }}
                   >
@@ -1072,7 +1119,7 @@ export default function StudentCoursePage() {
 
               {/* Lecciones */}
               <div className="flex items-center gap-3">
-                <div 
+                <div
                   className="w-10 h-10 rounded-full flex items-center justify-center"
                   style={{ backgroundColor: COLORS.accent.primarySoft }}
                 >
@@ -1094,7 +1141,7 @@ export default function StudentCoursePage() {
                 onClick={handleCheckEligibility}
                 disabled={checkingEligibility}
                 className="flex items-center gap-2 px-6 py-3 rounded-full font-semibold transition-all duration-200 hover:shadow-lg"
-                style={{ 
+                style={{
                   backgroundColor: COLORS.primary,
                   color: '#FFFFFF',
                 }}
@@ -1116,9 +1163,9 @@ export default function StudentCoursePage() {
         </div>
 
         {/* ===== COURSE CONTENT CARD (Accordion) ===== */}
-        <div 
+        <div
           className="rounded-2xl overflow-hidden"
-          style={{ 
+          style={{
             backgroundColor: COLORS.surface,
             boxShadow: '0 10px 30px rgba(15,23,42,0.10)',
           }}
@@ -1127,7 +1174,7 @@ export default function StudentCoursePage() {
           <div className="p-6 sm:p-8 border-b" style={{ borderColor: COLORS.accent.border }}>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <h2 
+                <h2
                   className="text-xl font-semibold mb-1"
                   style={{ color: COLORS.text.primary }}
                 >
@@ -1152,11 +1199,11 @@ export default function StudentCoursePage() {
                   )}
                 </div>
               </div>
-              
+
               <button
                 onClick={toggleAllLessons}
                 className="text-sm font-medium px-4 py-2 rounded-full transition-all duration-200"
-                style={{ 
+                style={{
                   color: COLORS.primary,
                   backgroundColor: COLORS.accent.primarySoft,
                 }}
@@ -1179,7 +1226,7 @@ export default function StudentCoursePage() {
                 const lessonContent = parseLessonContent(lesson.content);
                 const isCompleted = completedLessons.has(lesson.id);
                 const subsectionsCount = lessonContent?.subsections.length || 0;
-                
+
                 // Calcular progreso de la sección
                 // Si la lección está marcada como completada en la BD, todas las subsecciones están completadas
                 let completedSubsectionsCount = 0;
@@ -1194,41 +1241,41 @@ export default function StudentCoursePage() {
                     }
                   });
                 }
-                const sectionProgress = subsectionsCount > 0 
+                const sectionProgress = subsectionsCount > 0
                   ? Math.round((completedSubsectionsCount / subsectionsCount) * 100)
                   : 0;
                 const isSectionCompleted = sectionProgress === 100;
-                
+
                 return (
                   <div key={lesson.id}>
                     {/* Accordion Header */}
-                    <div 
+                    <div
                       className="flex items-center gap-4 p-4 sm:p-5 cursor-pointer transition-all duration-200 hover:bg-opacity-50"
-                      style={{ 
+                      style={{
                         backgroundColor: isExpanded ? COLORS.accent.primarySoft : 'transparent',
                       }}
                       onClick={() => toggleLesson(lesson.id)}
                     >
                       {/* Chevron */}
-                      <div 
+                      <div
                         className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-transform duration-200"
-                        style={{ 
+                        style={{
                           backgroundColor: isExpanded ? COLORS.primary : COLORS.accent.primarySoft,
                           transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                         }}
                       >
-                        <IconChevronDown 
-                          size={18} 
+                        <IconChevronDown
+                          size={18}
                           style={{ color: isExpanded ? '#FFFFFF' : COLORS.primary }}
                         />
                       </div>
-                      
+
                       {/* Título y meta */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-2">
-                          <span 
+                          <span
                             className="text-xs font-medium px-2 py-0.5 rounded"
-                            style={{ 
+                            style={{
                               backgroundColor: COLORS.accent.primarySoft,
                               color: COLORS.primary,
                             }}
@@ -1236,7 +1283,7 @@ export default function StudentCoursePage() {
                             Sección {index + 1}
                           </span>
                           {lesson.isLive && (
-                            <span 
+                            <span
                               className="text-xs font-medium px-2 py-0.5 rounded flex items-center gap-1"
                               style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}
                             >
@@ -1245,7 +1292,7 @@ export default function StudentCoursePage() {
                             </span>
                           )}
                           {isSectionCompleted && (
-                            <span 
+                            <span
                               className="text-xs font-medium px-2 py-0.5 rounded flex items-center gap-1"
                               style={{ backgroundColor: '#D1FAE5', color: COLORS.success }}
                             >
@@ -1254,13 +1301,13 @@ export default function StudentCoursePage() {
                             </span>
                           )}
                         </div>
-                        <h3 
+                        <h3
                           className="font-semibold mb-2 truncate"
                           style={{ color: COLORS.text.primary }}
                         >
                           {lesson.title}
                         </h3>
-                        
+
                         {/* Barra de progreso */}
                         {subsectionsCount > 0 && (
                           <div className="space-y-1">
@@ -1268,20 +1315,20 @@ export default function StudentCoursePage() {
                               <span style={{ color: COLORS.text.muted }}>
                                 {completedSubsectionsCount} de {subsectionsCount} lecciones completadas
                               </span>
-                              <span 
+                              <span
                                 className="font-semibold"
                                 style={{ color: isSectionCompleted ? COLORS.success : COLORS.primary }}
                               >
                                 {sectionProgress}%
                               </span>
                             </div>
-                            <div 
+                            <div
                               className="w-full h-2 rounded-full overflow-hidden"
                               style={{ backgroundColor: COLORS.accent.primarySoft }}
                             >
-                              <div 
+                              <div
                                 className="h-full rounded-full transition-all duration-300"
-                                style={{ 
+                                style={{
                                   width: `${sectionProgress}%`,
                                   backgroundColor: isSectionCompleted ? COLORS.success : COLORS.primary,
                                 }}
@@ -1289,9 +1336,9 @@ export default function StudentCoursePage() {
                             </div>
                           </div>
                         )}
-                        
+
                         {lesson.description && !isExpanded && (
-                          <p 
+                          <p
                             className="text-sm mt-2 truncate"
                             style={{ color: COLORS.text.muted }}
                           >
@@ -1299,11 +1346,11 @@ export default function StudentCoursePage() {
                           </p>
                         )}
                       </div>
-                      
+
                       {/* Progress Pill */}
-                      <div 
+                      <div
                         className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full flex-shrink-0"
-                        style={{ 
+                        style={{
                           backgroundColor: COLORS.accent.primarySoft,
                           color: COLORS.primary,
                         }}
@@ -1317,13 +1364,13 @@ export default function StudentCoursePage() {
 
                     {/* Accordion Body - Contenido Expandido */}
                     {isExpanded && (
-                      <div 
+                      <div
                         className="px-4 sm:px-5 pb-5"
                         style={{ backgroundColor: COLORS.surface }}
                       >
                         {/* Descripción de la lección */}
                         {lesson.description && (
-                          <p 
+                          <p
                             className="text-sm mb-4 pl-12"
                             style={{ color: COLORS.text.secondary }}
                           >
@@ -1337,7 +1384,7 @@ export default function StudentCoursePage() {
                             {lessonContent.subsections.map((subsection, subIdx) => {
                               // Verificar si la subsección está completada usando el índice (formato: lessonId-sub-index)
                               const isSubCompleted = completedSubsections.has(`${lesson.id}-sub-${subIdx}`);
-                              
+
                               // Verificar si la subsección está desbloqueada (progreso secuencial)
                               // Si ya está completada, siempre está desbloqueada
                               let isUnlocked = false;
@@ -1371,21 +1418,21 @@ export default function StudentCoursePage() {
                               } else {
                                 // Subsección dentro de la misma sección: la anterior debe estar completada
                                 const prevSubCompleted = completedSubsections.has(`${lesson.id}-sub-${subIdx - 1}`) ||
-                                                         completedLessons.has(lesson.id);
+                                  completedLessons.has(lesson.id);
                                 isUnlocked = prevSubCompleted;
                               }
-                              
+
                               const blockTypes = subsection.blocks.map(b => b.type);
                               const hasVideo = blockTypes.includes('video');
                               const hasQuiz = blockTypes.includes('quiz');
                               const hasAttachment = blockTypes.includes('attachment');
-                              
+
                               const subsectionContent = (
                                 <>
                                   {/* Icono de estado */}
-                                  <div 
+                                  <div
                                     className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-                                    style={{ 
+                                    style={{
                                       backgroundColor: isSubCompleted ? COLORS.success : COLORS.accent.primarySoft,
                                     }}
                                   >
@@ -1395,15 +1442,15 @@ export default function StudentCoursePage() {
                                       <IconPlayerPlay size={12} style={{ color: COLORS.primary }} />
                                     )}
                                   </div>
-                                  
+
                                   {/* Título de subsección */}
-                                  <span 
+                                  <span
                                     className="flex-1 text-sm font-medium"
                                     style={{ color: COLORS.text.primary }}
                                   >
                                     {subsection.title}
                                   </span>
-                                  
+
                                   {/* Iconos de tipo de contenido */}
                                   <div className="flex items-center gap-2">
                                     {hasVideo && (
@@ -1418,13 +1465,13 @@ export default function StudentCoursePage() {
                                   </div>
                                 </>
                               );
-                              
+
                               const sharedStyles = {
                                 backgroundColor: isSubCompleted ? '#D1FAE5' : isUnlocked ? '#F9FAFB' : '#F3F4F6',
                                 border: `1px solid ${isUnlocked ? COLORS.accent.border : '#D1D5DB'}`,
                                 opacity: isUnlocked ? 1 : 0.6,
                               };
-                              
+
                               // En modo preview, permitir navegación al contenido con parámetro preview
                               if (isPreviewMode) {
                                 return (
@@ -1438,7 +1485,7 @@ export default function StudentCoursePage() {
                                   </Link>
                                 );
                               }
-                              
+
                               // Si está bloqueada, mostrar como div no clickeable
                               if (!isUnlocked) {
                                 return (
@@ -1454,7 +1501,7 @@ export default function StudentCoursePage() {
                                   </div>
                                 );
                               }
-                              
+
                               return (
                                 <Link
                                   href={`/student/courses/${params.id}/learn/lecture/${lesson.id}?subsection=${subIdx}`}
@@ -1471,131 +1518,131 @@ export default function StudentCoursePage() {
 
                         {/* Botones de acción - Ocultos en modo preview */}
                         {!isPreviewMode && (
-                        <div className="pl-12 flex flex-wrap gap-2">
-                          {/* Botón Ver Video/Unirse */}
-                          {(lesson.recordedVideoUrl || (!lesson.isLive && lesson.videoUrl)) && (
-                            <Link
-                              href={`/dashboard/student/courses/${params.id}/livestream/${lesson.id}`}
-                              className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 hover:shadow-md"
-                              style={{ 
-                                backgroundColor: COLORS.primary,
-                                color: '#FFFFFF',
+                          <div className="pl-12 flex flex-wrap gap-2">
+                            {/* Botón Ver Video/Unirse */}
+                            {(lesson.recordedVideoUrl || (!lesson.isLive && lesson.videoUrl)) && (
+                              <Link
+                                href={`/dashboard/student/courses/${params.id}/livestream/${lesson.id}`}
+                                className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 hover:shadow-md"
+                                style={{
+                                  backgroundColor: COLORS.primary,
+                                  color: '#FFFFFF',
+                                }}
+                              >
+                                <IconVideo size={16} />
+                                Ver Video
+                              </Link>
+                            )}
+
+                            {lesson.isLive && !lesson.recordedVideoUrl && (
+                              <Link
+                                href={`/dashboard/student/courses/${params.id}/livestream/${lesson.id}`}
+                                className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium animate-pulse transition-all duration-200"
+                                style={{
+                                  backgroundColor: '#DC2626',
+                                  color: '#FFFFFF',
+                                }}
+                              >
+                                <IconBroadcast size={16} />
+                                Unirse a Conferencia
+                              </Link>
+                            )}
+
+                            {!lesson.recordedVideoUrl && !lesson.isLive && !lesson.videoUrl && (
+                              <span
+                                className="flex items-center gap-2 px-4 py-2 rounded-full text-sm"
+                                style={{
+                                  backgroundColor: '#F3F4F6',
+                                  color: COLORS.text.muted,
+                                }}
+                              >
+                                <IconVideo size={16} />
+                                No disponible
+                              </span>
+                            )}
+
+                            {/* Recursos */}
+                            <button
+                              className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 hover:shadow-md disabled:opacity-50"
+                              style={{
+                                backgroundColor: COLORS.accent.primarySoft,
+                                color: COLORS.primary,
                               }}
-                            >
-                              <IconVideo size={16} />
-                              Ver Video
-                            </Link>
-                          )}
-
-                          {lesson.isLive && !lesson.recordedVideoUrl && (
-                            <Link
-                              href={`/dashboard/student/courses/${params.id}/livestream/${lesson.id}`}
-                              className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium animate-pulse transition-all duration-200"
-                              style={{ 
-                                backgroundColor: '#DC2626',
-                                color: '#FFFFFF',
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenResources(lesson);
                               }}
+                              disabled={!lesson.resourceIds || lesson.resourceIds.length === 0}
                             >
-                              <IconBroadcast size={16} />
-                              Unirse a Conferencia
-                            </Link>
-                          )}
+                              <IconFileText size={16} />
+                              Recursos {lesson.resourceIds && lesson.resourceIds.length > 0 && `(${lesson.resourceIds.length})`}
+                            </button>
 
-                          {!lesson.recordedVideoUrl && !lesson.isLive && !lesson.videoUrl && (
-                            <span 
-                              className="flex items-center gap-2 px-4 py-2 rounded-full text-sm"
-                              style={{ 
-                                backgroundColor: '#F3F4F6',
-                                color: COLORS.text.muted,
-                              }}
-                            >
-                              <IconVideo size={16} />
-                              No disponible
-                            </span>
-                          )}
+                            {/* Encuestas */}
+                            {(() => {
+                              const ls = lessonSurveyData[lesson.id];
+                              const survey = ls?.entrySurvey || entrySurvey;
+                              const response = ls?.entryResponse || entryResponse;
 
-                          {/* Recursos */}
-                          <button 
-                            className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 hover:shadow-md disabled:opacity-50"
-                            style={{ 
-                              backgroundColor: COLORS.accent.primarySoft,
-                              color: COLORS.primary,
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenResources(lesson);
-                            }}
-                            disabled={!lesson.resourceIds || lesson.resourceIds.length === 0}
-                          >
-                            <IconFileText size={16} />
-                            Recursos {lesson.resourceIds && lesson.resourceIds.length > 0 && `(${lesson.resourceIds.length})`}
-                          </button>
+                              if (survey) {
+                                const responded = !!response;
+                                const disabled = !responded && !!ls?.entrySurvey && !ls.canAnswerEntry;
+                                return (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openSurvey(ls?.entrySurvey ? lesson.id : null, survey, response);
+                                    }}
+                                    disabled={disabled}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 hover:shadow-md disabled:opacity-50"
+                                    style={{
+                                      backgroundColor: responded ? '#D1FAE5' : '#DBEAFE',
+                                      color: responded ? COLORS.success : '#2563EB',
+                                    }}
+                                  >
+                                    <IconFileText size={16} />
+                                    {responded ? 'Ver Encuesta' : 'Encuesta de Entrada'}
+                                  </button>
+                                );
+                              }
+                              return null;
+                            })()}
 
-                          {/* Encuestas */}
-                          {(() => {
-                            const ls = lessonSurveyData[lesson.id];
-                            const survey = ls?.entrySurvey || entrySurvey;
-                            const response = ls?.entryResponse || entryResponse;
-                            
-                            if (survey) {
-                              const responded = !!response;
-                              const disabled = !responded && !!ls?.entrySurvey && !ls.canAnswerEntry;
-                              return (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openSurvey(ls?.entrySurvey ? lesson.id : null, survey, response);
-                                  }}
-                                  disabled={disabled}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 hover:shadow-md disabled:opacity-50"
-                                  style={{ 
-                                    backgroundColor: responded ? '#D1FAE5' : '#DBEAFE',
-                                    color: responded ? COLORS.success : '#2563EB',
-                                  }}
-                                >
-                                  <IconFileText size={16} />
-                                  {responded ? 'Ver Encuesta' : 'Encuesta de Entrada'}
-                                </button>
-                              );
-                            }
-                            return null;
-                          })()}
+                            {(() => {
+                              const ls = lessonSurveyData[lesson.id];
+                              const survey = ls?.exitSurvey || exitSurvey;
+                              const response = ls?.exitResponse || exitResponse;
 
-                          {(() => {
-                            const ls = lessonSurveyData[lesson.id];
-                            const survey = ls?.exitSurvey || exitSurvey;
-                            const response = ls?.exitResponse || exitResponse;
-                            
-                            if (survey) {
-                              const responded = !!response;
-                              const needsEntry = !ls?.exitSurvey && exitSurvey && !entryResponse;
-                              const disabled = !responded && (needsEntry || (!!ls?.exitSurvey && !ls.canAnswerExit));
-                              return (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openSurvey(ls?.exitSurvey ? lesson.id : null, survey, response);
-                                  }}
-                                  disabled={disabled}
-                                  className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 hover:shadow-md disabled:opacity-50"
-                                  style={{ 
-                                    backgroundColor: responded ? '#D1FAE5' : '#FEF3C7',
-                                    color: responded ? COLORS.success : '#D97706',
-                                  }}
-                                >
-                                  <IconFileText size={16} />
-                                  {responded ? 'Ver Encuesta' : 'Encuesta de Salida'}
-                                </button>
-                              );
-                            }
-                            return null;
-                          })()}
-                        </div>
+                              if (survey) {
+                                const responded = !!response;
+                                const needsEntry = !ls?.exitSurvey && exitSurvey && !entryResponse;
+                                const disabled = !responded && (needsEntry || (!!ls?.exitSurvey && !ls.canAnswerExit));
+                                return (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openSurvey(ls?.exitSurvey ? lesson.id : null, survey, response);
+                                    }}
+                                    disabled={disabled}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 hover:shadow-md disabled:opacity-50"
+                                    style={{
+                                      backgroundColor: responded ? '#D1FAE5' : '#FEF3C7',
+                                      color: responded ? COLORS.success : '#D97706',
+                                    }}
+                                  >
+                                    <IconFileText size={16} />
+                                    {responded ? 'Ver Encuesta' : 'Encuesta de Salida'}
+                                  </button>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
                         )}
 
                         {/* Fecha programada */}
                         {formatLessonDateTime(lesson) && (
-                          <div 
+                          <div
                             className="pl-12 mt-3 flex items-center gap-2 text-sm"
                             style={{ color: COLORS.text.muted }}
                           >
@@ -1614,11 +1661,11 @@ export default function StudentCoursePage() {
       </div>
 
       {/* ===== MODALES ===== */}
-      
+
       {/* Modal de Encuesta */}
       {showSurveyModal && currentSurvey && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div 
+          <div
             className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl p-6 sm:p-8"
             style={{ backgroundColor: COLORS.surface }}
           >
@@ -1632,7 +1679,7 @@ export default function StudentCoursePage() {
 
             {/* Timer para encuesta de salida */}
             {currentSurvey.type === 'exit' && !currentResponse && timeUntilExitSurveyEnabled && (
-              <div 
+              <div
                 className="mb-4 p-4 rounded-xl flex items-center gap-3"
                 style={{ backgroundColor: '#FEF3C7' }}
               >
@@ -1722,7 +1769,7 @@ export default function StudentCoursePage() {
                     </div>
                   );
                 })}
-                <div 
+                <div
                   className="flex items-center gap-3 p-4 rounded-xl"
                   style={{ backgroundColor: '#D1FAE5' }}
                 >
@@ -1748,7 +1795,7 @@ export default function StudentCoursePage() {
                         value={(surveyAnswers[question.id] as string) || ''}
                         onChange={(e) => handleSurveyAnswerChange(question.id, e.target.value)}
                         className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2"
-                        style={{ 
+                        style={{
                           borderColor: COLORS.accent.border,
                           backgroundColor: COLORS.surface,
                         }}
@@ -1761,7 +1808,7 @@ export default function StudentCoursePage() {
                         value={(surveyAnswers[question.id] as string) || ''}
                         onChange={(e) => handleSurveyAnswerChange(question.id, e.target.value)}
                         className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 h-24"
-                        style={{ 
+                        style={{
                           borderColor: COLORS.accent.border,
                           backgroundColor: COLORS.surface,
                         }}
@@ -1816,7 +1863,7 @@ export default function StudentCoursePage() {
                         value={(surveyAnswers[question.id] as string) || ''}
                         onChange={(e) => handleSurveyAnswerChange(question.id, e.target.value)}
                         className="w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2"
-                        style={{ 
+                        style={{
                           borderColor: COLORS.accent.border,
                           backgroundColor: COLORS.surface,
                         }}
@@ -1836,7 +1883,7 @@ export default function StudentCoursePage() {
                   <button
                     onClick={() => setShowSurveyModal(false)}
                     className="px-6 py-3 rounded-full font-medium"
-                    style={{ 
+                    style={{
                       backgroundColor: '#F3F4F6',
                       color: COLORS.text.secondary,
                     }}
@@ -1847,7 +1894,7 @@ export default function StudentCoursePage() {
                     onClick={handleSubmitSurvey}
                     disabled={submittingSurvey}
                     className="px-6 py-3 rounded-full font-medium flex items-center gap-2"
-                    style={{ 
+                    style={{
                       backgroundColor: COLORS.primary,
                       color: '#FFFFFF',
                     }}
@@ -1871,7 +1918,7 @@ export default function StudentCoursePage() {
       {/* Modal de Certificado */}
       {showCertificateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div 
+          <div
             className="w-full max-w-2xl rounded-2xl p-6 sm:p-8"
             style={{ backgroundColor: COLORS.surface }}
           >
@@ -1886,7 +1933,7 @@ export default function StudentCoursePage() {
             <div className="flex flex-col items-center text-center">
               {certificateEligible ? (
                 <>
-                  <div 
+                  <div
                     className="w-20 h-20 rounded-full flex items-center justify-center mb-4"
                     style={{ backgroundColor: COLORS.success }}
                   >
@@ -1999,7 +2046,7 @@ export default function StudentCoursePage() {
                 </>
               ) : (
                 <>
-                  <div 
+                  <div
                     className="w-20 h-20 rounded-full flex items-center justify-center mb-4"
                     style={{ backgroundColor: COLORS.error }}
                   >
@@ -2027,7 +2074,7 @@ export default function StudentCoursePage() {
                   </div>
 
                   {course.certificateRules && (
-                    <div 
+                    <div
                       className="w-full p-4 rounded-xl mb-4 border"
                       style={{ backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }}
                     >
@@ -2079,7 +2126,7 @@ export default function StudentCoursePage() {
       {/* Modal de Recursos */}
       {showResourcesModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div 
+          <div
             className="w-full max-w-2xl rounded-2xl p-6 sm:p-8"
             style={{ backgroundColor: COLORS.surface }}
           >
@@ -2102,9 +2149,9 @@ export default function StudentCoursePage() {
               </div>
             ) : (
               <div className="space-y-3">
-                      {currentLessonResources.map((resource, idx) => (
-                  <div 
-                          key={resource.id || idx} 
+                {currentLessonResources.map((resource, idx) => (
+                  <div
+                    key={resource.id || idx}
                     className="p-4 rounded-xl"
                     style={{ backgroundColor: '#F9FAFB' }}
                   >
@@ -2120,7 +2167,7 @@ export default function StudentCoursePage() {
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="flex flex-wrap gap-2">
                       {canPreview(resource.fileType) && (
                         <button
@@ -2147,8 +2194,8 @@ export default function StudentCoursePage() {
             )}
 
             <div className="flex justify-end mt-6">
-              <button 
-                onClick={() => setShowResourcesModal(false)} 
+              <button
+                onClick={() => setShowResourcesModal(false)}
                 className="px-6 py-3 rounded-full font-medium"
                 style={{ backgroundColor: '#F3F4F6', color: COLORS.text.secondary }}
               >
@@ -2162,7 +2209,7 @@ export default function StudentCoursePage() {
       {/* Modal de Preview */}
       {showPreviewModal && previewResource && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div 
+          <div
             className="w-full max-w-4xl max-h-[90vh] rounded-2xl p-6 sm:p-8 overflow-hidden flex flex-col"
             style={{ backgroundColor: COLORS.surface }}
           >
@@ -2219,8 +2266,8 @@ export default function StudentCoursePage() {
                 <IconDownload size={20} />
                 Descargar
               </button>
-              <button 
-                onClick={() => setShowPreviewModal(false)} 
+              <button
+                onClick={() => setShowPreviewModal(false)}
                 className="px-6 py-3 rounded-full font-medium"
                 style={{ backgroundColor: '#F3F4F6', color: COLORS.text.secondary }}
               >
@@ -2234,12 +2281,12 @@ export default function StudentCoursePage() {
       {/* Modal de Resultado de Encuesta */}
       {showSurveyResultModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div 
+          <div
             className="w-full max-w-md rounded-2xl p-6 sm:p-8 text-center"
             style={{ backgroundColor: COLORS.surface }}
           >
             <div className="flex justify-center mb-4">
-              <div 
+              <div
                 className="rounded-full p-3"
                 style={{ backgroundColor: surveyResultType === 'success' ? COLORS.success : COLORS.error }}
               >
