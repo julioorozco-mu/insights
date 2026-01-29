@@ -1099,6 +1099,7 @@ function SubsectionViewer({
   }, [subsectionIndex, lessonId]);
 
   // IntersectionObserver to detect when user scrolls to the end
+  // Solo se activa para contenido de lectura (sin quiz)
   useEffect(() => {
     if (!endOfContentRef.current || isCompleted || hasQuiz) return;
 
@@ -1591,8 +1592,21 @@ export default function LessonPlayerPage() {
     !!currentLessonId && (isCurrentLessonFullyCompleted || activeSubsectionIndex <= currentHighestCompletedIndex);
   const currentSubHasQuizForNav =
     !!currentLessonId && subsectionHasQuiz(currentLessonId, activeSubsectionIndex);
+
+  // Verificar si el quiz de la subsección actual ha sido completado
+  const isCurrentQuizCompleted = currentLessonId
+    ? quizScores.has(`${currentLessonId}-${activeSubsectionIndex}`)
+    : false;
+
+  // Para avanzar se requiere:
+  // - Modo preview: siempre puede avanzar
+  // - Subsección ya completada: siempre puede avanzar
+  // - Con quiz: solo requiere completar el quiz
+  // - Sin quiz: requiere scroll hasta el final
   const canProceedToNextForNav =
-    isPreviewMode || isCurrentSubCompletedForNav || (!currentSubHasQuizForNav && hasScrolledToEnd);
+    isPreviewMode ||
+    isCurrentSubCompletedForNav ||
+    (currentSubHasQuizForNav ? isCurrentQuizCompleted : hasScrolledToEnd);
 
   const handlePrevNavigation = useCallback(() => {
     if (!prevNavTarget || !currentLessonId) return;
@@ -2885,10 +2899,14 @@ export default function LessonPlayerPage() {
             {!isPreviewMode && nextNavTarget && !isCurrentSubCompletedForNav && (
               <div className="max-w-4xl mx-auto mt-2 text-center">
                 {currentSubHasQuizForNav ? (
-                  <p className="text-xs text-gray-500">
-                    Completa el quiz para habilitar "Siguiente".
-                  </p>
+                  // Subsección con quiz: solo requiere completar el quiz
+                  !isCurrentQuizCompleted ? (
+                    <p className="text-xs text-gray-500">
+                      Completa el quiz para habilitar "Siguiente".
+                    </p>
+                  ) : null
                 ) : !hasScrolledToEnd ? (
+                  // Subsección sin quiz: requiere scroll hasta el final
                   <p className="text-xs text-gray-500">
                     Desplázate hasta el final para habilitar "Siguiente".
                   </p>
