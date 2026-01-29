@@ -1,222 +1,174 @@
 /**
- * Next.js Middleware - Protección de Rutas
+ * Next.js Middleware - Optimizado
  * MicroCert by Marca UNACH
  * 
- * Este middleware intercepta todas las solicitudes antes de llegar a las páginas
- * para validar autenticación y autorización.
+ * Middleware ligero que solo:
+ * 1. Refresca la sesión de Supabase (sincroniza cookies)
+ * 2. Protege rutas básicas
+ * 3. Lee roles desde el JWT (NO hace consultas a DB)
  * 
- * FLUJO DE AUTENTICACIÓN:
- * - Rutas de auth (/auth/*): Solo accesibles si NO estás logueado
- * - Rutas de dashboard (/dashboard/*): Solo accesibles si ESTÁS logueado
- * - Página principal (/): Redirige a /dashboard si está logueado
- * - Rutas no existentes: Redirige a /dashboard si está logueado, a /auth/login si no
+ * Skill: nextjs-supabase-auth
+ * - Maneja tokens en middleware para rutas protegidas
+ * - Usa el flujo de sesiones basado en cookies
+ * 
+ * @see https://supabase.com/docs/guides/auth/server-side/nextjs
  */
 
-import { createServerClient } from '@supabase/ssr';
+import { createMiddlewareClient } from '@/lib/supabase/middleware';
 import { NextResponse, type NextRequest } from 'next/server';
 
-// Rutas que requieren autenticación (rutas privadas)
+// ============================================
+// CONFIGURACIÓN DE RUTAS
+// ============================================
+
+// Rutas que requieren autenticación
 const PROTECTED_ROUTES = ['/dashboard', '/profile', '/student'];
 
-// Rutas públicas específicas de autenticación (solo accesibles si NO estás logueado)
+// Rutas de autenticación (solo accesibles si NO estás logueado)
 const AUTH_ONLY_ROUTES = ['/auth/login', '/auth/sign-up', '/auth/recover-password'];
 
-// Rutas completamente públicas (accesibles para todos)
+// Rutas completamente públicas
 const PUBLIC_ROUTES = ['/course', '/api'];
 
-// Roles permitidos por ruta (configuración básica)
+// Permisos por rol (sin consultas a DB)
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   '/dashboard/admin': ['admin', 'superadmin'],
   '/dashboard/support': ['support', 'admin', 'superadmin'],
   '/dashboard/my-courses': ['teacher', 'speaker', 'admin', 'superadmin'],
 };
 
-/**
- * Verifica si una ruta coincide con alguna de las rutas en la lista
- */
+// ============================================
+// HELPERS
+// ============================================
+
 function matchesRoute(pathname: string, routes: string[]): boolean {
   return routes.some(route => pathname === route || pathname.startsWith(route + '/'));
 }
 
+function addSecurityHeaders(response: NextResponse): NextResponse {
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  return response;
+}
+
+// ============================================
+// MIDDLEWARE PRINCIPAL
+// ============================================
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  
-  // Ignorar rutas de API (excepto las que necesiten auth check)
+
+  // Ignorar rutas de API (se manejan con su propia autenticación)
   if (pathname.startsWith('/api/')) {
     return NextResponse.next();
   }
 
-  // Crear respuesta inicial
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  });
+  // Crear cliente de Supabase para middleware
+  const { supabase, response } = createMiddlewareClient(request);
 
-  // Crear cliente de Supabase para Server-Side
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
-        },
-      },
-    }
-  );
+  // IMPORTANTE: Refrescar la sesión usando getUser() 
+  // Esto sincroniza las cookies y verifica el JWT con Supabase
+  const { data: { user }, error } = await supabase.auth.getUser();
 
-  // Obtener sesión actual
-  // IMPORTANTE: Usar getSession() primero para refrescar tokens si es necesario
-  // Esto es crítico para que las cookies se sincronicen correctamente
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  
-  // Log para debugging
-  if (sessionError) {
-    console.warn('[Middleware] Error obteniendo sesión:', sessionError.message);
+  if (error) {
+    console.warn('[Middleware] Error verificando usuario:', error.message);
   }
 
-  const authUser = session?.user ?? null;
-  const isAuthenticated = !!session;
-  
-  // Obtener el rol del usuario - primero del JWT metadata, luego de la tabla users
-  let userRole = authUser?.user_metadata?.role || authUser?.app_metadata?.role;
-  
-  // Si no hay rol en metadata, intentar obtenerlo de la tabla users
-  if (!userRole && authUser?.id) {
-    const { data: userData } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', authUser.id)
-      .single();
-    
-    userRole = userData?.role;
-  }
-  
-  // Default a 'student' si no se encuentra rol
-  userRole = userRole || 'student';
+  const isAuthenticated = !!user;
+
+  // Obtener rol SOLO desde el JWT (NO consultar DB)
+  // Priorizar app_metadata (más seguro) sobre user_metadata
+  const userRole = user?.app_metadata?.role || user?.user_metadata?.role || 'student';
+
+  // Clasificar la ruta
   const isProtectedRoute = matchesRoute(pathname, PROTECTED_ROUTES);
   const isAuthOnlyRoute = matchesRoute(pathname, AUTH_ONLY_ROUTES);
   const isPublicRoute = matchesRoute(pathname, PUBLIC_ROUTES);
   const isRootRoute = pathname === '/';
 
   // ============================================
-  // 1. Usuario AUTENTICADO
+  // USUARIO AUTENTICADO
   // ============================================
   if (isAuthenticated) {
-    // 1a. Si intenta acceder a rutas de auth (login, sign-up, recover-password)
-    //     → Redirigir a /dashboard
+    // Redirigir de rutas de auth a dashboard
     if (isAuthOnlyRoute) {
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
-    
-    // 1b. Si accede a la página raíz → Redirigir a /dashboard
+
+    // Redirigir de raíz a dashboard
     if (isRootRoute) {
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
-    
-    // 1c. Verificar permisos basados en rol (si aplica)
-    // Verificar si la ruta tiene restricción de roles
+
+    // Verificar permisos de rol para rutas restringidas
     for (const [route, allowedRoles] of Object.entries(ROLE_PERMISSIONS)) {
       if (pathname.startsWith(route)) {
         if (!allowedRoles.includes(userRole)) {
-          // Usuario no tiene permisos para esta ruta
           console.log(`[Middleware] Acceso denegado a ${pathname} para rol ${userRole}`);
           return NextResponse.redirect(new URL('/dashboard', request.url));
         }
         break;
       }
     }
-    
-    // 1d. Para rutas protegidas o públicas, continuar normalmente
+
+    // Permitir acceso a rutas protegidas y públicas
     if (isProtectedRoute || isPublicRoute) {
-      // Agregar headers de seguridad y continuar
-      response.headers.set('X-Content-Type-Options', 'nosniff');
-      response.headers.set('X-Frame-Options', 'DENY');
-      response.headers.set('X-XSS-Protection', '1; mode=block');
-      response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-      return response;
+      return addSecurityHeaders(response());
     }
-    
-    // 1e. Ruta desconocida para usuario autenticado → Redirigir a /dashboard
-    // (Esto captura rutas que no existen)
+
+    // Ruta desconocida para usuario autenticado → Dashboard
     if (!isProtectedRoute && !isPublicRoute && !isRootRoute) {
-      // Solo redirigir si no es una ruta de Next.js interna o archivo estático
-      // Estas ya están excluidas por el matcher, pero por seguridad:
       if (!pathname.startsWith('/_next') && !pathname.includes('.')) {
         return NextResponse.redirect(new URL('/dashboard', request.url));
       }
     }
   }
-  
+
   // ============================================
-  // 2. Usuario NO AUTENTICADO
+  // USUARIO NO AUTENTICADO
   // ============================================
   else {
-    // 2a. Si intenta acceder a rutas protegidas → Redirigir a /auth/login
+    // Redirigir de rutas protegidas a la página principal (contiene login)
     if (isProtectedRoute) {
-      const redirectUrl = new URL('/auth/login', request.url);
-      // Guardar la URL original para redirigir después del login
+      const redirectUrl = new URL('/', request.url);
       redirectUrl.searchParams.set('redirectTo', pathname);
       return NextResponse.redirect(redirectUrl);
     }
-    
-    // 2b. Rutas de auth (login, sign-up, recover-password) → Permitir acceso
+
+    // Permitir acceso a rutas de auth
     if (isAuthOnlyRoute) {
-      response.headers.set('X-Content-Type-Options', 'nosniff');
-      response.headers.set('X-Frame-Options', 'DENY');
-      response.headers.set('X-XSS-Protection', '1; mode=block');
-      response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-      return response;
+      return addSecurityHeaders(response());
     }
-    
-    // 2c. Página raíz → Permitir acceso (es la landing page pública)
+
+    // Permitir acceso a raíz (landing page con login)
     if (isRootRoute) {
-      response.headers.set('X-Content-Type-Options', 'nosniff');
-      response.headers.set('X-Frame-Options', 'DENY');
-      response.headers.set('X-XSS-Protection', '1; mode=block');
-      response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-      return response;
+      return addSecurityHeaders(response());
     }
-    
-    // 2d. Rutas públicas (como /course) → Permitir acceso
+
+    // Permitir acceso a rutas públicas
     if (isPublicRoute) {
-      response.headers.set('X-Content-Type-Options', 'nosniff');
-      response.headers.set('X-Frame-Options', 'DENY');
-      response.headers.set('X-XSS-Protection', '1; mode=block');
-      response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-      return response;
+      return addSecurityHeaders(response());
     }
-    
-    // 2e. Ruta desconocida para usuario NO autenticado → Redirigir a /auth/login
+
+    // Ruta desconocida para usuario no autenticado → Página principal
     if (!pathname.startsWith('/_next') && !pathname.includes('.')) {
-      return NextResponse.redirect(new URL('/auth/login', request.url));
+      return NextResponse.redirect(new URL('/', request.url));
     }
   }
 
-  // Agregar headers de seguridad
-  response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('X-Frame-Options', 'DENY');
-  response.headers.set('X-XSS-Protection', '1; mode=block');
-  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-
-  return response;
+  return addSecurityHeaders(response());
 }
 
-// Configurar qué rutas procesa el middleware
+// ============================================
+// CONFIGURACIÓN DEL MATCHER
+// ============================================
+
 export const config = {
   matcher: [
     /*
-     * Excluir archivos estáticos y API routes internas de Next.js:
+     * Excluir archivos estáticos y rutas internas de Next.js:
      * - _next/static (archivos estáticos)
      * - _next/image (optimización de imágenes)
      * - favicon.ico (favicon)

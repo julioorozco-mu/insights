@@ -1,24 +1,16 @@
-"use client";
-
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-
 /**
- * Redirige /auth/login a la página raíz que ahora contiene el formulario de login
- * con el nuevo diseño que incluye el carousel de cursos.
+ * Login Page - Server Redirect
+ * MicroCert by Marca UNACH
+ * 
+ * Redirige /auth/login a la página raíz que contiene el formulario de login.
+ * 
+ * NOTA: Esta es una redirección del lado del servidor para evitar
+ * flashes de carga y ciclos de redirección.
  */
+
+import { redirect } from "next/navigation";
+
 export default function LoginPage() {
-  const router = useRouter();
-
-  useEffect(() => {
-    // Redirigir inmediatamente a la página raíz
-    router.replace("/");
-  }, [router]);
-
-  // Mostrar un loader mientras redirige
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-base-200">
-      <div className="loading loading-spinner loading-lg text-primary"></div>
-    </div>
-  );
+  // Redirección inmediata del lado del servidor
+  redirect("/");
 }

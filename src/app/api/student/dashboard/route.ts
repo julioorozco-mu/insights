@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { fetchRecommendedCourses } from '@/lib/dashboard/recommendations';
 import { TABLES } from '@/utils/constants';
 import { getApiAuthUser } from '@/lib/auth/apiRouteAuth';
 
@@ -53,7 +54,7 @@ interface ScheduleItem {
   time: string;
   courseId: string;
   lessonId: string;
-  lessonDate: string; // ISO date for calendar
+  lessonDate: string;
 }
 
 interface DashboardStats {
@@ -107,7 +108,22 @@ function mapDifficultyToLevel(difficulty: string | null): string {
   }
 }
 
+// Optimized: Calculate study time from lesson data without JSON.parse
+function estimateStudyTimeForLesson(lesson: {
+  duration_minutes: number | null;
+}): number {
+  if (lesson.duration_minutes && lesson.duration_minutes > 0) {
+    return lesson.duration_minutes;
+  }
+
+  // Fallback: estimate 15 min per lesson if no duration
+  // Skip JSON.parse for performance - it's expensive
+  return 15;
+}
+
 export async function GET(req: NextRequest) {
+  const startTime = performance.now();
+
   try {
     const authUser = await getApiAuthUser();
 
@@ -122,23 +138,87 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabaseAdmin();
     const now = new Date();
 
-    // 1. Get student record
-    const { data: student, error: studentError } = await supabase
+
+    // 1. First, get the student record to get the actual student_id
+    const { data: student } = await supabase
       .from(TABLES.STUDENTS)
       .select('id')
       .eq('user_id', authUser.id)
       .maybeSingle();
 
-    if (studentError) {
-      console.error('[dashboard API] Error getting student:', studentError);
-      return NextResponse.json({ error: 'Error obteniendo estudiante' }, { status: 500 });
-    }
-
+    // Early exit for new students with no record - but still get recommended courses
     if (!student) {
-      // New student with no enrollments
+      // Get courses for recommendations even for new users
+      const recommendedCoursesFiltered = await fetchRecommendedCourses(supabase, {
+        desiredCount: 4,
+      });
+      const recommendedCourseIds = recommendedCoursesFiltered.map(c => c.id);
+
+      // Get student counts and lessons counts
+      const [studentCountsResult, lessonsCountResult] = await Promise.all([
+        recommendedCourseIds.length > 0
+          ? supabase.from(TABLES.STUDENT_ENROLLMENTS).select('course_id').in('course_id', recommendedCourseIds)
+          : Promise.resolve({ data: [] }),
+        recommendedCourseIds.length > 0
+          ? supabase.from(TABLES.LESSONS).select('course_id').in('course_id', recommendedCourseIds).eq('is_active', true)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const studentCountsMap = new Map<string, number>();
+      for (const row of studentCountsResult.data || []) {
+        studentCountsMap.set(row.course_id, (studentCountsMap.get(row.course_id) || 0) + 1);
+      }
+
+      const lessonsCountMap = new Map<string, number>();
+      for (const row of lessonsCountResult.data || []) {
+        lessonsCountMap.set(row.course_id, (lessonsCountMap.get(row.course_id) || 0) + 1);
+      }
+
+      // Get teacher data
+      const teacherIds = new Set<string>();
+      for (const course of recommendedCoursesFiltered) {
+        const c = course as any;
+        if (c.teacher_ids?.[0]) teacherIds.add(c.teacher_ids[0]);
+      }
+
+      const teachersMap = new Map<string, { name: string; lastName?: string; avatarUrl?: string }>();
+      if (teacherIds.size > 0) {
+        const { data: teachersData } = await supabase
+          .from(TABLES.USERS)
+          .select('id, name, last_name, avatar_url')
+          .in('id', Array.from(teacherIds));
+
+        for (const t of teachersData || []) {
+          teachersMap.set(t.id, { name: t.name, lastName: t.last_name, avatarUrl: t.avatar_url });
+        }
+      }
+
+      const recommendedCourses = recommendedCoursesFiltered.map(course => {
+        const c = course as any;
+        const teacherId = c.teacher_ids?.[0];
+        const teacher = teacherId ? teachersMap.get(teacherId) : null;
+        const teacherFullName = teacher
+          ? `${teacher.name}${teacher.lastName ? ' ' + teacher.lastName : ''}`.trim()
+          : undefined;
+
+        return {
+          courseId: course.id,
+          level: mapDifficultyToLevel(course.difficulty),
+          title: course.title,
+          description: cleanDescription(course.description),
+          students: studentCountsMap.get(course.id) || 0,
+          lessons: lessonsCountMap.get(course.id) || 0,
+          rating: course.average_rating || 0,
+          reviewsCount: course.reviews_count || 0,
+          thumbnail: course.thumbnail_url || course.cover_image_url || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80',
+          teacherName: teacherFullName,
+          teacherAvatarUrl: teacher?.avatarUrl,
+        };
+      });
+
       return NextResponse.json({
         enrolledCourses: [],
-        recommendedCourses: [],
+        recommendedCourses,
         scheduleItems: [],
         stats: {
           progressPercentage: 0,
@@ -152,9 +232,16 @@ export async function GET(req: NextRequest) {
       } as DashboardResponse);
     }
 
-    // 2. Parallel fetch: enrollments, favorites, all published courses, microcredential enrollments
-    const [enrollmentsResult, favoritesResult, allCoursesResult, microcredentialEnrollmentsResult] = await Promise.all([
-      // Get enrollments with course data in a single query using JOIN
+    // Use the actual student.id for enrollment queries
+    const studentId = student.id;
+
+    // 2. Now fetch all data in parallel using the correct student.id
+    const [
+      enrollmentsWithCoursesResult,
+      favoritesResult,
+      microcredentialEnrollmentsResult,
+    ] = await Promise.all([
+      // Get enrollments with embedded course data (single JOIN query)
       supabase
         .from(TABLES.STUDENT_ENROLLMENTS)
         .select(`
@@ -175,24 +262,19 @@ export async function GET(req: NextRequest) {
             difficulty,
             tags,
             average_rating,
-            reviews_count
+            reviews_count,
+            teacher_ids
           )
         `)
-        .eq('student_id', student.id),
+        .eq('student_id', studentId),
 
-      // Get favorites
+      // Get favorites (uses idx_course_favorites_user_id)
       supabase
         .from('course_favorites')
         .select('course_id')
         .eq('user_id', authUser.id),
 
-      // Get all active courses for recommendations (matching available-courses page behavior)
-      supabase
-        .from(TABLES.COURSES)
-        .select('id, title, description, thumbnail_url, cover_image_url, difficulty, average_rating, reviews_count, created_at, teacher_ids')
-        .eq('is_active', true),
-
-      // Get microcredential enrollments for this student with microcredential course IDs
+      // Get microcredential enrollments
       supabase
         .from('microcredential_enrollments')
         .select(`
@@ -207,45 +289,76 @@ export async function GET(req: NextRequest) {
             course_level_2_id
           )
         `)
-        .eq('student_id', student.id),
+        .eq('student_id', studentId),
     ]);
 
-    if (enrollmentsResult.error) {
-      console.error('[dashboard API] Error getting enrollments:', enrollmentsResult.error);
-      return NextResponse.json({ error: 'Error obteniendo inscripciones' }, { status: 500 });
-    }
 
-    const enrollmentsData = enrollmentsResult.data || [];
+    const enrollmentsData = enrollmentsWithCoursesResult.data || [];
     const favoritesData = favoritesResult.data || [];
-    const allCourses = allCoursesResult.data || [];
     const microcredentialEnrollments = microcredentialEnrollmentsResult.data || [];
 
     const favoriteIds = new Set(favoritesData.map((f: { course_id: string }) => f.course_id));
     const enrolledCourseIds = new Set(enrollmentsData.map((e: { course_id: string }) => e.course_id));
-
-    // 3. Get lessons for all enrolled courses in parallel
     const enrolledCourseIdsArray = Array.from(enrolledCourseIds) as string[];
 
-    // Single query to get all lessons for enrolled courses
-    const { data: allLessons, error: lessonsError } = await supabase
-      .from(TABLES.LESSONS)
-      .select('id, course_id, title, content, duration_minutes, start_date, scheduled_start_time, type, is_active')
-      .in('course_id', enrolledCourseIdsArray.length > 0 ? enrolledCourseIdsArray : ['none'])
-      .eq('is_active', true);
+    // OPTIMIZATION: Single batch for lessons + student counts + recommended lessons
+    const recommendedCoursesFiltered = await fetchRecommendedCourses(supabase, {
+      desiredCount: 4,
+      excludeCourseIds: enrolledCourseIds,
+    });
+    const recommendedCourseIds = recommendedCoursesFiltered.map(c => c.id);
 
-    if (lessonsError) {
-      console.error('[dashboard API] Error getting lessons:', lessonsError);
-    }
+    const [
+      enrolledLessonsResult,
+      recommendedStudentCountsResult,
+      recommendedLessonsCountResult,
+    ] = await Promise.all([
+      // Lessons for enrolled courses
+      supabase
+        .from(TABLES.LESSONS)
+        .select('id, course_id, title, duration_minutes, start_date, scheduled_start_time, type, is_active')
+        .in('course_id', enrolledCourseIdsArray.length > 0 ? enrolledCourseIdsArray : ['none'])
+        .eq('is_active', true),
 
-    const lessonsByCourse = new Map<string, typeof allLessons>();
-    for (const lesson of allLessons || []) {
+      // Student counts for recommended courses (aggregated)
+      recommendedCourseIds.length > 0
+        ? supabase
+          .from(TABLES.STUDENT_ENROLLMENTS)
+          .select('course_id')
+          .in('course_id', recommendedCourseIds)
+        : Promise.resolve({ data: [] }),
+
+      // Lessons counts for recommended courses
+      recommendedCourseIds.length > 0
+        ? supabase
+          .from(TABLES.LESSONS)
+          .select('course_id')
+          .in('course_id', recommendedCourseIds)
+          .eq('is_active', true)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    // Build lessons by course map
+    const lessonsByCourse = new Map<string, typeof enrolledLessonsResult.data>();
+    for (const lesson of enrolledLessonsResult.data || []) {
       if (!lessonsByCourse.has(lesson.course_id)) {
         lessonsByCourse.set(lesson.course_id, []);
       }
       lessonsByCourse.get(lesson.course_id)!.push(lesson);
     }
 
-    // 4. Process enrolled courses
+    // Build recommended courses counts
+    const studentCountsMap = new Map<string, number>();
+    for (const row of recommendedStudentCountsResult.data || []) {
+      studentCountsMap.set(row.course_id, (studentCountsMap.get(row.course_id) || 0) + 1);
+    }
+
+    const lessonsCountMap = new Map<string, number>();
+    for (const row of recommendedLessonsCountResult.data || []) {
+      lessonsCountMap.set(row.course_id, (lessonsCountMap.get(row.course_id) || 0) + 1);
+    }
+
+    // Process enrolled courses
     const enrolledCourses: EnrolledCourseData[] = [];
     let totalStudyMinutes = 0;
     const upcomingLessons: { lesson: any; courseName: string }[] = [];
@@ -257,34 +370,17 @@ export async function GET(req: NextRequest) {
       const courseLessons = lessonsByCourse.get(course.id) || [];
       const completedLessonsSet = new Set(enrollment.completed_lessons || []);
 
-      // Calculate study time based on completed lessons
+      // Calculate study time (optimized - no JSON.parse)
       let courseStudyTime = 0;
       for (const lesson of courseLessons) {
         if (completedLessonsSet.has(lesson.id)) {
-          if (lesson.duration_minutes && lesson.duration_minutes > 0) {
-            courseStudyTime += lesson.duration_minutes;
-          } else {
-            // Try to get subsections count from content
-            let subsectionsDuration = 0;
-            try {
-              if (lesson.content) {
-                const contentData = JSON.parse(lesson.content);
-                if (contentData.subsections && Array.isArray(contentData.subsections)) {
-                  for (const sub of contentData.subsections) {
-                    subsectionsDuration += sub.durationMinutes || 5;
-                  }
-                }
-              }
-            } catch {
-              // Fallback
-            }
-            courseStudyTime += subsectionsDuration > 0 ? subsectionsDuration : 15;
-          }
+          courseStudyTime += estimateStudyTimeForLesson(lesson);
         }
 
-        // Collect upcoming lessons for schedule
-        if (lesson.start_date || lesson.scheduled_start_time) {
-          const lessonDate = new Date(lesson.start_date || lesson.scheduled_start_time);
+        // Collect upcoming lessons
+        const lessonDateStr = lesson.start_date || lesson.scheduled_start_time;
+        if (lessonDateStr) {
+          const lessonDate = new Date(lessonDateStr);
           if (lessonDate >= now) {
             upcomingLessons.push({ lesson, courseName: course.title });
           }
@@ -322,7 +418,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 5. Process schedule items
+    // Process schedule items
     upcomingLessons.sort((a, b) => {
       const dateA = new Date(a.lesson.start_date || a.lesson.scheduled_start_time);
       const dateB = new Date(b.lesson.start_date || b.lesson.scheduled_start_time);
@@ -346,10 +442,8 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // 6. Calculate stats
+    // Calculate stats
     const completedCourses = enrolledCourses.filter(e => e.progressPercent >= 100).length;
-
-    // Calculate microcredential stats
     const completedMicrocredentials = microcredentialEnrollments.filter(
       (m: any) => m.badge_unlocked === true
     ).length;
@@ -357,123 +451,60 @@ export async function GET(req: NextRequest) {
       (m: any) => m.status === 'in_progress' && !m.badge_unlocked
     ).length;
 
-    // Calculate progress percentage based on microcredentials
-    // Use actual course progress for each level of the microcredential
+    // Calculate progress percentage
     let progressPercentage = 0;
     if (microcredentialEnrollments.length > 0) {
-      // Create a map of course progress from enrolled courses
       const courseProgressMap = new Map<string, number>();
       for (const enrolled of enrolledCourses) {
         courseProgressMap.set(enrolled.course.id, enrolled.progressPercent);
       }
 
-      // Calculate progress for each microcredential based on its courses' progress
       const totalMicrocredentialProgress = microcredentialEnrollments.reduce((sum: number, m: any) => {
-        const microcredential = m.microcredentials;
-        if (!microcredential) return sum;
-
-        const level1CourseId = microcredential.course_level_1_id;
-        const level2CourseId = microcredential.course_level_2_id;
-
-        // Get progress for each level's course
-        const level1Progress = courseProgressMap.get(level1CourseId) || 0;
-        const level2Progress = courseProgressMap.get(level2CourseId) || 0;
-
-        // Average of both levels (each level is 50% of the total)
-        const microcredentialProgress = (level1Progress + level2Progress) / 2;
-        return sum + microcredentialProgress;
+        const mc = m.microcredentials;
+        if (!mc) return sum;
+        const l1 = courseProgressMap.get(mc.course_level_1_id) || 0;
+        const l2 = courseProgressMap.get(mc.course_level_2_id) || 0;
+        return sum + (l1 + l2) / 2;
       }, 0);
       progressPercentage = Math.round(totalMicrocredentialProgress / microcredentialEnrollments.length);
     } else if (enrolledCourses.length > 0) {
-      // Fallback to course progress if no microcredentials
-      const totalProgress = enrolledCourses.reduce((sum, e) => sum + e.progressPercent, 0);
-      progressPercentage = Math.round(totalProgress / enrolledCourses.length);
+      const total = enrolledCourses.reduce((s, e) => s + e.progressPercent, 0);
+      progressPercentage = Math.round(total / enrolledCourses.length);
     }
 
-    // 7. Build recommended courses (exclude enrolled)
-    const availableCourses = allCourses.filter(c => !enrolledCourseIds.has(c.id));
-
-    // Sort: first courses with ratings > 0 (by rating DESC), then courses without ratings (by created_at DESC)
-    const coursesWithRating = availableCourses
-      .filter(c => c.average_rating && c.average_rating > 0)
-      .sort((a, b) => (b.average_rating || 0) - (a.average_rating || 0));
-
-    const coursesWithoutRating = availableCourses
-      .filter(c => !c.average_rating || c.average_rating === 0)
-      .sort((a, b) => {
-        const dateA = new Date(a.created_at || 0);
-        const dateB = new Date(b.created_at || 0);
-        return dateB.getTime() - dateA.getTime(); // Newest first
-      });
-
-    // Combine: rated courses first, then newest unrated courses
-    const sortedAvailableCourses = [...coursesWithRating, ...coursesWithoutRating];
-
-    // Get student counts for recommended courses in parallel
-    const recommendedCoursesIds = sortedAvailableCourses.slice(0, 4).map(c => c.id);
-
-    const { data: studentCounts } = await supabase
-      .from(TABLES.STUDENT_ENROLLMENTS)
-      .select('course_id')
-      .in('course_id', recommendedCoursesIds.length > 0 ? recommendedCoursesIds : ['none']);
-
-    const countsMap = new Map<string, number>();
-    for (const row of studentCounts || []) {
-      countsMap.set(row.course_id, (countsMap.get(row.course_id) || 0) + 1);
-    }
-
-    // Get lessons count for recommended courses
-    const { data: recommendedLessons } = await supabase
-      .from(TABLES.LESSONS)
-      .select('course_id')
-      .in('course_id', recommendedCoursesIds.length > 0 ? recommendedCoursesIds : ['none'])
-      .eq('is_active', true);
-
-    const lessonsCountMap = new Map<string, number>();
-    for (const row of recommendedLessons || []) {
-      lessonsCountMap.set(row.course_id, (lessonsCountMap.get(row.course_id) || 0) + 1);
-    }
-
-    // Get teacher data for recommended courses
-    const recommendedCoursesData = sortedAvailableCourses.slice(0, 4);
+    // Build recommended courses (teacher data fetched in batch)
     const teacherIds = new Set<string>();
-    for (const course of recommendedCoursesData) {
-      const courseWithTeachers = course as any;
-      if (courseWithTeachers.teacher_ids && Array.isArray(courseWithTeachers.teacher_ids) && courseWithTeachers.teacher_ids.length > 0) {
-        teacherIds.add(courseWithTeachers.teacher_ids[0]);
-      }
+    for (const course of recommendedCoursesFiltered) {
+      const c = course as any;
+      if (c.teacher_ids?.[0]) teacherIds.add(c.teacher_ids[0]);
     }
 
-    const teacherIdsArray = Array.from(teacherIds);
     const teachersMap = new Map<string, { name: string; lastName?: string; avatarUrl?: string }>();
-
-    if (teacherIdsArray.length > 0) {
+    if (teacherIds.size > 0) {
       const { data: teachersData } = await supabase
         .from(TABLES.USERS)
         .select('id, name, last_name, avatar_url')
-        .in('id', teacherIdsArray);
+        .in('id', Array.from(teacherIds));
 
-      for (const teacher of teachersData || []) {
-        teachersMap.set(teacher.id, {
-          name: teacher.name,
-          lastName: teacher.last_name,
-          avatarUrl: teacher.avatar_url,
-        });
+      for (const t of teachersData || []) {
+        teachersMap.set(t.id, { name: t.name, lastName: t.last_name, avatarUrl: t.avatar_url });
       }
     }
 
-    const recommendedCourses: RecommendedCourse[] = recommendedCoursesData.map(course => {
-      const courseWithTeachers = course as any;
-      const teacherId = courseWithTeachers.teacher_ids?.[0];
+    const recommendedCourses: RecommendedCourse[] = recommendedCoursesFiltered.map(course => {
+      const c = course as any;
+      const teacherId = c.teacher_ids?.[0];
       const teacher = teacherId ? teachersMap.get(teacherId) : null;
-      const teacherFullName = teacher ? `${teacher.name}${teacher.lastName ? ' ' + teacher.lastName : ''}`.trim() : undefined;
+      const teacherFullName = teacher
+        ? `${teacher.name}${teacher.lastName ? ' ' + teacher.lastName : ''}`.trim()
+        : undefined;
 
       return {
         courseId: course.id,
         level: mapDifficultyToLevel(course.difficulty),
         title: course.title,
         description: cleanDescription(course.description),
-        students: countsMap.get(course.id) || 0,
+        students: studentCountsMap.get(course.id) || 0,
         lessons: lessonsCountMap.get(course.id) || 0,
         rating: course.average_rating || 0,
         reviewsCount: course.reviews_count || 0,
@@ -497,6 +528,9 @@ export async function GET(req: NextRequest) {
       },
       favorites: Array.from(favoriteIds),
     };
+
+    const duration = Math.round(performance.now() - startTime);
+    console.log(`[dashboard API] Completed in ${duration}ms`);
 
     return NextResponse.json(response);
   } catch (error: any) {
