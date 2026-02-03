@@ -1239,17 +1239,32 @@ function SubsectionViewer({
   onScrollComplete?: () => void;
 }) {
   const [hasReachedEnd, setHasReachedEnd] = useState(false);
+  const [isObserverReady, setIsObserverReady] = useState(false);
   const endOfContentRef = useRef<HTMLDivElement>(null);
 
-  // Reset hasReachedEnd when subsection changes
+  // Reset hasReachedEnd and isObserverReady when subsection changes
   useEffect(() => {
     setHasReachedEnd(false);
+    setIsObserverReady(false);
   }, [subsectionIndex, lessonId]);
+
+  // Delay before enabling the IntersectionObserver
+  // This prevents immediate completion for short content that's already visible
+  useEffect(() => {
+    if (isCompleted || hasQuiz) return;
+
+    const timer = setTimeout(() => {
+      setIsObserverReady(true);
+    }, 500); // 500ms delay before the observer can fire
+
+    return () => clearTimeout(timer);
+  }, [subsectionIndex, lessonId, isCompleted, hasQuiz]);
 
   // IntersectionObserver to detect when user scrolls to the end
   // Solo se activa para contenido de lectura (sin quiz)
+  // Only activates after the delay (isObserverReady = true)
   useEffect(() => {
-    if (!endOfContentRef.current || isCompleted || hasQuiz) return;
+    if (!endOfContentRef.current || isCompleted || hasQuiz || !isObserverReady) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -1261,7 +1276,7 @@ function SubsectionViewer({
         });
       },
       {
-        threshold: 0.5, // 50% visible
+        threshold: 1.0, // 100% visible - solo se activa cuando el elemento está completamente visible
         rootMargin: '0px',
       }
     );
@@ -1269,7 +1284,7 @@ function SubsectionViewer({
     observer.observe(endOfContentRef.current);
 
     return () => observer.disconnect();
-  }, [hasReachedEnd, isCompleted, hasQuiz, onScrollComplete]);
+  }, [hasReachedEnd, isCompleted, hasQuiz, onScrollComplete, isObserverReady]);
 
   if (!subsection) {
     return (
@@ -1413,6 +1428,9 @@ export default function LessonPlayerPage() {
 
   // Scroll-to-complete state - tracks if user has scrolled to end of content
   const [hasScrolledToEnd, setHasScrolledToEnd] = useState(false);
+  // Ref to track which subsection/lesson the scroll completion applies to
+  // This prevents the "flicker" where the button appears enabled briefly when changing subsections
+  const scrolledSubsectionRef = useRef<{ lessonId: string; subIndex: number } | null>(null);
 
   // Confirmation modal state for completing lessons
   const [showCompletionModal, setShowCompletionModal] = useState(false);
@@ -3081,6 +3099,12 @@ export default function LessonPlayerPage() {
               onScrollComplete={() => {
                 // Notificar que el usuario ha hecho scroll hasta el final
                 setHasScrolledToEnd(true);
+                // Marcar la subsección como completada automáticamente (solo para lecturas sin quiz)
+                // Esto desbloquea la siguiente subsección en el sidebar
+                if (!isPreviewMode && !isCurrentSubCompletedForNav && !currentSubHasQuizForNav) {
+                  const isLastSubsection = activeSubsectionIndex >= currentSubsectionCount - 1;
+                  handleSubsectionProgressUpdate(activeSubsectionIndex, isLastSubsection);
+                }
               }}
             />
           </div>
@@ -3820,37 +3844,49 @@ export default function LessonPlayerPage() {
                           // Verificar si la subsección está desbloqueada visualmente
                           let isSubsectionUnlocked = false;
 
-                          // Si tiene quiz, la subsección anterior debe haber APROBADO el quiz
-                          // Verificar si la subsección ANTERIOR tiene quiz no aprobado
-                          const prevSubIndex = subIndex - 1;
-                          const prevSubHasQuiz = prevSubIndex >= 0 ? subsectionHasQuiz(lesson.id, prevSubIndex) : false;
-                          const prevQuizScore = prevSubIndex >= 0 ? quizScores.get(`${lesson.id}-${prevSubIndex}`) : null;
-                          const isPrevQuizPassed = prevQuizScore
-                            ? (prevQuizScore.correct / prevQuizScore.total) >= 0.6
-                            : false;
+                          // Verificar si hay CUALQUIER subsección anterior sin completar o quiz sin aprobar
+                          // Esta lógica es más estricta: verifica TODAS las subsecciones anteriores
+                          let hasIncompletePreviousSubsection = false;
+                          for (let i = 0; i < subIndex; i++) {
+                            // Verificar si la subsección anterior está completada
+                            const prevSubIsCompleted = isLessonFullyCompleted || i <= highestCompletedIndexForLesson;
 
-                          // Si la subsección anterior tiene quiz no aprobado, esta está bloqueada
-                          const isPrevSubBlocked = prevSubHasQuiz && !isPrevQuizPassed;
+                            // Verificar si la subsección anterior tiene quiz
+                            const prevHasQuiz = subsectionHasQuiz(lesson.id, i);
+
+                            if (prevHasQuiz) {
+                              // Si tiene quiz, verificar que esté APROBADO (≥60%)
+                              const prevScore = quizScores.get(`${lesson.id}-${i}`);
+                              if (!prevScore || (prevScore.correct / prevScore.total) < 0.6) {
+                                hasIncompletePreviousSubsection = true;
+                                break;
+                              }
+                            } else {
+                              // Sin quiz: la subsección debe estar marcada como completada
+                              if (!prevSubIsCompleted) {
+                                hasIncompletePreviousSubsection = true;
+                                break;
+                              }
+                            }
+                          }
 
                           if (subIndex === 0) {
                             // Primera subsección desbloqueada solo si:
                             // - Es la lección actual, O
                             // - La sección está completamente desbloqueada (incluye verificación de quizzes)
-                            // NO permitir isNextSection sin verificar quizzes
                             isSubsectionUnlocked = lesson.id === currentLessonId || isSectionFullyUnlocked;
-                          } else if (hasUnpassedPreviousQuiz) {
-                            // Si hay CUALQUIER quiz anterior sin aprobar, bloquear esta subsección
+                          } else if (hasIncompletePreviousSubsection) {
+                            // Si hay alguna subsección anterior incompleta o quiz sin aprobar, bloquear
                             isSubsectionUnlocked = false;
                           } else if (isCompleted || isLessonFullyCompleted) {
-                            // Si ya está completada y NO hay quiz pendiente anterior, desbloqueada
-                            // La verificación de hasUnpassedPreviousQuiz ya se hizo arriba
+                            // Si ya está completada y NO hay subsección anterior incompleta, desbloqueada
                             isSubsectionUnlocked = true;
                           } else if (lesson.id === currentLessonId) {
                             // Estamos en la sección actual
                             const isCurrentlyActive = subIndex === activeSubsectionIndex;
                             const isNextToActive = subIndex === activeSubsectionIndex + 1;
 
-                            // Verificar si la subsección ACTIVA (current) tiene quiz no aprobado
+                            // Verificar si la subsección ACTIVA tiene quiz no aprobado
                             const activeSubHasQuiz = subsectionHasQuiz(lesson.id, activeSubsectionIndex);
                             const activeQuizScore = quizScores.get(`${lesson.id}-${activeSubsectionIndex}`);
                             const isActiveQuizPassed = activeQuizScore
@@ -3860,14 +3896,18 @@ export default function LessonPlayerPage() {
                             // Si la subsección activa tiene quiz sin aprobar, bloquear la siguiente
                             const isActiveSubBlocked = activeSubHasQuiz && !isActiveQuizPassed;
 
-                            if (isNextToActive && isActiveSubBlocked) {
+                            // Verificar si la subsección activa (sin quiz) no ha sido completada (scroll)
+                            const activeSubIsCompleted = activeSubsectionIndex <= highestCompletedIndexForLesson;
+                            const isActiveNonQuizIncomplete = !activeSubHasQuiz && !activeSubIsCompleted;
+
+                            if (isNextToActive && (isActiveSubBlocked || isActiveNonQuizIncomplete)) {
+                              // Bloquear la siguiente si la actual tiene quiz sin aprobar O no se ha hecho scroll
                               isSubsectionUnlocked = false;
                             } else {
-                              isSubsectionUnlocked = subIndex <= highestCompletedIndexForLesson + 1 || isCurrentlyActive || isNextToActive;
+                              isSubsectionUnlocked = subIndex <= highestCompletedIndexForLesson + 1 || isCurrentlyActive;
                             }
-                          } else if (isNextSection && isSectionFullyUnlocked) {
-                            isSubsectionUnlocked = subIndex <= highestCompletedIndexForLesson + 1 || subIndex === 0;
                           } else if (isSectionFullyUnlocked) {
+                            // Para otras secciones desbloqueadas, permitir acceso secuencial
                             isSubsectionUnlocked = subIndex === 0 || subIndex <= highestCompletedIndexForLesson + 1;
                           } else {
                             isSubsectionUnlocked = false;
@@ -4091,9 +4131,6 @@ export default function LessonPlayerPage() {
                                     isSubsectionUnlocked ? "text-gray-700" : "text-gray-400"
                                 )}>
                                   {subIndex + 1}. {subsection.title}
-                                  {!isSubsectionUnlocked && (
-                                    <span className="ml-2 text-xs text-gray-400">(Bloqueada)</span>
-                                  )}
                                 </p>
                                 <div className={cn(
                                   "flex items-center gap-1.5 mt-1 text-xs",
