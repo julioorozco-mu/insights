@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
       time_mode: body.timeMode || 'unlimited',
       time_limit_minutes: body.timeLimitMinutes || null,
       passing_score: body.passingScore || 60,
-      max_attempts: body.maxAttempts || 1,
+      max_attempts: body.maxAttempts || 2,
       shuffle_questions: body.shuffleQuestions || false,
       shuffle_options: body.shuffleOptions || false,
       show_results_immediately: body.showResultsImmediately ?? true,

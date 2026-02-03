@@ -170,6 +170,17 @@ export default function TakeTestPage() {
 
       const data = await res.json();
       
+      // Guardar resultados en sessionStorage para la página de resultados
+      sessionStorage.setItem(`test_results_${attempt.id}`, JSON.stringify({
+        results: data.results,
+        answersReview: data.answersReview || [],
+        attempt: data.attempt,
+        testTitle: data.testTitle || test?.title || "Evaluación",
+        canRetake: data.canRetake || false,
+        maxAttempts: data.maxAttempts || 2,
+        remainingAttempts: data.remainingAttempts || 0,
+      }));
+      
       // Redirigir a resultados
       router.push(`/test/${linkedId}/results?attemptId=${attempt.id}`);
     } catch (error) {

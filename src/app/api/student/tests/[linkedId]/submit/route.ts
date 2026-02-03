@@ -168,6 +168,16 @@ export async function POST(
       );
     }
 
+    // Contar intentos totales para determinar si puede reintentar
+    const { count: totalAttempts } = await supabaseAdmin
+      .from('completed_tests')
+      .select('*', { count: 'exact', head: true })
+      .eq('linked_test_id', linkedId)
+      .eq('student_id', studentId);
+
+    const maxAttempts = test.max_attempts || 2;
+    const canRetake = !passed && (totalAttempts || 0) < maxAttempts;
+
     const response: any = {
       attempt: {
         id: updatedAttempt.id,
@@ -194,7 +204,13 @@ export async function POST(
         percentage: Math.round(percentage * 100) / 100,
         passed,
         timeSpent: timeSpentSeconds,
+        passingScore: test.passing_score || 60,
       },
+      testTitle: test.title,
+      maxAttempts,
+      currentAttempt: totalAttempts || 0,
+      canRetake,
+      remainingAttempts: Math.max(0, maxAttempts - (totalAttempts || 0)),
     };
 
     // Incluir respuestas si está configurado

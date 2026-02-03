@@ -353,7 +353,7 @@ export default function EditTestPage() {
     timeMode: "unlimited",
     timeLimitMinutes: undefined,
     passingScore: 60,
-    maxAttempts: 1,
+    maxAttempts: 2,
     shuffleQuestions: false,
     shuffleOptions: false,
     showResultsImmediately: true,
