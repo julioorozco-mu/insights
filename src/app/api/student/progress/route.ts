@@ -154,6 +154,7 @@ interface UpdateProgressBody {
   subsectionIndex: number;
   isCompleted: boolean;
   totalSubsections: number; // Total subsections in this lesson
+  onlyUpdateLastAccessed?: boolean; // When true, only updates last_accessed_lesson_id without modifying subsection_progress
 }
 
 /**
@@ -170,7 +171,7 @@ interface UpdateProgressBody {
 export async function POST(request: NextRequest) {
   try {
     const body: UpdateProgressBody = await request.json();
-    const { courseId, userId, lessonId, subsectionIndex, isCompleted, totalSubsections } = body;
+    const { courseId, userId, lessonId, subsectionIndex, isCompleted, totalSubsections, onlyUpdateLastAccessed } = body;
 
     // Validate required fields
     if (!courseId || !userId || !lessonId || subsectionIndex === undefined) {
@@ -227,6 +228,31 @@ export async function POST(request: NextRequest) {
       last_accessed_lesson_id: lessonId,
       updated_at: new Date().toISOString(),
     };
+
+    // If onlyUpdateLastAccessed is true, skip subsection_progress and completed_lessons updates
+    // This is used when navigating to a subsection without actually completing it
+    if (onlyUpdateLastAccessed) {
+      // Only update last_accessed_lesson_id, skip progress calculation
+      const { data: updatedEnrollment, error: updateError } = await supabase
+        .from("student_enrollments")
+        .update(updates)
+        .eq("id", enrollment.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error("[POST /api/student/progress] Update error:", updateError);
+        throw updateError;
+      }
+
+      return NextResponse.json({
+        success: true,
+        progress: enrollment.progress,
+        completedLessons: enrollment.completed_lessons || [],
+        subsectionProgress: enrollment.subsection_progress || {},
+        lastAccessedLessonId: lessonId,
+      });
+    }
 
     // 2. Update subsection_progress only if new index > current
     const currentIndex = currentSubsectionProgress[lessonId] ?? -1;

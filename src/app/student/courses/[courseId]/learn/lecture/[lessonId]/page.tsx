@@ -604,9 +604,13 @@ function QuizBlock({
         });
       }
 
-      // Actualizar progreso cuando se completa el quiz
-      if (onProgressUpdate && subsectionIndex !== undefined && totalSubsections !== undefined) {
-        // Marcar esta subsección como completada
+      // Actualizar progreso solo si el quiz fue APROBADO (≥60%)
+      // Si no se aprueba, el progreso NO se actualiza y la siguiente subsección permanece bloqueada
+      const quizPercentage = correctCount / quiz.questions.length;
+      const quizPassed = quizPercentage >= 0.6;
+
+      if (quizPassed && onProgressUpdate && subsectionIndex !== undefined && totalSubsections !== undefined) {
+        // Marcar esta subsección como completada solo si aprobó el quiz
         const isLastSubsection = subsectionIndex === totalSubsections - 1;
         onProgressUpdate(subsectionIndex, isLastSubsection);
       }
@@ -1642,7 +1646,8 @@ export default function LessonPlayerPage() {
   }, [user, courseId, isPreviewMode]);
 
   const goToLessonAtSubsection = useCallback((lessonId: string, subsectionIndex: number) => {
-    // Actualizar last_accessed_lesson_id/subsection en segundo plano
+    // Actualizar last_accessed_lesson_id en segundo plano (sin modificar subsection_progress)
+    // El progreso solo se actualiza cuando la subsección es realmente completada
     if (user && courseId) {
       fetch('/api/student/progress', {
         method: 'POST',
@@ -1654,6 +1659,7 @@ export default function LessonPlayerPage() {
           subsectionIndex,
           isCompleted: false,
           totalSubsections: 1,
+          onlyUpdateLastAccessed: true, // Solo actualiza last_accessed, no el progreso
         }),
       }).catch(err => console.error('[goToLessonAtSubsection] Error updating progress:', err));
     }
@@ -1890,7 +1896,7 @@ export default function LessonPlayerPage() {
     // Si hay navegación pendiente a otra sección, navegar ahí
     if (pendingNavigationToSection) {
       setActiveSubsectionIndex(pendingNavigationToSection.subIndex);
-      // Actualizar last_accessed_lesson_id y navegar
+      // Actualizar last_accessed_lesson_id y navegar (sin modificar subsection_progress)
       if (user && courseId) {
         fetch('/api/student/progress', {
           method: 'POST',
@@ -1902,6 +1908,7 @@ export default function LessonPlayerPage() {
             subsectionIndex: 0,
             isCompleted: false,
             totalSubsections: 1,
+            onlyUpdateLastAccessed: true, // Solo actualiza last_accessed, no el progreso
           }),
         }).catch(err => console.error('[handleConfirmCompletion] Error updating progress:', err));
       }
@@ -2593,7 +2600,8 @@ export default function LessonPlayerPage() {
 
   // ===== HANDLERS =====
   const goToLesson = useCallback((lessonId: string) => {
-    // Actualizar last_accessed_lesson_id en segundo plano
+    // Actualizar last_accessed_lesson_id en segundo plano (sin modificar subsection_progress)
+    // El progreso solo se actualiza cuando la subsección es realmente completada
     if (user && courseId) {
       fetch('/api/student/progress', {
         method: 'POST',
@@ -2605,6 +2613,7 @@ export default function LessonPlayerPage() {
           subsectionIndex: 0, // Empezando en la primera subsección
           isCompleted: false,
           totalSubsections: 1,
+          onlyUpdateLastAccessed: true, // Solo actualiza last_accessed, no el progreso
         }),
       }).catch(err => console.error('[goToLesson] Error updating progress:', err));
     }
