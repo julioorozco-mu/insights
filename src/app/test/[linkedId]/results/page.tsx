@@ -60,6 +60,8 @@ export default function TestResultsPage() {
   const [answersReview, setAnswersReview] = useState<AnswerReview[]>([]);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [canRetake, setCanRetake] = useState(false);
+  const [remainingAttempts, setRemainingAttempts] = useState(0);
+  const [maxAttempts, setMaxAttempts] = useState(2);
 
   useEffect(() => {
     if (user && attemptId) {
@@ -80,6 +82,8 @@ export default function TestResultsPage() {
         setAttempt(data.attempt);
         setTestTitle(data.testTitle || "Evaluación");
         setCanRetake(data.canRetake || false);
+        setRemainingAttempts(data.remainingAttempts || 0);
+        setMaxAttempts(data.maxAttempts || 2);
       } else {
         // Fallback: intentar obtener de la API
         // Para esto necesitaríamos una API de resultados
@@ -177,6 +181,11 @@ export default function TestResultsPage() {
             <p className="text-gray-500 mt-2">
               Respondiste correctamente {results.correctAnswers} de {results.totalQuestions} preguntas
             </p>
+            {!results.passed && (
+              <p className="text-gray-400 text-sm mt-2">
+                Se requiere mínimo 60% para aprobar
+              </p>
+            )}
           </div>
 
           {/* Stats grid */}
@@ -307,6 +316,25 @@ export default function TestResultsPage() {
           </div>
         )}
 
+        {/* Mensaje de intentos restantes */}
+        {!results.passed && (
+          <div className="mb-6 text-center">
+            {canRetake ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 inline-block">
+                <p className="text-yellow-800">
+                  Tienes <span className="font-bold">{remainingAttempts}</span> intento{remainingAttempts !== 1 ? 's' : ''} restante{remainingAttempts !== 1 ? 's' : ''} de {maxAttempts}
+                </p>
+              </div>
+            ) : (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 inline-block">
+                <p className="text-red-800">
+                  Has agotado los {maxAttempts} intentos disponibles
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex justify-center gap-4">
           {canRetake && !results.passed && (
@@ -315,7 +343,7 @@ export default function TestResultsPage() {
               className="btn btn-outline gap-2"
             >
               <IconRefresh size={20} />
-              Reintentar evaluación
+              Reintentar evaluación ({remainingAttempts} intento{remainingAttempts !== 1 ? 's' : ''} restante{remainingAttempts !== 1 ? 's' : ''})
             </button>
           )}
           <button

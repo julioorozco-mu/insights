@@ -682,8 +682,11 @@ function QuizBlock({
                     ? (answers[question.id] as string[] || []).includes(optionValue)
                     : answers[question.id] === optionValue;
 
-                  const isCorrect = showResults && (option.isCorrect || isCorrectAnswer(question.id, optionValue));
-                  const isWrong = showResults && isSelected && !isCorrect;
+                  // Solo mostrar feedback para respuestas SELECCIONADAS
+                  // No revelar cuáles son las correctas si no las seleccionó
+                  const optionIsCorrect = option.isCorrect || isCorrectAnswer(question.id, optionValue);
+                  const isSelectedAndCorrect = showResults && isSelected && optionIsCorrect;
+                  const isSelectedAndWrong = showResults && isSelected && !optionIsCorrect;
 
                   return (
                     <label
@@ -692,9 +695,9 @@ function QuizBlock({
                         "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
                         submitted ? "cursor-default" : "hover:bg-gray-50",
                         isSelected && !showResults && "bg-purple-50 border-purple-300",
-                        isCorrect && "bg-green-100 border-green-400",
-                        isWrong && "bg-red-100 border-red-400",
-                        !isSelected && !isCorrect && !isWrong && "border-gray-200"
+                        isSelectedAndCorrect && "bg-green-100 border-green-400",
+                        isSelectedAndWrong && "bg-red-100 border-red-400",
+                        !isSelected && !isSelectedAndCorrect && !isSelectedAndWrong && "border-gray-200"
                       )}
                     >
                       <input
@@ -719,15 +722,15 @@ function QuizBlock({
                       />
                       <span className={cn(
                         "flex-1",
-                        isCorrect && "font-semibold text-green-700",
-                        isWrong && "text-red-700"
+                        isSelectedAndCorrect && "font-semibold text-green-700",
+                        isSelectedAndWrong && "text-red-700"
                       )}>
                         {optionLabel}
                       </span>
-                      {showResults && isCorrect && (
+                      {isSelectedAndCorrect && (
                         <IconCheck className="w-5 h-5 text-green-600" />
                       )}
-                      {showResults && isWrong && (
+                      {isSelectedAndWrong && (
                         <IconX className="w-5 h-5 text-red-600" />
                       )}
                     </label>
@@ -792,17 +795,26 @@ function QuizBlock({
             </button>
           )}
 
-          {score && (
-            <div className={cn(
-              "text-lg font-bold px-4 py-2 rounded-lg",
-              score.correct / score.total >= 0.7
-                ? "bg-green-100 text-green-700"
-                : "bg-yellow-100 text-yellow-700"
-            )}>
-              {score.correct / score.total >= 0.7 ? "¡Muy bien! " : "Sigue practicando "}
-              {Math.round((score.correct / score.total) * 100)}%
-            </div>
-          )}
+          {score && (() => {
+            const percentage = score.correct / score.total;
+            const passed = percentage >= 0.6;
+            return (
+              <div className={cn(
+                "text-lg font-bold px-4 py-2 rounded-lg",
+                passed
+                  ? "bg-green-100 text-green-700"
+                  : "bg-red-100 text-red-700"
+              )}>
+                {passed ? "¡Aprobado! " : "No aprobado - "}
+                {Math.round(percentage * 100)}%
+                {!passed && (
+                  <span className="text-sm font-normal ml-2">
+                    (Se requiere 60%)
+                  </span>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -1598,15 +1610,29 @@ export default function LessonPlayerPage() {
     ? quizScores.has(`${currentLessonId}-${activeSubsectionIndex}`)
     : false;
 
+  // Verificar si el quiz de la subsección actual ha sido APROBADO (≥60%)
+  const currentQuizScore = currentLessonId 
+    ? quizScores.get(`${currentLessonId}-${activeSubsectionIndex}`)
+    : null;
+  const isCurrentQuizPassed = currentQuizScore
+    ? (currentQuizScore.correct / currentQuizScore.total) >= 0.6
+    : false;
+
   // Para avanzar se requiere:
   // - Modo preview: siempre puede avanzar
-  // - Subsección ya completada: siempre puede avanzar
-  // - Con quiz: solo requiere completar el quiz
-  // - Sin quiz: requiere scroll hasta el final
-  const canProceedToNextForNav =
-    isPreviewMode ||
-    isCurrentSubCompletedForNav ||
-    (currentSubHasQuizForNav ? isCurrentQuizCompleted : hasScrolledToEnd);
+  // - Con quiz: SIEMPRE requiere APROBAR el quiz (≥60%), sin importar si está marcado como completado
+  // - Sin quiz: subsección completada O scroll hasta el final
+  const canProceedToNextForNav = (() => {
+    if (isPreviewMode) return true;
+    
+    // Si tiene quiz, SIEMPRE verificar que esté aprobado (≥60%)
+    if (currentSubHasQuizForNav) {
+      return isCurrentQuizPassed;
+    }
+    
+    // Sin quiz: completada o scroll hasta el final
+    return isCurrentSubCompletedForNav || hasScrolledToEnd;
+  })();
 
   const handlePrevNavigation = useCallback(() => {
     if (!prevNavTarget || !currentLessonId) return;
@@ -2899,10 +2925,14 @@ export default function LessonPlayerPage() {
             {!isPreviewMode && nextNavTarget && !isCurrentSubCompletedForNav && (
               <div className="max-w-4xl mx-auto mt-2 text-center">
                 {currentSubHasQuizForNav ? (
-                  // Subsección con quiz: solo requiere completar el quiz
+                  // Subsección con quiz: requiere APROBAR el quiz (≥60%)
                   !isCurrentQuizCompleted ? (
                     <p className="text-xs text-gray-500">
                       Completa el quiz para habilitar "Siguiente".
+                    </p>
+                  ) : !isCurrentQuizPassed ? (
+                    <p className="text-xs text-red-500 font-medium">
+                      Necesitas obtener al menos 60% para continuar. Intenta de nuevo.
                     </p>
                   ) : null
                 ) : !hasScrolledToEnd ? (
@@ -3423,7 +3453,7 @@ export default function LessonPlayerPage() {
               // Verificar si la sección está desbloqueada (para visualización)
               // La sección se muestra habilitada si:
               // 1. Es la primera sección
-              // 2. La sección anterior está completada
+              // 2. La sección anterior está completada Y todos sus quizzes aprobados (≥60%)
               // 3. Es la sección siguiente a la actual (para permitir navegación con validación)
               const previousLesson = lessonIndex > 0 ? sortedLessons[lessonIndex - 1] : null;
               const prevHighestIndex = previousLesson ? (completedSubsectionsByLesson[previousLesson.id] ?? -1) : -1;
@@ -3440,9 +3470,27 @@ export default function LessonPlayerPage() {
                 } catch (e) { }
               }
 
-              // La sección está completamente desbloqueada si la anterior está completa
-              const isSectionFullyUnlocked = lessonIndex === 0 || prevIsCompleted ||
-                (prevHighestIndex >= 0 && prevHighestIndex >= prevTotalSubsections - 1);
+              // Verificar que TODOS los quizzes de la sección anterior estén aprobados (≥60%)
+              let prevSectionQuizzesPassed = true;
+              if (previousLesson && prevSubsections.length > 0) {
+                for (let i = 0; i < prevSubsections.length; i++) {
+                  const subHasQuiz = subsectionHasQuiz(previousLesson.id, i);
+                  if (subHasQuiz) {
+                    const quizScore = quizScores.get(`${previousLesson.id}-${i}`);
+                    if (!quizScore || (quizScore.correct / quizScore.total) < 0.6) {
+                      prevSectionQuizzesPassed = false;
+                      break;
+                    }
+                  }
+                }
+              }
+
+              // La sección está completamente desbloqueada si:
+              // - Es la primera sección, O
+              // - La sección anterior está completada Y sus quizzes aprobados
+              const isSectionFullyUnlocked = lessonIndex === 0 || 
+                ((prevIsCompleted || (prevHighestIndex >= 0 && prevHighestIndex >= prevTotalSubsections - 1)) 
+                  && prevSectionQuizzesPassed);
 
               // La sección está parcialmente habilitada si es la siguiente a la actual
               // (permite clic pero muestra modal de validación)
@@ -3538,30 +3586,50 @@ export default function LessonPlayerPage() {
                           const isLessonFullyCompleted = dbCompletedLessons.includes(lesson.id);
                           const isCompleted = isLessonFullyCompleted || subIndex <= highestCompletedIndexForLesson;
 
+                          // Verificar si la subsección tiene quiz y su estado de aprobación
+                          const subHasQuiz = subsectionHasQuiz(lesson.id, subIndex);
+                          const subQuizScore = quizScores.get(`${lesson.id}-${subIndex}`);
+                          const isSubQuizPassed = subQuizScore 
+                            ? (subQuizScore.correct / subQuizScore.total) >= 0.6 
+                            : false;
+
                           // Verificar si la subsección está desbloqueada visualmente
                           let isSubsectionUnlocked = false;
 
-                          if (isCompleted || isLessonFullyCompleted) {
-                            // Si ya está completada, siempre desbloqueada
+                          // Si tiene quiz, la subsección anterior debe haber APROBADO el quiz
+                          // Verificar si la subsección ANTERIOR tiene quiz no aprobado
+                          const prevSubIndex = subIndex - 1;
+                          const prevSubHasQuiz = prevSubIndex >= 0 ? subsectionHasQuiz(lesson.id, prevSubIndex) : false;
+                          const prevQuizScore = prevSubIndex >= 0 ? quizScores.get(`${lesson.id}-${prevSubIndex}`) : null;
+                          const isPrevQuizPassed = prevQuizScore 
+                            ? (prevQuizScore.correct / prevQuizScore.total) >= 0.6 
+                            : false;
+                          
+                          // Si la subsección anterior tiene quiz no aprobado, esta está bloqueada
+                          const isPrevSubBlocked = prevSubHasQuiz && !isPrevQuizPassed;
+
+                          if (subIndex === 0) {
+                            // Primera subsección desbloqueada solo si:
+                            // - Es la lección actual, O
+                            // - La sección está completamente desbloqueada (incluye verificación de quizzes)
+                            // NO permitir isNextSection sin verificar quizzes
+                            isSubsectionUnlocked = lesson.id === currentLessonId || isSectionFullyUnlocked;
+                          } else if (isPrevSubBlocked) {
+                            // Si la subsección anterior tiene quiz sin aprobar, bloquear
+                            isSubsectionUnlocked = false;
+                          } else if (isCompleted || isLessonFullyCompleted) {
+                            // Si ya está completada y no hay quiz pendiente, desbloqueada
                             isSubsectionUnlocked = true;
                           } else if (lesson.id === currentLessonId) {
                             // Estamos en la sección actual
-                            // Habilitar la actual y la siguiente
                             const isCurrentlyActive = subIndex === activeSubsectionIndex;
                             const isNextToActive = subIndex === activeSubsectionIndex + 1;
                             isSubsectionUnlocked = subIndex <= highestCompletedIndexForLesson + 1 || isCurrentlyActive || isNextToActive;
                           } else if (isNextSection && isSectionFullyUnlocked) {
-                            // Sección siguiente ya desbloqueada completamente
                             isSubsectionUnlocked = subIndex <= highestCompletedIndexForLesson + 1 || subIndex === 0;
-                          } else if (isNextSection && !isSectionFullyUnlocked) {
-                            // Sección siguiente pero la actual no está completa
-                            // Solo habilitar la primera subsección (para mostrar modal de validación)
-                            isSubsectionUnlocked = subIndex === 0;
                           } else if (isSectionFullyUnlocked) {
-                            // Sección completamente desbloqueada (anterior completada)
                             isSubsectionUnlocked = subIndex === 0 || subIndex <= highestCompletedIndexForLesson + 1;
                           } else {
-                            // Sección bloqueada
                             isSubsectionUnlocked = false;
                           }
 
@@ -3616,11 +3684,26 @@ export default function LessonPlayerPage() {
                               const currentSubsection = subsections[previousIndex];
 
                               if (currentHasQuiz) {
-                                // Si tiene quiz, mostrar modal de error indicando que debe completar el quiz
-                                setCompletionModalType('error');
-                                setCompletionModalMessage(`Debes completar el cuestionario de la lección "${currentSubsection?.title || 'actual'}" antes de avanzar a la siguiente lección.`);
-                                setShowCompletionModal(true);
-                                return;
+                                // Verificar si el quiz ha sido completado
+                                const quizKey = `${lesson.id}-${previousIndex}`;
+                                const quizScore = quizScores.get(quizKey);
+                                
+                                if (!quizScore) {
+                                  // Quiz no completado
+                                  setCompletionModalType('error');
+                                  setCompletionModalMessage(`Debes completar el cuestionario de la lección "${currentSubsection?.title || 'actual'}" antes de avanzar.`);
+                                  setShowCompletionModal(true);
+                                  return;
+                                }
+                                
+                                // Verificar si el quiz fue aprobado (≥60%)
+                                const quizPercentage = quizScore.correct / quizScore.total;
+                                if (quizPercentage < 0.6) {
+                                  setCompletionModalType('error');
+                                  setCompletionModalMessage(`Debes obtener al menos 60% en el cuestionario para avanzar. Tu puntuación actual: ${Math.round(quizPercentage * 100)}%. Intenta de nuevo.`);
+                                  setShowCompletionModal(true);
+                                  return;
+                                }
                               }
 
                               // Si es una lección de lectura (sin quiz), verificar que haya hecho scroll
