@@ -383,6 +383,30 @@ function QuizBlock({
   const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
   const [showResults, setShowResults] = useState(false);
   const [savingAnswers, setSavingAnswers] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+
+  // Función para obtener el mensaje de retroalimentación basado en el número de aciertos
+  const getFeedbackMessage = (correctAnswers: number): { title: string; message: string; type: 'low' | 'medium' | 'high' } => {
+    if (correctAnswers <= 4) {
+      return {
+        title: 'Necesitas reforzar',
+        message: 'Los resultados indican que todavía hay dudas importantes sobre los conceptos de democracia, ciudadanía y ciudadanía universitaria. Se recomienda releer las definiciones básicas, revisar los recursos digitales y regresar al mapa conceptual para reforzar la comprensión antes de avanzar.',
+        type: 'low'
+      };
+    } else if (correctAnswers <= 7) {
+      return {
+        title: 'Buen progreso',
+        message: 'Se reconoce un dominio intermedio de los conceptos; hay una base, pero aún existen áreas por clarificar. Es conveniente revisar con atención las preguntas falladas y contrastarlas con ejemplos concretos de la vida universitaria para fortalecer la comprensión.',
+        type: 'medium'
+      };
+    } else {
+      return {
+        title: '¡Excelente trabajo!',
+        message: 'Los resultados muestran una comprensión adecuada de los conceptos básicos, lo que permite avanzar al siguiente tema con confianza. Se sugiere seguir conectando estas ideas con experiencias reales de participación y ejercicios de ciudadanía universitaria.',
+        type: 'high'
+      };
+    }
+  };
 
   useEffect(() => {
     if (!quizId) {
@@ -465,16 +489,19 @@ function QuizBlock({
                         total: quizData.questions.length,
                       });
                     }
-                  }
 
-                  // SIEMPRE actualizar progreso cuando hay respuestas guardadas
-                  // Esto asegura que el sidebar refleje el progreso correcto y habilite la siguiente lección
-                  if (onProgressUpdate && subsectionIndex !== undefined && totalSubsections !== undefined) {
-                    const isLastSubsection = subsectionIndex === totalSubsections - 1;
-                    // Usar setTimeout para asegurar que el estado se actualice después del render
-                    setTimeout(() => {
-                      onProgressUpdate(subsectionIndex, isLastSubsection);
-                    }, 100);
+                    // Solo actualizar progreso si el quiz fue APROBADO (≥60%)
+                    // Esto evita que la siguiente lección se desbloquee si no se aprobó el quiz
+                    const percentage = correctCount / quizData.questions.length;
+                    const isQuizPassed = percentage >= 0.6;
+
+                    if (isQuizPassed && onProgressUpdate && subsectionIndex !== undefined && totalSubsections !== undefined) {
+                      const isLastSubsection = subsectionIndex === totalSubsections - 1;
+                      // Usar setTimeout para asegurar que el estado se actualice después del render
+                      setTimeout(() => {
+                        onProgressUpdate(subsectionIndex, isLastSubsection);
+                      }, 100);
+                    }
                   }
                 }
               }
@@ -569,6 +596,7 @@ function QuizBlock({
       setScore({ correct: correctCount, total: quiz.questions.length });
       setSubmitted(true);
       setShowResults(true);
+      setShowFeedbackModal(true);
       if (onQuizScoreUpdate && lessonId && subsectionIndex !== undefined) {
         onQuizScoreUpdate(lessonId, subsectionIndex, {
           correct: correctCount,
@@ -866,6 +894,65 @@ function QuizBlock({
           })()}
         </div>
       </div>
+
+      {/* Modal de Retroalimentación General */}
+      {showFeedbackModal && score && (() => {
+        const feedback = getFeedbackMessage(score.correct);
+        const bgColor = feedback.type === 'high' ? 'bg-emerald-50' : feedback.type === 'medium' ? 'bg-amber-50' : 'bg-red-50';
+        const borderColor = feedback.type === 'high' ? 'border-emerald-200' : feedback.type === 'medium' ? 'border-amber-200' : 'border-red-200';
+        const titleColor = feedback.type === 'high' ? 'text-emerald-700' : feedback.type === 'medium' ? 'text-amber-700' : 'text-red-700';
+        const iconBgColor = feedback.type === 'high' ? 'bg-emerald-100' : feedback.type === 'medium' ? 'bg-amber-100' : 'bg-red-100';
+        const iconColor = feedback.type === 'high' ? 'text-emerald-600' : feedback.type === 'medium' ? 'text-amber-600' : 'text-red-600';
+        const buttonColor = feedback.type === 'high' ? 'bg-emerald-600 hover:bg-emerald-700' : feedback.type === 'medium' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-red-600 hover:bg-red-700';
+
+        return (
+          <dialog className="modal modal-open">
+            <div className={cn("modal-box max-w-lg", bgColor, borderColor, "border-2")}>
+              <div className="flex flex-col items-center text-center">
+                {/* Icono */}
+                <div className={cn("w-16 h-16 rounded-full flex items-center justify-center mb-4", iconBgColor)}>
+                  {feedback.type === 'high' ? (
+                    <IconStar className={cn("w-8 h-8", iconColor)} />
+                  ) : feedback.type === 'medium' ? (
+                    <IconThumbUp className={cn("w-8 h-8", iconColor)} />
+                  ) : (
+                    <IconNote className={cn("w-8 h-8", iconColor)} />
+                  )}
+                </div>
+
+                {/* Puntuación */}
+                <div className="mb-4">
+                  <span className={cn("text-4xl font-bold", titleColor)}>
+                    {score.correct}/{score.total}
+                  </span>
+                  <p className="text-gray-500 text-sm mt-1">aciertos</p>
+                </div>
+
+                {/* Título */}
+                <h3 className={cn("text-xl font-bold mb-3", titleColor)}>
+                  {feedback.title}
+                </h3>
+
+                {/* Mensaje */}
+                <p className="text-gray-700 leading-relaxed mb-6">
+                  {feedback.message}
+                </p>
+
+                {/* Botón */}
+                <button
+                  onClick={() => setShowFeedbackModal(false)}
+                  className={cn("px-6 py-3 text-white rounded-lg font-semibold transition-colors", buttonColor)}
+                >
+                  Entendido
+                </button>
+              </div>
+            </div>
+            <form method="dialog" className="modal-backdrop bg-black/50">
+              <button onClick={() => setShowFeedbackModal(false)}>close</button>
+            </form>
+          </dialog>
+        );
+      })()}
     </div>
   );
 }
@@ -1344,6 +1431,7 @@ export default function LessonPlayerPage() {
 
   // Quiz scores state - stores quiz scores by lessonId-subIndex
   const [quizScores, setQuizScores] = useState<Map<string, { correct: number; total: number }>>(new Map());
+  const [quizScoresLoaded, setQuizScoresLoaded] = useState(false);
 
   const upsertQuizScore = useCallback(
     (lessonId: string, subsectionIndex: number, score: { correct: number; total: number } | null) => {
@@ -1916,6 +2004,49 @@ export default function LessonPlayerPage() {
 
     fetchProgress();
   }, [user, courseId, currentLessonId, router, isPreviewMode]);
+
+  // ===== FETCH QUIZ SCORES FROM DB =====
+  // Cargar los scores de todos los quizzes del curso para validar desbloqueos correctamente
+  useEffect(() => {
+    const fetchQuizScores = async () => {
+      // En modo preview, marcar como cargado pero no cargar scores
+      if (isPreviewMode) {
+        setQuizScoresLoaded(true);
+        return;
+      }
+      if (!user || !courseId) return;
+
+      try {
+        const response = await fetch(
+          `/api/student/getQuizScores?courseId=${courseId}`
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const scores = data.scores || [];
+
+          // Actualizar el mapa de quizScores
+          if (scores.length > 0) {
+            setQuizScores((prev) => {
+              const next = new Map(prev);
+              for (const score of scores) {
+                const key = `${score.lessonId}-${score.subsectionIndex}`;
+                next.set(key, { correct: score.correct, total: score.total });
+              }
+              return next;
+            });
+          }
+        }
+      } catch (error) {
+        console.error('[fetchQuizScores] Error:', error);
+      } finally {
+        // Marcar como cargado incluso si hay error, para no bloquear indefinidamente
+        setQuizScoresLoaded(true);
+      }
+    };
+
+    fetchQuizScores();
+  }, [user, courseId, isPreviewMode]);
 
   // ===== AUTO-COMPLETE LAST LESSON IF READING =====
   // Si es la última lección de la última sección y es de lectura, completarla automáticamente
@@ -3561,8 +3692,37 @@ export default function LessonPlayerPage() {
               const currentLessonIndex = sortedLessons.findIndex(l => l.id === currentLessonId);
               const isNextSection = lessonIndex === currentLessonIndex + 1;
 
-              // Para visualización: habilitar si está completamente desbloqueada o es la siguiente sección
-              const isSectionUnlocked = isSectionFullyUnlocked || isNextSection;
+              // Verificar que TODOS los quizzes de la sección ACTUAL estén aprobados (≥60%)
+              // Esto es necesario para bloquear la siguiente sección si hay quizzes sin aprobar en la actual
+              let currentSectionQuizzesPassed = true;
+              const currentLessonData = sortedLessons[currentLessonIndex];
+              if (currentLessonData && quizScoresLoaded) {
+                let currentLessonSubsections: Subsection[] = [];
+                try {
+                  if (currentLessonData.content) {
+                    const parsed = JSON.parse(currentLessonData.content);
+                    currentLessonSubsections = parsed.subsections || [];
+                  }
+                } catch (e) { }
+
+                for (let i = 0; i < currentLessonSubsections.length; i++) {
+                  const subHasQuiz = subsectionHasQuiz(currentLessonData.id, i);
+                  if (subHasQuiz) {
+                    const quizScore = quizScores.get(`${currentLessonData.id}-${i}`);
+                    if (!quizScore || (quizScore.correct / quizScore.total) < 0.6) {
+                      currentSectionQuizzesPassed = false;
+                      break;
+                    }
+                  }
+                }
+              } else if (isNextSection && !quizScoresLoaded) {
+                // Si los quiz scores no están cargados aún, bloquear la siguiente sección por precaución
+                currentSectionQuizzesPassed = false;
+              }
+
+              // Para visualización: habilitar si está completamente desbloqueada 
+              // o es la siguiente sección Y todos los quizzes de la sección actual están aprobados
+              const isSectionUnlocked = isSectionFullyUnlocked || (isNextSection && currentSectionQuizzesPassed);
 
               return (
                 <div key={lesson.id} className="border-b" style={{ borderColor: TOKENS.colors.border }}>
@@ -3678,17 +3838,33 @@ export default function LessonPlayerPage() {
                             // - La sección está completamente desbloqueada (incluye verificación de quizzes)
                             // NO permitir isNextSection sin verificar quizzes
                             isSubsectionUnlocked = lesson.id === currentLessonId || isSectionFullyUnlocked;
-                          } else if (isPrevSubBlocked) {
-                            // Si la subsección anterior tiene quiz sin aprobar, bloquear
+                          } else if (hasUnpassedPreviousQuiz) {
+                            // Si hay CUALQUIER quiz anterior sin aprobar, bloquear esta subsección
                             isSubsectionUnlocked = false;
                           } else if (isCompleted || isLessonFullyCompleted) {
-                            // Si ya está completada y no hay quiz pendiente, desbloqueada
+                            // Si ya está completada y NO hay quiz pendiente anterior, desbloqueada
+                            // La verificación de hasUnpassedPreviousQuiz ya se hizo arriba
                             isSubsectionUnlocked = true;
                           } else if (lesson.id === currentLessonId) {
                             // Estamos en la sección actual
                             const isCurrentlyActive = subIndex === activeSubsectionIndex;
                             const isNextToActive = subIndex === activeSubsectionIndex + 1;
-                            isSubsectionUnlocked = subIndex <= highestCompletedIndexForLesson + 1 || isCurrentlyActive || isNextToActive;
+
+                            // Verificar si la subsección ACTIVA (current) tiene quiz no aprobado
+                            const activeSubHasQuiz = subsectionHasQuiz(lesson.id, activeSubsectionIndex);
+                            const activeQuizScore = quizScores.get(`${lesson.id}-${activeSubsectionIndex}`);
+                            const isActiveQuizPassed = activeQuizScore
+                              ? (activeQuizScore.correct / activeQuizScore.total) >= 0.6
+                              : false;
+
+                            // Si la subsección activa tiene quiz sin aprobar, bloquear la siguiente
+                            const isActiveSubBlocked = activeSubHasQuiz && !isActiveQuizPassed;
+
+                            if (isNextToActive && isActiveSubBlocked) {
+                              isSubsectionUnlocked = false;
+                            } else {
+                              isSubsectionUnlocked = subIndex <= highestCompletedIndexForLesson + 1 || isCurrentlyActive || isNextToActive;
+                            }
                           } else if (isNextSection && isSectionFullyUnlocked) {
                             isSubsectionUnlocked = subIndex <= highestCompletedIndexForLesson + 1 || subIndex === 0;
                           } else if (isSectionFullyUnlocked) {
