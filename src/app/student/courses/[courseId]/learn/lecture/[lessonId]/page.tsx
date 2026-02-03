@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
@@ -30,6 +30,11 @@ import {
   IconHeart,
   IconHeartFilled,
   IconGift,
+  IconHome,
+  IconArrowLeft,
+  IconFileText,
+  IconPhoto,
+  IconClipboardCheck,
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -61,7 +66,7 @@ interface Section {
 
 interface ContentBlock {
   id: string;
-  type: 'heading' | 'text' | 'richtext' | 'image' | 'video' | 'attachment' | 'list' | 'table' | 'quiz';
+  type: 'heading' | 'text' | 'richtext' | 'image' | 'video' | 'attachment' | 'list' | 'table' | 'quiz' | 'gallery';
   content: string;
   data?: {
     fileName?: string;
@@ -192,14 +197,58 @@ function getYouTubeVideoId(url: string): string | null {
 }
 
 // ===== HELPER: Extract path from Supabase Storage URL =====
-function extractStoragePath(url: string): { bucket: string; path: string } | null {
-  // URL format: https://xxx.supabase.co/storage/v1/object/public/BUCKET/PATH
-  const match = url.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+const extractStoragePath = (url: string): { bucket: string; path: string } | null => {
+  const match = url.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/);
   if (match) {
     return { bucket: match[1], path: decodeURIComponent(match[2]) };
   }
   return null;
-}
+};
+
+// ===== HELPER: Get content type icons for a subsection =====
+const getSubsectionContentIcons = (blocks: ContentBlock[] | undefined): React.ReactElement[] => {
+  if (!blocks || blocks.length === 0) {
+    return [<IconFileText key="default" size={12} title="Documento" />];
+  }
+
+  const hasText = blocks.some(b => ['text', 'richtext', 'table', 'heading', 'list'].includes(b.type));
+  const hasGallery = blocks.some(b => b.type === 'gallery');
+  const hasVideo = blocks.some(b => b.type === 'video');
+  const hasAttachment = blocks.some(b => b.type === 'attachment');
+  const hasQuiz = blocks.some(b => b.type === 'quiz');
+
+  const icons: React.ReactElement[] = [];
+
+  // Si tiene quiz, solo puede combinarse con adjunto
+  if (hasQuiz) {
+    icons.push(<IconClipboardCheck key="quiz" size={12} title="Evaluación" />);
+    if (hasAttachment) {
+      icons.push(<IconPaperclip key="attachment" size={12} title="Adjunto" />);
+    }
+    return icons;
+  }
+
+  // Para otros tipos, combinar todos los que apliquen
+  if (hasText) {
+    icons.push(<IconFileText key="text" size={12} title="Documento" />);
+  }
+  if (hasGallery) {
+    icons.push(<IconPhoto key="gallery" size={12} title="Galería" />);
+  }
+  if (hasVideo) {
+    icons.push(<IconVideo key="video" size={12} title="Video" />);
+  }
+  if (hasAttachment) {
+    icons.push(<IconPaperclip key="attachment" size={12} title="Adjunto" />);
+  }
+
+  // Si no hay ningún tipo reconocido, mostrar documento por defecto
+  if (icons.length === 0) {
+    icons.push(<IconFileText key="default" size={12} title="Documento" />);
+  }
+
+  return icons;
+};
 
 // ===== COMPONENT: Attachment Block (con URL firmada) =====
 function AttachmentBlock({ block }: { block: ContentBlock }) {
@@ -1611,7 +1660,7 @@ export default function LessonPlayerPage() {
     : false;
 
   // Verificar si el quiz de la subsección actual ha sido APROBADO (≥60%)
-  const currentQuizScore = currentLessonId 
+  const currentQuizScore = currentLessonId
     ? quizScores.get(`${currentLessonId}-${activeSubsectionIndex}`)
     : null;
   const isCurrentQuizPassed = currentQuizScore
@@ -1624,12 +1673,12 @@ export default function LessonPlayerPage() {
   // - Sin quiz: subsección completada O scroll hasta el final
   const canProceedToNextForNav = (() => {
     if (isPreviewMode) return true;
-    
+
     // Si tiene quiz, SIEMPRE verificar que esté aprobado (≥60%)
     if (currentSubHasQuizForNav) {
       return isCurrentQuizPassed;
     }
-    
+
     // Sin quiz: completada o scroll hasta el final
     return isCurrentSubCompletedForNav || hasScrolledToEnd;
   })();
@@ -2609,28 +2658,43 @@ export default function LessonPlayerPage() {
         style={{ height: TOKENS.spacing.topbarHeight, backgroundColor: TOKENS.colors.topbar }}
       >
         <div className="flex items-center gap-2 overflow-hidden">
-          {/* Logo - Navega al dashboard del estudiante */}
+          {/* Icono Casa - Navega al dashboard */}
           <button
-            onClick={() => router.push('/dashboard/student')}
-            className="text-white hover:text-gray-300 transition-colors shrink-0"
-            title="Ir al dashboard"
+            onClick={() => router.push('/dashboard')}
+            className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors shrink-0"
+            title="Ir al inicio"
           >
-            <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center text-white font-bold text-xs hover:bg-purple-500 transition-colors">
-              MU
-            </div>
+            <IconHome size={20} />
           </button>
+
+          {/* Logo MU */}
+          <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center text-white font-bold text-xs shrink-0">
+            MU
+          </div>
 
           <div className="h-6 w-[1px] bg-gray-700 mx-2 hidden sm:block shrink-0"></div>
 
-          {/* Título del curso - Navega a la página del curso */}
+          {/* Flecha izquierda + Título del curso - Navega a la página del curso */}
           <button
             onClick={() => router.push(`/dashboard/student/courses/${courseId}`)}
-            className="text-gray-300 hover:text-white transition-colors hidden sm:block"
-            title="Ver detalles del curso"
+            className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors hidden sm:block"
+            title="Volver al curso"
           >
-            <span className="text-sm font-medium truncate max-w-[150px] md:max-w-md block">
-              {courseInfo?.title ? `Microcredencial - ${courseInfo.title}` : "Volver al curso"}
-            </span>
+            <div className="flex items-center gap-2">
+              <IconArrowLeft size={18} className="shrink-0" />
+              <span className="text-sm font-medium truncate max-w-[150px] md:max-w-md">
+                {courseInfo?.title || "Volver al curso"}
+              </span>
+            </div>
+          </button>
+
+          {/* Versión móvil - Solo flecha */}
+          <button
+            onClick={() => router.push(`/dashboard/student/courses/${courseId}`)}
+            className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors sm:hidden"
+            title="Volver al curso"
+          >
+            <IconArrowLeft size={20} />
           </button>
         </div>
 
@@ -2656,7 +2720,7 @@ export default function LessonPlayerPage() {
                       ? "text-yellow-400 cursor-pointer hover:text-yellow-300"
                       : "text-gray-500 cursor-not-allowed opacity-60"
                   )}
-                  title={visualProgress >= 100 
+                  title={visualProgress >= 100
                     ? (userRating ? "Editar calificación" : "Calificar este curso")
                     : `Completa el curso al 100% para dejar una reseña (${visualProgress}%)`}
                   disabled={visualProgress < 100}
@@ -3488,8 +3552,8 @@ export default function LessonPlayerPage() {
               // La sección está completamente desbloqueada si:
               // - Es la primera sección, O
               // - La sección anterior está completada Y sus quizzes aprobados
-              const isSectionFullyUnlocked = lessonIndex === 0 || 
-                ((prevIsCompleted || (prevHighestIndex >= 0 && prevHighestIndex >= prevTotalSubsections - 1)) 
+              const isSectionFullyUnlocked = lessonIndex === 0 ||
+                ((prevIsCompleted || (prevHighestIndex >= 0 && prevHighestIndex >= prevTotalSubsections - 1))
                   && prevSectionQuizzesPassed);
 
               // La sección está parcialmente habilitada si es la siguiente a la actual
@@ -3589,8 +3653,8 @@ export default function LessonPlayerPage() {
                           // Verificar si la subsección tiene quiz y su estado de aprobación
                           const subHasQuiz = subsectionHasQuiz(lesson.id, subIndex);
                           const subQuizScore = quizScores.get(`${lesson.id}-${subIndex}`);
-                          const isSubQuizPassed = subQuizScore 
-                            ? (subQuizScore.correct / subQuizScore.total) >= 0.6 
+                          const isSubQuizPassed = subQuizScore
+                            ? (subQuizScore.correct / subQuizScore.total) >= 0.6
                             : false;
 
                           // Verificar si la subsección está desbloqueada visualmente
@@ -3601,10 +3665,10 @@ export default function LessonPlayerPage() {
                           const prevSubIndex = subIndex - 1;
                           const prevSubHasQuiz = prevSubIndex >= 0 ? subsectionHasQuiz(lesson.id, prevSubIndex) : false;
                           const prevQuizScore = prevSubIndex >= 0 ? quizScores.get(`${lesson.id}-${prevSubIndex}`) : null;
-                          const isPrevQuizPassed = prevQuizScore 
-                            ? (prevQuizScore.correct / prevQuizScore.total) >= 0.6 
+                          const isPrevQuizPassed = prevQuizScore
+                            ? (prevQuizScore.correct / prevQuizScore.total) >= 0.6
                             : false;
-                          
+
                           // Si la subsección anterior tiene quiz no aprobado, esta está bloqueada
                           const isPrevSubBlocked = prevSubHasQuiz && !isPrevQuizPassed;
 
@@ -3687,7 +3751,7 @@ export default function LessonPlayerPage() {
                                 // Verificar si el quiz ha sido completado
                                 const quizKey = `${lesson.id}-${previousIndex}`;
                                 const quizScore = quizScores.get(quizKey);
-                                
+
                                 if (!quizScore) {
                                   // Quiz no completado
                                   setCompletionModalType('error');
@@ -3695,7 +3759,7 @@ export default function LessonPlayerPage() {
                                   setShowCompletionModal(true);
                                   return;
                                 }
-                                
+
                                 // Verificar si el quiz fue aprobado (≥60%)
                                 const quizPercentage = quizScore.correct / quizScore.total;
                                 if (quizPercentage < 0.6) {
@@ -3806,24 +3870,31 @@ export default function LessonPlayerPage() {
                               key={subsection.id}
                               onClick={handleSubsectionClick}
                               className={cn(
-                                "pl-6 pr-4 py-2.5 flex gap-3 transition-colors",
+                                "pl-6 pr-4 py-2.5 flex gap-3 transition-colors relative",
                                 isSubsectionUnlocked
                                   ? "cursor-pointer hover:bg-gray-50"
                                   : "cursor-not-allowed opacity-60",
                                 isActiveSubsection && "bg-purple-100"
                               )}
                             >
-                              {/* Checkbox */}
+                              {/* Indicador de lección activa - barra vertical morada */}
+                              {isActiveSubsection && (
+                                <div
+                                  className="absolute left-0 top-0 bottom-0 w-[3px] rounded-r-full"
+                                  style={{ backgroundColor: TOKENS.colors.accent }}
+                                />
+                              )}
+                              {/* Círculo de estado */}
                               <div className="pt-0.5 shrink-0">
                                 <div
                                   className={cn(
-                                    "w-4 h-4 border rounded-sm flex items-center justify-center",
+                                    "w-4 h-4 border-2 rounded-full flex items-center justify-center",
                                     isActiveSubsection
                                       ? "bg-purple-600 border-purple-600"
                                       : isCompleted
                                         ? "bg-purple-50 border-purple-600"
                                         : isSubsectionUnlocked
-                                          ? "border-gray-400 bg-white"
+                                          ? "border-gray-300 bg-white"
                                           : "border-gray-300 bg-gray-100"
                                   )}
                                 >
@@ -3832,9 +3903,6 @@ export default function LessonPlayerPage() {
                                       size={10}
                                       className={isActiveSubsection ? "text-white" : "text-purple-600"}
                                     />
-                                  )}
-                                  {!isSubsectionUnlocked && !isActiveSubsection && !isCompleted && (
-                                    <IconX size={8} className="text-gray-400" />
                                   )}
                                 </div>
                               </div>
@@ -3855,7 +3923,10 @@ export default function LessonPlayerPage() {
                                   "flex items-center gap-1.5 mt-1 text-xs",
                                   isSubsectionUnlocked ? "text-gray-500" : "text-gray-400"
                                 )}>
-                                  <IconVideo size={12} />
+                                  {/* Iconos según tipo de contenido */}
+                                  <div className="flex items-center gap-1">
+                                    {getSubsectionContentIcons(subsection.blocks)}
+                                  </div>
                                   <span>5 min</span>
                                   {/* Quiz score badge */}
                                   {quizScores.has(`${lesson.id}-${subIndex}`) && (() => {
@@ -3887,20 +3958,29 @@ export default function LessonPlayerPage() {
                             goToLesson(lesson.id);
                           }}
                           className={cn(
-                            "pl-6 pr-4 py-2.5 flex gap-3 cursor-pointer transition-colors",
+                            "pl-6 pr-4 py-2.5 flex gap-3 cursor-pointer transition-colors relative",
                             isActiveSection
                               ? "bg-purple-100"
                               : "hover:bg-gray-50"
                           )}
                         >
+                          {/* Indicador de lección activa - barra vertical morada */}
+                          {isActiveSection && (
+                            <div
+                              className="absolute left-0 top-0 bottom-0 w-[3px] rounded-r-full"
+                              style={{ backgroundColor: TOKENS.colors.accent }}
+                            />
+                          )}
                           <div className="pt-0.5 shrink-0">
                             <div className={cn(
-                              "w-4 h-4 border rounded-sm flex items-center justify-center",
+                              "w-4 h-4 border-2 rounded-full flex items-center justify-center",
                               isActiveSection
                                 ? "bg-purple-600 border-purple-600"
-                                : "border-gray-400 bg-white"
+                                : isSectionCompleted
+                                  ? "bg-purple-50 border-purple-600"
+                                  : "border-gray-300 bg-white"
                             )}>
-                              {isActiveSection && <IconCheck size={10} className="text-white" />}
+                              {(isActiveSection || isSectionCompleted) && <IconCheck size={10} className={isActiveSection ? "text-white" : "text-purple-600"} />}
                             </div>
                           </div>
                           <div className="flex-1 min-w-0">
@@ -3911,7 +3991,7 @@ export default function LessonPlayerPage() {
                               1. {lesson.title}
                             </p>
                             <div className="flex items-center gap-1.5 mt-1 text-xs text-gray-500">
-                              <IconVideo size={12} />
+                              <IconFileText size={12} title="Documento" />
                               <span>{lesson.durationMinutes || 5} min</span>
                             </div>
                           </div>
