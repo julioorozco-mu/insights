@@ -16,7 +16,8 @@
       "mcp__chrome-devtools__handle_dialog",
       "Bash(npx tsc:*)",
       "Bash(grep:*)",
-      "mcp__chrome-devtools__take_screenshot"
+      "mcp__chrome-devtools__take_screenshot",
+      "Bash(pnpm run build)"
     ]
   }
 }

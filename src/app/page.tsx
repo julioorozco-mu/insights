@@ -1,10 +1,10 @@
 /**
  * Home Page - Login con Carrusel de Cursos
  * MicroCert by Marca UNACH
- * 
+ *
  * Página de inicio que muestra el formulario de login junto con
  * un carrusel de cursos disponibles.
- * 
+ *
  * ACTUALIZADO: Usa el nuevo LoginForm con Server Actions.
  * NOTA: El middleware maneja la redirección de usuarios autenticados,
  * por lo que esta página solo se muestra a usuarios no autenticados.
@@ -12,7 +12,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { APP_NAME } from "@/utils/constants";
@@ -21,7 +21,7 @@ import { LoginForm } from "@/components/auth";
 import { Course } from "@/types/course";
 import { courseRepository } from "@/lib/repositories/courseRepository";
 
-export default function HomePage() {
+function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [courses, setCourses] = useState<Course[]>([]);
@@ -104,5 +104,17 @@ export default function HomePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="loading loading-spinner loading-lg text-primary"></div>
+      </div>
+    }>
+      <HomePageContent />
+    </Suspense>
   );
 }
