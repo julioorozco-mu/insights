@@ -2639,15 +2639,14 @@ export default function LessonPlayerPage() {
     setSavingNote(true);
 
     try {
-      const res = await fetch('/api/student/notes', {
+      const res = await fetch(`/api/student/notes?lessonId=${currentLessonId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: user.id,
-          lessonId: currentLessonId,
-          courseId: courseId,
           content: newNoteContent.trim(),
-          videoTimestamp: currentVideoTime,
+          video_timestamp: currentVideoTime,
+          course_id: courseId,
+          lesson_id: currentLessonId,
         }),
       });
 
@@ -2672,7 +2671,6 @@ export default function LessonPlayerPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           noteId,
-          userId: user.id,
           content: editingNoteContent.trim(),
         }),
       });
@@ -2693,7 +2691,7 @@ export default function LessonPlayerPage() {
     if (!user || !confirm("¿Estás seguro de eliminar esta nota?")) return;
 
     try {
-      const res = await fetch(`/api/student/notes?noteId=${noteId}&userId=${user.id}`, {
+      const res = await fetch(`/api/student/notes?noteId=${noteId}`, {
         method: 'DELETE',
       });
 
@@ -2745,15 +2743,14 @@ export default function LessonPlayerPage() {
     setSubmittingQuestion(true);
 
     try {
-      const res = await fetch('/api/student/questions', {
+      const res = await fetch(`/api/student/questions?lessonId=${currentLessonId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: user.id,
-          lessonId: currentLessonId,
-          courseId: courseId,
-          questionText: newQuestionText.trim(),
-          videoTimestamp: currentVideoTime,
+          question_text: newQuestionText.trim(),
+          video_timestamp: currentVideoTime,
+          course_id: courseId,
+          lesson_id: currentLessonId,
         }),
       });
 
@@ -2777,9 +2774,8 @@ export default function LessonPlayerPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: user.id,
-          questionId: questionId,
-          answerText: replyText.trim(),
+          answer_text: replyText.trim(),
+          question_id: questionId,
         }),
       });
 

@@ -21,6 +21,16 @@ import { ProductivityChartLazy } from "@/components/dashboard/productivity-chart
 import type { User, UserRole } from "@/types/user";
 
 // Types from the aggregated API
+interface RecommendedMicrocredential {
+    id: string;
+    title: string;
+    slug: string;
+    badgeImageUrl: string;
+    isFree: boolean;
+    price: number;
+    salePercentage: number;
+}
+
 interface DashboardApiResponse {
     enrolledCourses: {
         course: {
@@ -62,6 +72,8 @@ interface DashboardApiResponse {
         teacherName?: string;
         teacherAvatarUrl?: string;
     }[];
+    recommendedMicrocredentials: RecommendedMicrocredential[];
+    enrolledMicrocredentialIds: string[];
     scheduleItems: {
         type: string;
         title: string;
@@ -424,57 +436,166 @@ export function DashboardClient({ user, initialData }: DashboardClientProps) {
             <div className="flex flex-col gap-8 lg:flex-row">
                 {/* Left Column - Main Content */}
                 <div className="flex-1 space-y-8">
-                    {/* Top Courses Section - Recommended (hidden for admin roles) */}
-                    {!isAdminRole && (
-                        <section>
-                            <div className="mb-4 flex items-center justify-between">
-                                <h2 className="text-xl font-semibold text-slate-900">
-                                    Microcursos recomendados para ti
-                                </h2>
-                                <Link
-                                    href="/dashboard/available-courses"
-                                    className="text-sm font-medium text-brand-secondary hover:underline"
-                                >
-                                    Ver todos
-                                </Link>
-                            </div>
-                            {recommendedCourses.length > 0 ? (
-                                <div className="grid gap-6 md:grid-cols-2">
-                                    {recommendedCourses.map((course, idx) => (
-                                        <Link
-                                            key={course.courseId}
-                                            href={`/dashboard/student/courses/${course.courseId}`}
-                                            className="block h-full"
-                                        >
-                                            <CourseCard
-                                                {...course}
-                                                priority={idx === 0}
-                                                courseId={course.courseId}
-                                                isFavorite={favorites.has(course.courseId)}
-                                                loadingFavorite={loadingFavorite === course.courseId}
-                                                onToggleFavorite={(e) => handleToggleFavorite(course.courseId, e)}
-                                                teacherName={course.teacherName}
-                                                teacherAvatarUrl={course.teacherAvatarUrl}
-                                            />
-                                        </Link>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center">
-                                    <BookOpen className="mx-auto h-12 w-12 text-slate-400" />
-                                    <p className="mt-2 text-slate-500">No hay cursos recomendados disponibles</p>
+                    {/* 1. Microcredenciales Recomendadas - Carousel (hidden for admin roles) */}
+                    {!isAdminRole && initialData?.recommendedMicrocredentials && (() => {
+                        // Filtrar microcredenciales en las que NO está inscrito
+                        const notEnrolledMicrocredentials = initialData.recommendedMicrocredentials.filter(
+                            (mc) => !initialData.enrolledMicrocredentialIds?.includes(mc.id)
+                        ).slice(0, 6);
+
+                        if (notEnrolledMicrocredentials.length === 0) return null;
+
+                        return (
+                            <section>
+                                <div className="mb-4 flex items-center justify-between">
+                                    <h2 className="text-xl font-semibold text-slate-900">
+                                        Microcredenciales recomendadas
+                                    </h2>
                                     <Link
-                                        href="/dashboard/available-courses"
-                                        className="mt-4 inline-block rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary/90"
+                                        href="/dashboard/catalog/microcredentials"
+                                        className="text-sm font-medium text-brand-secondary hover:underline"
                                     >
-                                        Explorar cursos
+                                        Ver todas
                                     </Link>
                                 </div>
-                            )}
-                        </section>
-                    )}
+                                {/* Carrusel con botones de navegación */}
+                                <div className="relative group/carousel">
+                                    {/* Botón anterior */}
+                                    <button
+                                        onClick={() => {
+                                            const container = document.getElementById('microcredentials-carousel');
+                                            if (container) {
+                                                container.scrollBy({ left: -220, behavior: 'smooth' });
+                                            }
+                                        }}
+                                        className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-10 h-10 bg-white/95 hover:bg-white rounded-full shadow-lg border border-gray-200 flex items-center justify-center opacity-0 group-hover/carousel:opacity-100 transition-all duration-300 hover:scale-110 -translate-x-1/2"
+                                        aria-label="Anterior"
+                                    >
+                                        <ChevronLeft className="w-5 h-5 text-gray-700" />
+                                    </button>
 
-                    {/* My Courses Section */}
+                                    {/* Contenedor del carrusel - con drag scroll */}
+                                    <div
+                                        id="microcredentials-carousel"
+                                        className="flex gap-4 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent snap-x snap-mandatory cursor-grab active:cursor-grabbing select-none"
+                                        style={{ scrollbarWidth: 'thin' }}
+                                        onMouseDown={(e) => {
+                                            const container = e.currentTarget;
+                                            container.dataset.isDragging = 'true';
+                                            container.dataset.hasMoved = 'false'; // Nuevo: rastrear si hubo movimiento
+                                            container.dataset.startX = String(e.pageX - container.offsetLeft);
+                                            container.dataset.scrollLeft = String(container.scrollLeft);
+                                            container.style.scrollSnapType = 'none';
+                                            container.style.scrollBehavior = 'auto';
+                                        }}
+                                        onMouseMove={(e) => {
+                                            const container = e.currentTarget;
+                                            if (container.dataset.isDragging !== 'true') return;
+                                            e.preventDefault();
+                                            const x = e.pageX - container.offsetLeft;
+                                            const startX = Number(container.dataset.startX) || 0;
+                                            const walk = (x - startX) * 1.5;
+
+                                            // Marcar que hubo movimiento si el desplazamiento es mayor a 5px
+                                            if (Math.abs(x - startX) > 5) {
+                                                container.dataset.hasMoved = 'true';
+                                            }
+
+                                            container.scrollLeft = (Number(container.dataset.scrollLeft) || 0) - walk;
+                                        }}
+                                        onMouseUp={(e) => {
+                                            const container = e.currentTarget;
+                                            container.dataset.isDragging = 'false';
+                                            container.style.scrollSnapType = 'x mandatory';
+                                            container.style.scrollBehavior = 'smooth';
+                                            // No resetear hasMoved aquí - se resetea después del click
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            const container = e.currentTarget;
+                                            container.dataset.isDragging = 'false';
+                                            container.dataset.hasMoved = 'false';
+                                            container.style.scrollSnapType = 'x mandatory';
+                                            container.style.scrollBehavior = 'smooth';
+                                        }}
+                                    >
+                                        {notEnrolledMicrocredentials.map((mc) => (
+                                            <Link
+                                                key={mc.id}
+                                                href={`/dashboard/catalog/microcredentials?openMc=${mc.slug}`}
+                                                className="flex-shrink-0 snap-start group"
+                                                style={{ width: 'calc((100% - 2 * 1rem) / 3)' }}
+                                                onClick={(e) => {
+                                                    // Prevenir navegación si hubo movimiento durante el drag
+                                                    const container = document.getElementById('microcredentials-carousel');
+                                                    if (container && container.dataset.hasMoved === 'true') {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        // Resetear hasMoved después de prevenir el clic
+                                                        container.dataset.hasMoved = 'false';
+                                                    }
+                                                }}
+                                                onMouseDown={(e) => {
+                                                    // Permitir que el evento se propague al contenedor padre
+                                                }}
+                                                draggable={false}
+                                            >
+                                                <div className="bg-white rounded-xl p-3 pb-2 h-full flex flex-col items-center shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-gray-100 transition-all duration-300 hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] hover:-translate-y-1">
+                                                    {/* Insignia */}
+                                                    <div className="relative w-full aspect-square -mb-4 transition-transform duration-500 group-hover:scale-105 flex-shrink-0">
+                                                        {/* Glow effect */}
+                                                        <div className="absolute inset-0 bg-yellow-500/20 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+                                                        {mc.badgeImageUrl ? (
+                                                            <img
+                                                                src={mc.badgeImageUrl}
+                                                                alt={mc.title}
+                                                                className="w-full h-full object-contain drop-shadow-xl relative z-10"
+                                                                draggable={false}
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-full rounded-full bg-gradient-to-br from-indigo-900 to-slate-900 flex items-center justify-center shadow-lg border-2 border-yellow-500/30 relative z-10">
+                                                                <Award className="w-16 h-16 text-white" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Título - Cerca de la insignia */}
+                                                    <h3 className="text-[14px] font-bold text-gray-900 text-center leading-snug mb-2 h-[3rem] flex items-center justify-center line-clamp-2 px-1">
+                                                        {mc.title}
+                                                    </h3>
+
+                                                    {/* Botón */}
+                                                    <div className="w-full mt-auto px-1">
+                                                        <button className="w-full py-2 bg-[#10B981] hover:bg-[#059669] text-white text-sm font-semibold rounded-lg transition-all duration-200 shadow-sm hover:shadow-md">
+                                                            Inscribirme
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </Link>
+                                        ))}
+                                    </div>
+
+                                    {/* Botón siguiente */}
+                                    <button
+                                        onClick={() => {
+                                            const container = document.getElementById('microcredentials-carousel');
+                                            if (container) {
+                                                container.scrollBy({ left: 220, behavior: 'smooth' });
+                                            }
+                                        }}
+                                        className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-10 h-10 bg-white/95 hover:bg-white rounded-full shadow-lg border border-gray-200 flex items-center justify-center opacity-0 group-hover/carousel:opacity-100 transition-all duration-300 hover:scale-110 translate-x-1/2"
+                                        aria-label="Siguiente"
+                                    >
+                                        <ChevronRight className="w-5 h-5 text-gray-700" />
+                                    </button>
+
+
+                                </div>
+                            </section>
+                        );
+                    })()}
+
+                    {/* 2. My Courses Section */}
                     <section>
                         <div className="mb-4 flex items-center justify-between">
                             <h2 className="text-xl font-semibold text-slate-900">
@@ -542,6 +663,56 @@ export function DashboardClient({ user, initialData }: DashboardClientProps) {
                             </div>
                         )}
                     </section>
+
+                    {/* 3. Microcursos Recomendados (hidden for admin roles) */}
+                    {!isAdminRole && (
+                        <section>
+                            <div className="mb-4 flex items-center justify-between">
+                                <h2 className="text-xl font-semibold text-slate-900">
+                                    Microcursos recomendados para ti
+                                </h2>
+                                <Link
+                                    href="/dashboard/available-courses"
+                                    className="text-sm font-medium text-brand-secondary hover:underline"
+                                >
+                                    Ver todos
+                                </Link>
+                            </div>
+                            {recommendedCourses.length > 0 ? (
+                                <div className="grid gap-6 md:grid-cols-2">
+                                    {recommendedCourses.map((course, idx) => (
+                                        <Link
+                                            key={course.courseId}
+                                            href={`/dashboard/student/courses/${course.courseId}`}
+                                            className="block h-full"
+                                        >
+                                            <CourseCard
+                                                {...course}
+                                                priority={idx === 0}
+                                                courseId={course.courseId}
+                                                isFavorite={favorites.has(course.courseId)}
+                                                loadingFavorite={loadingFavorite === course.courseId}
+                                                onToggleFavorite={(e) => handleToggleFavorite(course.courseId, e)}
+                                                teacherName={course.teacherName}
+                                                teacherAvatarUrl={course.teacherAvatarUrl}
+                                            />
+                                        </Link>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center">
+                                    <BookOpen className="mx-auto h-12 w-12 text-slate-400" />
+                                    <p className="mt-2 text-slate-500">No hay cursos recomendados disponibles</p>
+                                    <Link
+                                        href="/dashboard/available-courses"
+                                        className="mt-4 inline-block rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary/90"
+                                    >
+                                        Explorar cursos
+                                    </Link>
+                                </div>
+                            )}
+                        </section>
+                    )}
                 </div>
 
                 {/* Right Column - Sidebar Widgets */}

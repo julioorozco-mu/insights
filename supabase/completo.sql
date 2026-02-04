@@ -550,6 +550,37 @@ $$;
 ALTER FUNCTION "public"."set_course_review_updated_at"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."sync_all_answer_counts"() RETURNS integer
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  updated_count INTEGER;
+BEGIN
+  WITH updated AS (
+    UPDATE public.lesson_questions q
+    SET answer_count = (
+      SELECT COUNT(*)
+      FROM public.lesson_question_answers a
+      WHERE a.question_id = q.id
+    )
+    WHERE q.answer_count != (
+      SELECT COUNT(*)
+      FROM public.lesson_question_answers a
+      WHERE a.question_id = q.id
+    )
+    RETURNING 1
+  )
+  SELECT COUNT(*) INTO updated_count FROM updated;
+
+  RETURN updated_count;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."sync_all_answer_counts"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."sync_existing_course_progress"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -658,6 +689,40 @@ $$;
 
 
 ALTER FUNCTION "public"."update_course_rating_stats"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_question_answer_count"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+  v_question_id UUID;
+BEGIN
+  -- Determinar question_id según la operación
+  IF TG_OP = 'INSERT' THEN
+    v_question_id := NEW.question_id;
+  ELSIF TG_OP = 'DELETE' THEN
+    v_question_id := OLD.question_id;
+  END IF;
+
+  -- Actualizar con COUNT real para evitar race conditions
+  -- (en lugar de incremento/decremento que puede fallar con concurrencia)
+  UPDATE public.lesson_questions
+  SET
+    answer_count = (
+      SELECT COUNT(*)
+      FROM public.lesson_question_answers
+      WHERE question_id = v_question_id
+    ),
+    updated_at = NOW()
+  WHERE id = v_question_id;
+
+  RETURN NULL;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_question_answer_count"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
@@ -1091,7 +1156,8 @@ CREATE TABLE IF NOT EXISTS "public"."lesson_questions" (
     "is_resolved" boolean DEFAULT false,
     "upvotes" integer DEFAULT 0,
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "answer_count" integer DEFAULT 0 NOT NULL
 );
 
 
@@ -2050,11 +2116,23 @@ CREATE INDEX "idx_course_favorites_created_at" ON "public"."course_favorites" US
 
 
 
+CREATE INDEX "idx_course_favorites_user_course" ON "public"."course_favorites" USING "btree" ("user_id", "course_id");
+
+
+
 CREATE INDEX "idx_course_favorites_user_id" ON "public"."course_favorites" USING "btree" ("user_id");
 
 
 
+COMMENT ON INDEX "public"."idx_course_favorites_user_id" IS 'Índice para favoritos del usuario. Optimiza carga de favoritos en listas.';
+
+
+
 CREATE INDEX "idx_course_reviews_course_id" ON "public"."course_reviews" USING "btree" ("course_id");
+
+
+
+COMMENT ON INDEX "public"."idx_course_reviews_course_id" IS 'Índice para obtener reviews por curso. Mejora cálculo de ratings.';
 
 
 
@@ -2063,6 +2141,10 @@ CREATE INDEX "idx_course_reviews_created_at" ON "public"."course_reviews" USING 
 
 
 CREATE INDEX "idx_course_reviews_rating" ON "public"."course_reviews" USING "btree" ("rating");
+
+
+
+CREATE INDEX "idx_course_reviews_student_course" ON "public"."course_reviews" USING "btree" ("student_id", "course_id");
 
 
 
@@ -2086,6 +2168,14 @@ CREATE INDEX "idx_course_tests_test_id" ON "public"."course_tests" USING "btree"
 
 
 
+CREATE INDEX "idx_courses_active_published" ON "public"."courses" USING "btree" ("is_active", "is_published") WHERE (("is_active" = true) AND ("is_published" = true));
+
+
+
+COMMENT ON INDEX "public"."idx_courses_active_published" IS 'Índice parcial para cursos visibles. Optimiza catálogo y available-courses.';
+
+
+
 CREATE INDEX "idx_courses_average_rating" ON "public"."courses" USING "btree" ("average_rating" DESC NULLS LAST);
 
 
@@ -2106,11 +2196,19 @@ CREATE INDEX "idx_courses_price" ON "public"."courses" USING "btree" ("price");
 
 
 
+CREATE INDEX "idx_courses_rating" ON "public"."courses" USING "btree" ("average_rating" DESC NULLS LAST);
+
+
+
 CREATE INDEX "idx_courses_specialization" ON "public"."courses" USING "btree" ("specialization");
 
 
 
 CREATE INDEX "idx_courses_start_date" ON "public"."courses" USING "btree" ("start_date");
+
+
+
+CREATE INDEX "idx_courses_teacher_ids" ON "public"."courses" USING "gin" ("teacher_ids");
 
 
 
@@ -2146,7 +2244,19 @@ CREATE INDEX "idx_lesson_notes_course_id" ON "public"."lesson_notes" USING "btre
 
 
 
+CREATE INDEX "idx_lesson_notes_course_student" ON "public"."lesson_notes" USING "btree" ("course_id", "student_id", "created_at" DESC) INCLUDE ("lesson_id", "content");
+
+
+
+CREATE INDEX "idx_lesson_notes_lesson_created_at" ON "public"."lesson_notes" USING "btree" ("lesson_id", "created_at" DESC) INCLUDE ("student_id", "content", "video_timestamp");
+
+
+
 CREATE INDEX "idx_lesson_notes_lesson_id" ON "public"."lesson_notes" USING "btree" ("lesson_id");
+
+
+
+CREATE INDEX "idx_lesson_notes_lesson_timestamp" ON "public"."lesson_notes" USING "btree" ("lesson_id", "video_timestamp") INCLUDE ("student_id", "content");
 
 
 
@@ -2158,11 +2268,39 @@ CREATE INDEX "idx_lesson_notes_student_lesson" ON "public"."lesson_notes" USING 
 
 
 
+CREATE INDEX "idx_lesson_notes_student_lesson_timestamp_id" ON "public"."lesson_notes" USING "btree" ("student_id", "lesson_id", "video_timestamp", "id") INCLUDE ("content", "created_at");
+
+
+
+CREATE INDEX "idx_lesson_question_answers_question_count" ON "public"."lesson_question_answers" USING "btree" ("question_id") INCLUDE ("id");
+
+
+
+CREATE INDEX "idx_lesson_question_answers_question_full" ON "public"."lesson_question_answers" USING "btree" ("question_id", "is_instructor_answer" DESC, "upvotes" DESC, "created_at" DESC) INCLUDE ("answer_text", "user_id", "is_accepted");
+
+
+
 CREATE INDEX "idx_lesson_question_answers_question_id" ON "public"."lesson_question_answers" USING "btree" ("question_id");
 
 
 
+CREATE INDEX "idx_lesson_question_answers_user_created" ON "public"."lesson_question_answers" USING "btree" ("user_id", "created_at" DESC) INCLUDE ("question_id", "answer_text", "upvotes");
+
+
+
 CREATE INDEX "idx_lesson_question_answers_user_id" ON "public"."lesson_question_answers" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_lesson_question_upvotes_user_created" ON "public"."lesson_question_upvotes" USING "btree" ("user_id", "created_at" DESC) INCLUDE ("question_id");
+
+
+
+CREATE INDEX "idx_lesson_question_upvotes_user_question" ON "public"."lesson_question_upvotes" USING "btree" ("user_id", "question_id");
+
+
+
+CREATE INDEX "idx_lesson_questions_course_created" ON "public"."lesson_questions" USING "btree" ("course_id", "created_at" DESC) INCLUDE ("lesson_id", "question_text", "student_id", "is_resolved");
 
 
 
@@ -2174,11 +2312,39 @@ CREATE INDEX "idx_lesson_questions_is_resolved" ON "public"."lesson_questions" U
 
 
 
+CREATE INDEX "idx_lesson_questions_lesson_answers_desc" ON "public"."lesson_questions" USING "btree" ("lesson_id", "answer_count" DESC, "created_at" DESC);
+
+
+
+CREATE INDEX "idx_lesson_questions_lesson_created_desc_v2" ON "public"."lesson_questions" USING "btree" ("lesson_id", "created_at" DESC) INCLUDE ("question_text", "student_id", "upvotes");
+
+
+
 CREATE INDEX "idx_lesson_questions_lesson_id" ON "public"."lesson_questions" USING "btree" ("lesson_id");
 
 
 
+CREATE INDEX "idx_lesson_questions_lesson_unresolved" ON "public"."lesson_questions" USING "btree" ("lesson_id", "is_resolved", "created_at" DESC) WHERE ("is_resolved" = false);
+
+
+
+CREATE INDEX "idx_lesson_questions_lesson_upvotes_desc_v2" ON "public"."lesson_questions" USING "btree" ("lesson_id", "upvotes" DESC, "created_at" DESC) INCLUDE ("question_text", "student_id");
+
+
+
 CREATE INDEX "idx_lesson_questions_student_id" ON "public"."lesson_questions" USING "btree" ("student_id");
+
+
+
+CREATE INDEX "idx_lesson_questions_student_lesson_v2" ON "public"."lesson_questions" USING "btree" ("student_id", "lesson_id", "created_at" DESC) INCLUDE ("question_text", "upvotes", "is_resolved");
+
+
+
+CREATE INDEX "idx_lessons_course_active" ON "public"."lessons" USING "btree" ("course_id", "is_active") WHERE ("is_active" = true);
+
+
+
+COMMENT ON INDEX "public"."idx_lessons_course_active" IS 'Índice parcial para lecciones activas por curso. Optimiza conteo en tarjetas.';
 
 
 
@@ -2191,6 +2357,14 @@ CREATE INDEX "idx_lessons_is_live" ON "public"."lessons" USING "btree" ("is_live
 
 
 CREATE INDEX "idx_lessons_order" ON "public"."lessons" USING "btree" ("course_id", "order");
+
+
+
+CREATE INDEX "idx_lessons_scheduled" ON "public"."lessons" USING "btree" ("start_date") WHERE ("start_date" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_lessons_section" ON "public"."lessons" USING "btree" ("section_id") WHERE ("section_id" IS NOT NULL);
 
 
 
@@ -2231,6 +2405,22 @@ CREATE INDEX "idx_mc_enrollments_status" ON "public"."microcredential_enrollment
 
 
 CREATE INDEX "idx_mc_enrollments_student" ON "public"."microcredential_enrollments" USING "btree" ("student_id");
+
+
+
+CREATE INDEX "idx_mc_enrollments_student_completed" ON "public"."microcredential_enrollments" USING "btree" ("student_id", "status") WHERE ("status" = 'completed'::"public"."microcredential_status");
+
+
+
+COMMENT ON INDEX "public"."idx_mc_enrollments_student_completed" IS 'Índice parcial para microcredenciales completadas. Optimiza /dashboard/credentials.';
+
+
+
+CREATE INDEX "idx_microcredential_enrollments_status" ON "public"."microcredential_enrollments" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_microcredential_enrollments_student" ON "public"."microcredential_enrollments" USING "btree" ("student_id");
 
 
 
@@ -2282,7 +2472,19 @@ CREATE INDEX "idx_student_answers_student" ON "public"."student_answers" USING "
 
 
 
+CREATE INDEX "idx_student_enrollments_completed" ON "public"."student_enrollments" USING "btree" ("student_id") WHERE ("progress" = 100);
+
+
+
+COMMENT ON INDEX "public"."idx_student_enrollments_completed" IS 'Índice parcial para consultas de cursos completados. Optimiza /dashboard/completed-courses.';
+
+
+
 CREATE INDEX "idx_student_enrollments_course" ON "public"."student_enrollments" USING "btree" ("course_id");
+
+
+
+CREATE INDEX "idx_student_enrollments_course_id" ON "public"."student_enrollments" USING "btree" ("course_id");
 
 
 
@@ -2291,6 +2493,10 @@ CREATE INDEX "idx_student_enrollments_last_accessed" ON "public"."student_enroll
 
 
 CREATE INDEX "idx_student_enrollments_student" ON "public"."student_enrollments" USING "btree" ("student_id");
+
+
+
+CREATE INDEX "idx_student_enrollments_student_id" ON "public"."student_enrollments" USING "btree" ("student_id");
 
 
 
@@ -2431,6 +2637,10 @@ CREATE OR REPLACE TRIGGER "on_user_created_create_student" AFTER INSERT ON "publ
 
 
 CREATE OR REPLACE TRIGGER "on_user_role_change" AFTER INSERT OR UPDATE OF "role" ON "public"."users" FOR EACH ROW EXECUTE FUNCTION "public"."handle_user_role_jwt"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_update_question_answer_count" AFTER INSERT OR DELETE ON "public"."lesson_question_answers" FOR EACH ROW EXECUTE FUNCTION "public"."update_question_answer_count"();
 
 
 
@@ -3776,6 +3986,13 @@ GRANT ALL ON FUNCTION "public"."set_course_review_updated_at"() TO "service_role
 
 
 
+REVOKE ALL ON FUNCTION "public"."sync_all_answer_counts"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."sync_all_answer_counts"() TO "anon";
+GRANT ALL ON FUNCTION "public"."sync_all_answer_counts"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sync_all_answer_counts"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."sync_existing_course_progress"() TO "anon";
 GRANT ALL ON FUNCTION "public"."sync_existing_course_progress"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."sync_existing_course_progress"() TO "service_role";
@@ -3785,6 +4002,13 @@ GRANT ALL ON FUNCTION "public"."sync_existing_course_progress"() TO "service_rol
 GRANT ALL ON FUNCTION "public"."update_course_rating_stats"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_course_rating_stats"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_course_rating_stats"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."update_question_answer_count"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."update_question_answer_count"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_question_answer_count"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_question_answer_count"() TO "service_role";
 
 
 

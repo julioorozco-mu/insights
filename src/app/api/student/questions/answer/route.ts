@@ -1,39 +1,81 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { createClient } from '@/lib/supabase/server';
 import { TABLES } from '@/utils/constants';
+import {
+  createAnswerSchema,
+  acceptAnswerSchema,
+  parseRequestBody,
+} from '@/lib/validators/lessonContentSchema';
+import {
+  rateLimitMiddleware,
+  RATE_LIMITS,
+} from '@/lib/auth/serverRateLimiter';
 
 /**
  * POST /api/student/questions/answer - Responder a una pregunta
- * Body: { userId, questionId, answerText }
+ * Body: { questionId, answerText }
+ *
+ * SEGURIDAD:
+ * - Autenticación requerida via session (NO confía en userId del cliente)
+ * - Rate limiting estricto para creación de contenido
+ * - Validación y sanitización con Zod
+ * - Verificación de permisos (instructor del curso)
  */
 export async function POST(req: NextRequest) {
   try {
-    const supabase = getSupabaseAdmin();
-    const body = await req.json();
-    const { userId, questionId, answerText } = body;
+    // 1. Autenticación PRIMERO
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    if (!userId || !questionId || !answerText) {
+    if (authError || !user) {
       return NextResponse.json(
-        { error: 'userId, questionId y answerText son requeridos' },
+        { error: 'No autorizado' },
+        { status: 401 }
+      );
+    }
+
+    // 2. Rate limiting por usuario autenticado
+    const rateLimitResponse = rateLimitMiddleware(
+      req,
+      RATE_LIMITS.CONTENT_CREATE,
+      user.id
+    );
+    if (rateLimitResponse) return rateLimitResponse;
+
+    // 3. Validar body con Zod
+    const parseResult = await parseRequestBody(req, createAnswerSchema);
+    if (!parseResult.success) {
+      return parseResult.error;
+    }
+
+    const { answer_text } = parseResult.data;
+
+    // 4. Obtener questionId de query params o body
+    const { searchParams } = new URL(req.url);
+    const questionId = searchParams.get('questionId') || parseResult.data.question_id;
+
+    if (!questionId) {
+      return NextResponse.json(
+        { error: 'questionId es requerido' },
         { status: 400 }
       );
     }
 
-    // Obtener información del usuario
-    const { data: user, error: userError } = await supabase
+    // 5. Obtener información del usuario desde la DB
+    const { data: dbUser, error: userError } = await supabase
       .from(TABLES.USERS)
       .select('id, role')
-      .eq('id', userId)
+      .eq('id', user.id)
       .maybeSingle();
 
-    if (userError || !user) {
+    if (userError || !dbUser) {
       return NextResponse.json(
         { error: 'No se encontró el usuario' },
         { status: 404 }
       );
     }
 
-    // Verificar si es instructor del curso
+    // 6. Verificar que la pregunta existe y obtener info del curso
     const { data: question, error: questionError } = await supabase
       .from(TABLES.LESSON_QUESTIONS)
       .select(`
@@ -53,41 +95,64 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verificar si es instructor (course puede ser objeto o array)
-    const courseData = Array.isArray(question.course) 
-      ? question.course[0] 
+    // 7. Verificar si es instructor del curso
+    const courseData = Array.isArray(question.course)
+      ? question.course[0]
       : question.course;
     const teacherIds = courseData?.teacher_ids || [];
-    const isInstructor = 
-      user.role === 'teacher' && 
-      teacherIds.includes(userId);
+    const isInstructor =
+      dbUser.role === 'teacher' &&
+      teacherIds.includes(user.id);
 
-    // Crear la respuesta
+    // 8. Crear la respuesta
     const { data: answer, error: answerError } = await supabase
       .from(TABLES.LESSON_QUESTION_ANSWERS)
       .insert({
         question_id: questionId,
-        user_id: userId,
-        user_role: user.role,
-        answer_text: answerText.trim(),
+        user_id: user.id,
+        user_role: dbUser.role,
+        answer_text: answer_text, // Ya sanitizado por Zod
         is_instructor_answer: isInstructor,
       })
-      .select()
+      .select(`
+        id,
+        answer_text,
+        is_instructor_answer,
+        is_accepted,
+        upvotes,
+        created_at
+      `)
       .single();
 
     if (answerError) {
       console.error('[questions/answer API] Error creating answer:', answerError);
       return NextResponse.json(
-        { error: answerError.message },
+        { error: 'Error al crear la respuesta' },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ answer }, { status: 201 });
+    return NextResponse.json({
+      answer: {
+        id: answer.id,
+        answerText: answer.answer_text,
+        isInstructorAnswer: answer.is_instructor_answer,
+        isAccepted: answer.is_accepted,
+        upvotes: answer.upvotes,
+        createdAt: answer.created_at,
+        author: {
+          id: user.id,
+          name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuario',
+          avatarUrl: user.user_metadata?.avatar_url,
+          role: dbUser.role,
+        },
+      },
+    }, { status: 201 });
+
   } catch (e: any) {
     console.error('[questions/answer API] Error:', e);
     return NextResponse.json(
-      { error: e?.message || 'Error interno' },
+      { error: 'Error interno del servidor' },
       { status: 500 }
     );
   }
@@ -95,26 +160,47 @@ export async function POST(req: NextRequest) {
 
 /**
  * PATCH /api/student/questions/answer - Marcar respuesta como aceptada
- * Body: { userId, answerId, questionId }
+ * Body: { answerId, questionId }
+ *
+ * SEGURIDAD:
+ * - Autenticación requerida
+ * - Solo el autor de la pregunta puede aceptar respuestas
+ * - Rate limiting aplicado
  */
 export async function PATCH(req: NextRequest) {
   try {
-    const supabase = getSupabaseAdmin();
-    const body = await req.json();
-    const { userId, answerId, questionId } = body;
+    // 1. Autenticación
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    if (!userId || !answerId || !questionId) {
+    if (authError || !user) {
       return NextResponse.json(
-        { error: 'userId, answerId y questionId son requeridos' },
-        { status: 400 }
+        { error: 'No autorizado' },
+        { status: 401 }
       );
     }
 
-    // Verificar que el usuario es el autor de la pregunta
+    // 2. Rate limiting
+    const rateLimitResponse = rateLimitMiddleware(
+      req,
+      RATE_LIMITS.VOTING,
+      user.id
+    );
+    if (rateLimitResponse) return rateLimitResponse;
+
+    // 3. Validar body
+    const parseResult = await parseRequestBody(req, acceptAnswerSchema);
+    if (!parseResult.success) {
+      return parseResult.error;
+    }
+
+    const { answer_id, question_id } = parseResult.data;
+
+    // 4. Obtener student_id del usuario autenticado
     const { data: student, error: studentError } = await supabase
       .from(TABLES.STUDENTS)
       .select('id')
-      .eq('user_id', userId)
+      .eq('user_id', user.id)
       .maybeSingle();
 
     if (studentError || !student) {
@@ -124,10 +210,11 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
+    // 5. Verificar que el usuario es el autor de la pregunta
     const { data: question, error: questionError } = await supabase
       .from(TABLES.LESSON_QUESTIONS)
       .select('id, student_id')
-      .eq('id', questionId)
+      .eq('id', question_id)
       .maybeSingle();
 
     if (questionError || !question) {
@@ -144,39 +231,57 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    // Desmarcar otras respuestas aceptadas de esta pregunta
+    // 6. Desmarcar otras respuestas aceptadas de esta pregunta
     await supabase
       .from(TABLES.LESSON_QUESTION_ANSWERS)
       .update({ is_accepted: false })
-      .eq('question_id', questionId);
+      .eq('question_id', question_id);
 
-    // Marcar la respuesta como aceptada
+    // 7. Marcar la respuesta como aceptada
     const { data: answer, error: updateError } = await supabase
       .from(TABLES.LESSON_QUESTION_ANSWERS)
       .update({ is_accepted: true })
-      .eq('id', answerId)
-      .select()
+      .eq('id', answer_id)
+      .select(`
+        id,
+        answer_text,
+        is_instructor_answer,
+        is_accepted,
+        upvotes,
+        created_at
+      `)
       .single();
 
     if (updateError) {
       console.error('[questions/answer API] Error updating answer:', updateError);
       return NextResponse.json(
-        { error: updateError.message },
+        { error: 'Error al actualizar la respuesta' },
         { status: 500 }
       );
     }
 
-    // Marcar la pregunta como resuelta
+    // 8. Marcar la pregunta como resuelta
     await supabase
       .from(TABLES.LESSON_QUESTIONS)
       .update({ is_resolved: true })
-      .eq('id', questionId);
+      .eq('id', question_id);
 
-    return NextResponse.json({ answer, resolved: true }, { status: 200 });
+    return NextResponse.json({
+      answer: {
+        id: answer.id,
+        answerText: answer.answer_text,
+        isInstructorAnswer: answer.is_instructor_answer,
+        isAccepted: answer.is_accepted,
+        upvotes: answer.upvotes,
+        createdAt: answer.created_at,
+      },
+      resolved: true,
+    }, { status: 200 });
+
   } catch (e: any) {
     console.error('[questions/answer API] Error:', e);
     return NextResponse.json(
-      { error: e?.message || 'Error interno' },
+      { error: 'Error interno del servidor' },
       { status: 500 }
     );
   }

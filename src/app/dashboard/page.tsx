@@ -9,6 +9,16 @@ import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import type { User, UserRole } from "@/types/user";
 
 // Types for the dashboard data
+interface RecommendedMicrocredential {
+  id: string;
+  title: string;
+  slug: string;
+  badgeImageUrl: string;
+  isFree: boolean;
+  price: number;
+  salePercentage: number;
+}
+
 interface DashboardApiResponse {
   enrolledCourses: {
     course: {
@@ -50,6 +60,8 @@ interface DashboardApiResponse {
     teacherName?: string;
     teacherAvatarUrl?: string;
   }[];
+  recommendedMicrocredentials: RecommendedMicrocredential[];
+  enrolledMicrocredentialIds: string[];
   scheduleItems: {
     type: string;
     title: string;
@@ -216,6 +228,8 @@ async function fetchStudentDashboardData(
     return {
       enrolledCourses: [],
       recommendedCourses,
+      recommendedMicrocredentials: [],
+      enrolledMicrocredentialIds: [],
       scheduleItems: [],
       stats: {
         progressPercentage: 0,
@@ -305,11 +319,16 @@ async function fetchStudentDashboardData(
   });
   const recommendedCourseIds = recommendedCoursesFiltered.map((c) => c.id);
 
+  // Get enrolled microcredential IDs set
+  const enrolledMicrocredentialIdsSet = new Set(
+    microcredentialEnrollments.map((m: any) => m.microcredential_id)
+  );
 
   const [
     enrolledLessonsResult,
     recommendedStudentCountsResult,
     recommendedLessonsCountResult,
+    recommendedMicrocredentialsResult,
   ] = await Promise.all([
     supabase
       .from(TABLES.LESSONS)
@@ -336,6 +355,15 @@ async function fetchStudentDashboardData(
         .in("course_id", recommendedCourseIds)
         .eq("is_active", true)
       : Promise.resolve({ data: [] }),
+
+    // Fetch recommended microcredentials (published, limit 6)
+    supabase
+      .from("microcredentials")
+      .select("id, title, slug, badge_image_url, is_free, price, sale_percentage")
+      .eq("is_published", true)
+      .eq("is_active", true)
+      .order("display_order", { ascending: true })
+      .limit(6),
   ]);
 
   // Build maps
@@ -539,9 +567,24 @@ async function fetchStudentDashboardData(
     };
   });
 
+  // Process recommended microcredentials
+  const recommendedMicrocredentials: RecommendedMicrocredential[] = (
+    recommendedMicrocredentialsResult.data || []
+  ).map((mc: any) => ({
+    id: mc.id,
+    title: mc.title,
+    slug: mc.slug,
+    badgeImageUrl: mc.badge_image_url,
+    isFree: mc.is_free,
+    price: Number(mc.price) || 0,
+    salePercentage: mc.sale_percentage || 0,
+  }));
+
   return {
     enrolledCourses,
     recommendedCourses,
+    recommendedMicrocredentials,
+    enrolledMicrocredentialIds: Array.from(enrolledMicrocredentialIdsSet),
     scheduleItems,
     stats: {
       progressPercentage,

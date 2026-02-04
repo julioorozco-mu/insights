@@ -1,17 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { createClient } from '@/lib/supabase/server';
 import { TABLES } from '@/utils/constants';
+import {
+  createQuestionSchema,
+  listQuestionsQuerySchema,
+  parseRequestBody,
+  parseQueryParams,
+} from '@/lib/validators/lessonContentSchema';
+import {
+  rateLimitMiddleware,
+  RATE_LIMITS,
+} from '@/lib/auth/serverRateLimiter';
 
 /**
  * GET /api/student/questions - Obtener preguntas de una lección
- * Query params: lessonId, sortBy (recent | popular)
+ * Query params: lessonId, sortBy (recent | popular | unanswered), limit, offset
+ *
+ * SEGURIDAD:
+ * - Autenticación requerida via session
+ * - Rate limiting aplicado
+ * - Validación de inputs con Zod
+ * - RLS maneja permisos automáticamente
  */
 export async function GET(req: NextRequest) {
   try {
-    const supabase = getSupabaseAdmin();
+    // 1. Rate limiting
+    const rateLimitResponse = rateLimitMiddleware(req, RATE_LIMITS.READ);
+    if (rateLimitResponse) return rateLimitResponse;
+
+    // 2. Autenticación
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'No autorizado' },
+        { status: 401 }
+      );
+    }
+
+    // 3. Validar query params
     const { searchParams } = new URL(req.url);
     const lessonId = searchParams.get('lessonId');
-    const sortBy = searchParams.get('sortBy') || 'recent';
 
     if (!lessonId) {
       return NextResponse.json(
@@ -20,17 +50,33 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Validar que lessonId sea un UUID válido
+    // Validar UUID
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(lessonId)) {
       return NextResponse.json({ questions: [] }, { status: 200 });
     }
 
-    // Obtener preguntas con información del autor
+    // Parsear opciones de query
+    const queryResult = parseQueryParams(req, listQuestionsQuerySchema);
+    const parsedOptions = queryResult.success ? queryResult.data : {};
+    const queryOptions = {
+      sort: parsedOptions.sort ?? 'recent' as const,
+      limit: parsedOptions.limit ?? 50,
+      offset: parsedOptions.offset ?? 0,
+      unresolved_only: parsedOptions.unresolved_only ?? false,
+    };
+
+    // 4. Obtener preguntas CON respuestas para compatibilidad con código existente
     let query = supabase
       .from(TABLES.LESSON_QUESTIONS)
       .select(`
-        *,
+        id,
+        question_text,
+        video_timestamp,
+        is_resolved,
+        upvotes,
+        answer_count,
+        created_at,
         student:students!lesson_questions_student_id_fkey (
           id,
           user:users!students_user_id_fkey (
@@ -58,65 +104,92 @@ export async function GET(req: NextRequest) {
       `)
       .eq('lesson_id', lessonId);
 
-    // Ordenar según preferencia
-    if (sortBy === 'popular') {
-      query = query.order('upvotes', { ascending: false });
-    } else {
-      query = query.order('created_at', { ascending: false });
+    // Filtro opcional por no resueltas
+    if (queryOptions.unresolved_only) {
+      query = query.eq('is_resolved', false);
     }
+
+    // Ordenamiento
+    switch (queryOptions.sort) {
+      case 'popular':
+        query = query.order('upvotes', { ascending: false });
+        break;
+      case 'unanswered':
+        query = query.order('answer_count', { ascending: true });
+        break;
+      default:
+        query = query.order('created_at', { ascending: false });
+    }
+
+    // Paginación
+    query = query.range(queryOptions.offset, queryOptions.offset + queryOptions.limit - 1);
 
     const { data: questions, error: questionsError } = await query;
 
     if (questionsError) {
       console.error('[questions API] Error fetching questions:', questionsError);
       return NextResponse.json(
-        { error: questionsError.message },
+        { error: 'Error al obtener preguntas' },
         { status: 500 }
       );
     }
 
-    // Formatear respuesta
-    const formattedQuestions = (questions || []).map((q: any) => ({
-      id: q.id,
-      questionText: q.question_text,
-      videoTimestamp: q.video_timestamp,
-      isResolved: q.is_resolved,
-      upvotes: q.upvotes,
-      createdAt: q.created_at,
-      author: q.student?.user ? {
-        id: q.student.user.id,
-        name: `${q.student.user.name} ${q.student.user.last_name || ''}`.trim(),
-        avatarUrl: q.student.user.avatar_url,
-      } : null,
-      answers: (q.answers || []).map((a: any) => ({
-        id: a.id,
-        answerText: a.answer_text,
-        isInstructorAnswer: a.is_instructor_answer,
-        isAccepted: a.is_accepted,
-        upvotes: a.upvotes,
-        createdAt: a.created_at,
-        author: a.user ? {
-          id: a.user.id,
-          name: `${a.user.name} ${a.user.last_name || ''}`.trim(),
-          avatarUrl: a.user.avatar_url,
-          role: a.user.role,
-        } : null,
-      })).sort((a: any, b: any) => {
-        // Instructor answers first, then by upvotes
-        if (a.isInstructorAnswer && !b.isInstructorAnswer) return -1;
-        if (!a.isInstructorAnswer && b.isInstructorAnswer) return 1;
-        if (a.isAccepted && !b.isAccepted) return -1;
-        if (!a.isAccepted && b.isAccepted) return 1;
-        return b.upvotes - a.upvotes;
-      }),
-      answersCount: (q.answers || []).length,
-    }));
+    // 5. Formatear respuesta (compatible con código existente)
+    const formattedQuestions = (questions || []).map((q: any) => {
+      // Ordenar respuestas: instructor primero, luego aceptadas, luego por upvotes
+      const sortedAnswers = (q.answers || [])
+        .map((a: any) => ({
+          id: a.id,
+          answerText: a.answer_text,
+          isInstructorAnswer: a.is_instructor_answer,
+          isAccepted: a.is_accepted,
+          upvotes: a.upvotes,
+          createdAt: a.created_at,
+          author: a.user ? {
+            id: a.user.id,
+            name: `${a.user.name} ${a.user.last_name || ''}`.trim(),
+            avatarUrl: a.user.avatar_url,
+            role: a.user.role,
+          } : null,
+        }))
+        .sort((a: any, b: any) => {
+          if (a.isInstructorAnswer && !b.isInstructorAnswer) return -1;
+          if (!a.isInstructorAnswer && b.isInstructorAnswer) return 1;
+          if (a.isAccepted && !b.isAccepted) return -1;
+          if (!a.isAccepted && b.isAccepted) return 1;
+          return b.upvotes - a.upvotes;
+        });
 
-    return NextResponse.json({ questions: formattedQuestions }, { status: 200 });
+      return {
+        id: q.id,
+        questionText: q.question_text,
+        videoTimestamp: q.video_timestamp,
+        isResolved: q.is_resolved,
+        upvotes: q.upvotes,
+        answersCount: q.answer_count || sortedAnswers.length,
+        createdAt: q.created_at,
+        author: q.student?.user ? {
+          id: q.student.user.id,
+          name: `${q.student.user.name} ${q.student.user.last_name || ''}`.trim(),
+          avatarUrl: q.student.user.avatar_url,
+        } : null,
+        answers: sortedAnswers, // Incluir respuestas para compatibilidad
+      };
+    });
+
+    return NextResponse.json({
+      questions: formattedQuestions,
+      pagination: {
+        offset: queryOptions.offset,
+        limit: queryOptions.limit,
+        hasMore: formattedQuestions.length === queryOptions.limit,
+      },
+    }, { status: 200 });
+
   } catch (e: any) {
     console.error('[questions API] Error:', e);
     return NextResponse.json(
-      { error: e?.message || 'Error interno' },
+      { error: 'Error interno del servidor' },
       { status: 500 }
     );
   }
@@ -124,26 +197,59 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/student/questions - Crear una nueva pregunta
- * Body: { userId, lessonId, courseId, questionText, videoTimestamp? }
+ * Body: { lessonId, courseId, questionText, videoTimestamp? }
+ *
+ * SEGURIDAD:
+ * - Autenticación requerida via session (NO confía en userId del cliente)
+ * - Rate limiting estricto para creación de contenido
+ * - Validación y sanitización con Zod
+ * - RLS maneja permisos automáticamente
  */
 export async function POST(req: NextRequest) {
   try {
-    const supabase = getSupabaseAdmin();
-    const body = await req.json();
-    const { userId, lessonId, courseId, questionText, videoTimestamp = 0 } = body;
+    // 1. Autenticación PRIMERO (para rate limit por usuario)
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    if (!userId || !lessonId || !courseId || !questionText) {
+    if (authError || !user) {
       return NextResponse.json(
-        { error: 'userId, lessonId, courseId y questionText son requeridos' },
+        { error: 'No autorizado' },
+        { status: 401 }
+      );
+    }
+
+    // 2. Rate limiting por usuario autenticado
+    const rateLimitResponse = rateLimitMiddleware(
+      req,
+      RATE_LIMITS.CONTENT_CREATE,
+      user.id
+    );
+    if (rateLimitResponse) return rateLimitResponse;
+
+    // 3. Validar body con Zod (incluye sanitización XSS)
+    const parseResult = await parseRequestBody(req, createQuestionSchema);
+    if (!parseResult.success) {
+      return parseResult.error;
+    }
+
+    const { question_text, video_timestamp, course_id } = parseResult.data;
+
+    // 4. Obtener lessonId de query params o body
+    const { searchParams } = new URL(req.url);
+    const lessonId = searchParams.get('lessonId') || parseResult.data.lesson_id;
+
+    if (!lessonId) {
+      return NextResponse.json(
+        { error: 'lessonId es requerido' },
         { status: 400 }
       );
     }
 
-    // Obtener student_id
+    // 5. Obtener student_id del usuario autenticado
     const { data: student, error: studentError } = await supabase
       .from(TABLES.STUDENTS)
       .select('id')
-      .eq('user_id', userId)
+      .eq('user_id', user.id)
       .maybeSingle();
 
     if (studentError || !student) {
@@ -153,32 +259,71 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Crear la pregunta
+    // 6. Verificar que el estudiante está inscrito en el curso
+    const { data: enrollment, error: enrollmentError } = await supabase
+      .from(TABLES.STUDENT_ENROLLMENTS)
+      .select('id')
+      .eq('student_id', student.id)
+      .eq('course_id', course_id)
+      .maybeSingle();
+
+    if (enrollmentError || !enrollment) {
+      return NextResponse.json(
+        { error: 'No estás inscrito en este curso' },
+        { status: 403 }
+      );
+    }
+
+    // 7. Crear la pregunta
     const { data: question, error: questionError } = await supabase
       .from(TABLES.LESSON_QUESTIONS)
       .insert({
         student_id: student.id,
         lesson_id: lessonId,
-        course_id: courseId,
-        question_text: questionText.trim(),
-        video_timestamp: videoTimestamp,
+        course_id: course_id,
+        question_text: question_text, // Ya sanitizado por Zod
+        video_timestamp: video_timestamp,
       })
-      .select()
+      .select(`
+        id,
+        question_text,
+        video_timestamp,
+        is_resolved,
+        upvotes,
+        answer_count,
+        created_at
+      `)
       .single();
 
     if (questionError) {
       console.error('[questions API] Error creating question:', questionError);
       return NextResponse.json(
-        { error: questionError.message },
+        { error: 'Error al crear la pregunta' },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ question }, { status: 201 });
+    return NextResponse.json({
+      question: {
+        id: question.id,
+        questionText: question.question_text,
+        videoTimestamp: question.video_timestamp,
+        isResolved: question.is_resolved,
+        upvotes: question.upvotes,
+        answersCount: question.answer_count || 0,
+        createdAt: question.created_at,
+        author: {
+          id: user.id,
+          name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuario',
+          avatarUrl: user.user_metadata?.avatar_url,
+        },
+      },
+    }, { status: 201 });
+
   } catch (e: any) {
     console.error('[questions API] Error:', e);
     return NextResponse.json(
-      { error: e?.message || 'Error interno' },
+      { error: 'Error interno del servidor' },
       { status: 500 }
     );
   }

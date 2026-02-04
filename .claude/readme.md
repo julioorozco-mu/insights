@@ -20,5 +20,9 @@
 5 Plotly (scientific/plotly)
 6 Form CRO (business-marketing/form-cro)
 
+7 Vercel React Best Practices (web-tools/vercel-react-best-practices)
+8 Supabase Postgres Best Practices (database/supabase-postgres-best-practices)
+9 Supabase Auth Best Practices (security/supabase-auth-best-practices)
+
 
 Como React Performance Optimizer, Backend Architect, Database Architect y Security Auditor usando la skill API Security Best Practices, analiza la primera carga del dashboard student y optimízalo. Verifica el uso de memo, lazy loading y reduce re-renders innecesarios. Actualmente se considera que la primera carga es lenta

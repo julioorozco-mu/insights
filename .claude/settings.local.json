@@ -19,7 +19,8 @@
       "mcp__chrome-devtools__take_screenshot",
       "Bash(pnpm run build)",
       "Bash(wc:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npm install:*)"
     ]
   }
 }
