@@ -15,9 +15,13 @@ import {
     Award,
 } from "lucide-react";
 import { CourseCard } from "@/components/dashboard/course-card";
-import { CourseListItem } from "@/components/dashboard/course-list-item";
 import { ScheduleCard } from "@/components/dashboard/schedule-card";
 import { ProductivityChartLazy } from "@/components/dashboard/productivity-chart-lazy";
+import { MisCursosSection } from "@/components/dashboard/MisCursosSection";
+import type {
+    MisCursosMicrocredential,
+    MisCursosStandaloneCourse,
+} from "@/components/dashboard/MisCursosSection";
 import type { User, UserRole } from "@/types/user";
 
 // Types from the aggregated API
@@ -92,19 +96,10 @@ interface DashboardApiResponse {
         microcredentialsInProgress: number;
     };
     favorites: string[];
-}
-
-interface EnrolledCourseData {
-    course: {
-        id: string;
-        title: string;
-        description?: string | null;
-        thumbnailUrl?: string | null;
-        coverImageUrl?: string | null;
+    misCursosData?: {
+        microcredentials: MisCursosMicrocredential[];
+        standaloneCourses: MisCursosStandaloneCourse[];
     };
-    lessonsCount: number;
-    completedLessonsCount: number;
-    progressPercent: number;
 }
 
 interface RecommendedCourse {
@@ -228,22 +223,6 @@ export function DashboardClient({ user, initialData }: DashboardClientProps) {
     const [loadingFavorite, setLoadingFavorite] = useState<string | null>(null);
 
     // Process initial data
-    const enrolledCourses = useMemo<EnrolledCourseData[]>(() => {
-        if (!initialData) return [];
-        return initialData.enrolledCourses.map((item) => ({
-            course: {
-                id: item.course.id,
-                title: item.course.title,
-                description: item.course.description,
-                thumbnailUrl: item.course.thumbnailUrl,
-                coverImageUrl: item.course.coverImageUrl,
-            },
-            lessonsCount: item.lessonsCount,
-            completedLessonsCount: item.completedLessonsCount,
-            progressPercent: item.progressPercent,
-        }));
-    }, [initialData]);
-
     const recommendedCourses = useMemo<RecommendedCourse[]>(() => {
         if (!initialData) return [];
         return initialData.recommendedCourses.map((item) => ({
@@ -595,74 +574,12 @@ export function DashboardClient({ user, initialData }: DashboardClientProps) {
                         );
                     })()}
 
-                    {/* 2. My Courses Section */}
-                    <section>
-                        <div className="mb-4 flex items-center justify-between">
-                            <h2 className="text-xl font-semibold text-slate-900">
-                                {user?.role === "teacher" ? "Mis Cursos (Instructor)" : "Mis Cursos"}
-                            </h2>
-                            <Link
-                                href={
-                                    user?.role === "teacher" ? "/dashboard/my-courses" : "/dashboard/enrolled-courses"
-                                }
-                                className="text-sm font-medium text-brand-secondary hover:underline"
-                            >
-                                Ver todos
-                            </Link>
-                        </div>
-                        {enrolledCourses.length > 0 ? (
-                            <div className="space-y-4">
-                                {enrolledCourses.slice(0, 4).map((item) => (
-                                    <Link
-                                        key={item.course.id}
-                                        href={
-                                            user?.role === "teacher"
-                                                ? `/dashboard/my-courses/${item.course.id}/edit`
-                                                : `/dashboard/student/courses/${item.course.id}`
-                                        }
-                                    >
-                                        <CourseListItem
-                                            title={item.course.title}
-                                            sessions={`${item.completedLessonsCount}/${item.lessonsCount}`}
-                                            thumbnail={
-                                                item.course.thumbnailUrl ||
-                                                item.course.coverImageUrl ||
-                                                "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=400&q=80"
-                                            }
-                                            avatars={[]}
-                                            highlight={
-                                                item.completedLessonsCount > 0 &&
-                                                    item.completedLessonsCount < item.lessonsCount
-                                                    ? "En progreso"
-                                                    : item.completedLessonsCount >= item.lessonsCount && item.lessonsCount > 0
-                                                        ? "Completado"
-                                                        : undefined
-                                            }
-                                        />
-                                    </Link>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center">
-                                <GraduationCap className="mx-auto h-12 w-12 text-slate-400" />
-                                <p className="mt-2 text-slate-500">
-                                    {user?.role === "teacher"
-                                        ? "Aún no has creado ningún curso"
-                                        : "Aún no estás inscrito en ningún curso"}
-                                </p>
-                                <Link
-                                    href={
-                                        user?.role === "teacher"
-                                            ? "/dashboard/my-courses/new"
-                                            : "/dashboard/available-courses"
-                                    }
-                                    className="mt-4 inline-block rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white hover:bg-brand-primary/90"
-                                >
-                                    {user?.role === "teacher" ? "Crear curso" : "Explorar cursos"}
-                                </Link>
-                            </div>
-                        )}
-                    </section>
+                    {/* 2. My Courses Section — Microcredential-grouped view */}
+                    <MisCursosSection
+                        microcredentials={initialData?.misCursosData?.microcredentials || []}
+                        standaloneCourses={initialData?.misCursosData?.standaloneCourses || []}
+                        userRole={user?.role}
+                    />
 
                     {/* 3. Microcursos Recomendados (hidden for admin roles) */}
                     {!isAdminRole && (

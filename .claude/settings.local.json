@@ -30,7 +30,9 @@
       "Bash(timeout 30 pnpm dev:*)",
       "Bash(dir /s /b \"c:\\\\Dev\\\\julioorozco-mu\\\\insights\\\\src\\\\app\\\\student\\\\courses\\\\[courseId]\\\\learn\\\\lecture\\\\[lessonId]\\\\_components\"\" 2>nul || echo \"Directory or files not found \")",
       "Bash(Select-Object FullName)",
-      "Bash(pnpm run lint)"
+      "Bash(pnpm run lint)",
+      "Bash(npx next lint:*)",
+      "Bash(npx next build:*)"
     ]
   }
 }

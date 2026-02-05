@@ -19,6 +19,52 @@ interface RecommendedMicrocredential {
   salePercentage: number;
 }
 
+// Types for Mis Cursos section (microcredential-grouped view)
+interface MisCursosCourseProgressData {
+  courseId: string;
+  title: string;
+  thumbnailUrl: string | null;
+  coverImageUrl: string | null;
+  level: 1 | 2;
+  isLocked: boolean;
+  totalSections: number;
+  completedSections: number;
+  totalLessons: number;
+  completedLessons: number;
+  progressPercent: number;
+  totalQuizzes: number;
+  completedQuizzes: number;
+  lastAccessedLessonId: string | null;
+  lastAccessedSubsectionIndex: number;
+}
+
+interface MisCursosMicrocredentialData {
+  id: string;
+  title: string;
+  courses: [MisCursosCourseProgressData, MisCursosCourseProgressData];
+}
+
+interface MisCursosStandaloneCourseData {
+  courseId: string;
+  title: string;
+  thumbnailUrl: string | null;
+  coverImageUrl: string | null;
+  totalSections: number;
+  completedSections: number;
+  totalLessons: number;
+  completedLessons: number;
+  progressPercent: number;
+  totalQuizzes: number;
+  completedQuizzes: number;
+  lastAccessedLessonId: string | null;
+  lastAccessedSubsectionIndex: number;
+}
+
+interface MisCursosData {
+  microcredentials: MisCursosMicrocredentialData[];
+  standaloneCourses: MisCursosStandaloneCourseData[];
+}
+
 interface DashboardApiResponse {
   enrolledCourses: {
     course: {
@@ -80,6 +126,7 @@ interface DashboardApiResponse {
     microcredentialsInProgress: number;
   };
   favorites: string[];
+  misCursosData: MisCursosData;
 }
 
 // Helper to clean HTML from description
@@ -240,6 +287,7 @@ async function fetchStudentDashboardData(
         microcredentialsInProgress: 0,
       },
       favorites: [],
+      misCursosData: { microcredentials: [], standaloneCourses: [] },
     };
   }
 
@@ -333,7 +381,7 @@ async function fetchStudentDashboardData(
     supabase
       .from(TABLES.LESSONS)
       .select(
-        "id, course_id, title, duration_minutes, start_date, scheduled_start_time, type, is_active"
+        "id, course_id, title, duration_minutes, start_date, scheduled_start_time, type, is_active, section_id, content"
       )
       .in(
         "course_id",
@@ -365,6 +413,62 @@ async function fetchStudentDashboardData(
       .order("display_order", { ascending: true })
       .limit(6),
   ]);
+
+  // Fetch additional data for Mis Cursos section (sections + quiz counts)
+  const [courseSectionsResult, courseTestsResult, testAttemptsResult] =
+    await Promise.all([
+      // Course sections for enrolled courses
+      enrolledCourseIdsArray.length > 0
+        ? supabase
+            .from(TABLES.COURSE_SECTIONS)
+            .select("id, course_id")
+            .in("course_id", enrolledCourseIdsArray)
+        : Promise.resolve({ data: [] as { id: string; course_id: string }[] }),
+
+      // Course tests linked to enrolled courses
+      enrolledCourseIdsArray.length > 0
+        ? supabase
+            .from("course_tests")
+            .select("id, test_id, course_id")
+            .in("course_id", enrolledCourseIdsArray)
+        : Promise.resolve(
+            { data: [] as { id: string; test_id: string; course_id: string }[] }
+          ),
+
+      // Test attempts by this student
+      supabase
+        .from("test_attempts")
+        .select("id, course_test_id, course_id, status")
+        .eq("student_id", studentId)
+        .eq("status", "completed"),
+    ]);
+
+  // Build section count maps
+  const sectionsByCourse = new Map<string, string[]>();
+  for (const section of courseSectionsResult.data || []) {
+    if (!sectionsByCourse.has(section.course_id)) {
+      sectionsByCourse.set(section.course_id, []);
+    }
+    sectionsByCourse.get(section.course_id)!.push(section.id);
+  }
+
+  // Build quiz/test count maps
+  const courseTestsByCourse = new Map<string, string[]>();
+  for (const ct of courseTestsResult.data || []) {
+    if (!courseTestsByCourse.has(ct.course_id)) {
+      courseTestsByCourse.set(ct.course_id, []);
+    }
+    courseTestsByCourse.get(ct.course_id)!.push(ct.id);
+  }
+
+  const completedTestsByCourse = new Map<string, number>();
+  for (const attempt of testAttemptsResult.data || []) {
+    const courseId = attempt.course_id;
+    completedTestsByCourse.set(
+      courseId,
+      (completedTestsByCourse.get(courseId) || 0) + 1
+    );
+  }
 
   // Build maps
   const lessonsByCourse = new Map<
@@ -580,6 +684,242 @@ async function fetchStudentDashboardData(
     salePercentage: mc.sale_percentage || 0,
   }));
 
+  // ── Build Mis Cursos Data (microcredential-grouped view) ─────────
+  // Helper: count subsections from lesson JSON content
+  function getSubsectionCount(lessonContent: string | null): number {
+    if (!lessonContent) return 1;
+    try {
+      const parsed = JSON.parse(lessonContent as string);
+      return parsed.subsections?.length || 1;
+    } catch {
+      return 1;
+    }
+  }
+
+  // Helper: compute subsection-based progress for a course
+  // "Sesiones" = lessons (each lesson row = 1 sesión)
+  // "Sesiones completadas" = lessons where ALL subsections are completed
+  // "Lecciones" = total subsections across all lessons
+  // "Lecciones completadas" = total completed subsections
+  function computeSubsectionProgress(
+    courseId: string,
+    completedLessonIds: Set<string>,
+    subsectionProgress: Record<string, number>,
+    allLessons: typeof enrolledLessonsResult.data
+  ) {
+    const lessonsForCourse = (allLessons || []).filter(
+      (l) => l.course_id === courseId
+    );
+
+    let totalSessions = lessonsForCourse.length;
+    let completedSessions = 0;
+    let totalSubsections = 0;
+    let completedSubsectionsCount = 0;
+
+    for (const lesson of lessonsForCourse) {
+      const subsCount = getSubsectionCount((lesson as any).content);
+      totalSubsections += subsCount;
+
+      if (completedLessonIds.has(lesson.id)) {
+        // Lesson fully completed → all subsections done
+        completedSubsectionsCount += subsCount;
+        completedSessions++;
+      } else {
+        // Check partial progress via subsectionProgress
+        const highestIndex = subsectionProgress[lesson.id] ?? -1;
+        if (highestIndex >= 0) {
+          const completed = Math.min(highestIndex + 1, subsCount);
+          completedSubsectionsCount += completed;
+          if (completed >= subsCount) {
+            completedSessions++;
+          }
+        }
+      }
+    }
+
+    return {
+      totalSessions,
+      completedSessions,
+      totalSubsections,
+      completedSubsections: completedSubsectionsCount,
+    };
+  }
+
+  // Helper: compute lastAccessedSubsectionIndex (advance to next)
+  function computeResumeSubsectionIndex(
+    lastLessonId: string | null,
+    subsProgress: Record<string, number>,
+    allLessons: typeof enrolledLessonsResult.data
+  ): number {
+    if (!lastLessonId || subsProgress[lastLessonId] === undefined) return 0;
+    let idx = subsProgress[lastLessonId];
+    const lesson = (allLessons || []).find((l) => l.id === lastLessonId);
+    if (lesson) {
+      const totalSubs = getSubsectionCount((lesson as any).content);
+      if (idx < totalSubs - 1) idx += 1;
+    }
+    return Math.max(0, idx);
+  }
+
+  // Helper: build course progress data for Mis Cursos
+  function buildCourseProgress(
+    courseId: string,
+    level: 1 | 2,
+    isLocked: boolean
+  ): MisCursosCourseProgressData | null {
+    const enrollmentItem = enrolledCourses.find(
+      (e) => e.course.id === courseId
+    );
+    if (!enrollmentItem) return null;
+
+    const completedLessonIds = new Set(
+      enrollmentItem.enrollment.completedLessons
+    );
+    const subsProgress = enrollmentItem.enrollment.subsectionProgress || {};
+    const { totalSessions, completedSessions, totalSubsections, completedSubsections } =
+      computeSubsectionProgress(
+        courseId,
+        completedLessonIds,
+        subsProgress,
+        enrolledLessonsResult.data
+      );
+    const totalQuizzes = (courseTestsByCourse.get(courseId) || []).length;
+    const completedQuizzes = Math.min(
+      completedTestsByCourse.get(courseId) || 0,
+      totalQuizzes
+    );
+
+    const lastLessonId = enrollmentItem.enrollment.lastAccessedLessonId || null;
+
+    return {
+      courseId,
+      title: enrollmentItem.course.title,
+      thumbnailUrl: enrollmentItem.course.thumbnailUrl,
+      coverImageUrl: enrollmentItem.course.coverImageUrl,
+      level,
+      isLocked,
+      totalSections: totalSessions,
+      completedSections: completedSessions,
+      totalLessons: totalSubsections,
+      completedLessons: completedSubsections,
+      progressPercent: enrollmentItem.progressPercent,
+      totalQuizzes,
+      completedQuizzes,
+      lastAccessedLessonId: lastLessonId,
+      lastAccessedSubsectionIndex: computeResumeSubsectionIndex(
+        lastLessonId,
+        subsProgress,
+        enrolledLessonsResult.data
+      ),
+    };
+  }
+
+  // Track which course IDs belong to a microcredential
+  const courseIdsInMicrocredentials = new Set<string>();
+
+  const misCursosMicrocredentials: MisCursosMicrocredentialData[] = [];
+  for (const mcEnrollment of microcredentialEnrollments) {
+    const mc = (mcEnrollment as any).microcredentials;
+    if (!mc) continue;
+
+    const l1CourseId = mc.course_level_1_id;
+    const l2CourseId = mc.course_level_2_id;
+    const isLevel2Locked = !(mcEnrollment as any).level_1_completed;
+
+    const course1 = buildCourseProgress(l1CourseId, 1, false);
+    const course2 = buildCourseProgress(l2CourseId, 2, isLevel2Locked);
+
+    if (course1 && course2) {
+      // Fetch microcredential title
+      const mcData = recommendedMicrocredentialsResult.data?.find(
+        (m: any) => m.id === (mcEnrollment as any).microcredential_id
+      );
+      const mcTitle =
+        mcData?.title || `Microcredencial`;
+
+      misCursosMicrocredentials.push({
+        id: (mcEnrollment as any).microcredential_id,
+        title: mcTitle,
+        courses: [course1, course2],
+      });
+
+      courseIdsInMicrocredentials.add(l1CourseId);
+      courseIdsInMicrocredentials.add(l2CourseId);
+    }
+  }
+
+  // If we didn't get the title from recommended, fetch it separately
+  if (
+    misCursosMicrocredentials.some((mc) => mc.title === "Microcredencial")
+  ) {
+    const mcIdsToFetch = misCursosMicrocredentials
+      .filter((mc) => mc.title === "Microcredencial")
+      .map((mc) => mc.id);
+
+    if (mcIdsToFetch.length > 0) {
+      const { data: mcTitles } = await supabase
+        .from("microcredentials")
+        .select("id, title")
+        .in("id", mcIdsToFetch);
+
+      for (const mcTitle of mcTitles || []) {
+        const target = misCursosMicrocredentials.find(
+          (mc) => mc.id === mcTitle.id
+        );
+        if (target) target.title = mcTitle.title;
+      }
+    }
+  }
+
+  // Standalone courses (enrolled but not part of any microcredential)
+  const misCursosStandalone: MisCursosStandaloneCourseData[] = [];
+  for (const enrolled of enrolledCourses) {
+    if (courseIdsInMicrocredentials.has(enrolled.course.id)) continue;
+
+    const courseId = enrolled.course.id;
+    const completedLessonIds = new Set(enrolled.enrollment.completedLessons);
+    const subsProgress = enrolled.enrollment.subsectionProgress || {};
+    const { totalSessions, completedSessions, totalSubsections, completedSubsections } =
+      computeSubsectionProgress(
+        courseId,
+        completedLessonIds,
+        subsProgress,
+        enrolledLessonsResult.data
+      );
+    const totalQuizzes = (courseTestsByCourse.get(courseId) || []).length;
+    const completedQuizzes = Math.min(
+      completedTestsByCourse.get(courseId) || 0,
+      totalQuizzes
+    );
+
+    const lastLessonId = enrolled.enrollment.lastAccessedLessonId || null;
+
+    misCursosStandalone.push({
+      courseId,
+      title: enrolled.course.title,
+      thumbnailUrl: enrolled.course.thumbnailUrl,
+      coverImageUrl: enrolled.course.coverImageUrl,
+      totalSections: totalSessions,
+      completedSections: completedSessions,
+      totalLessons: totalSubsections,
+      completedLessons: completedSubsections,
+      progressPercent: enrolled.progressPercent,
+      totalQuizzes,
+      completedQuizzes,
+      lastAccessedLessonId: lastLessonId,
+      lastAccessedSubsectionIndex: computeResumeSubsectionIndex(
+        lastLessonId,
+        subsProgress,
+        enrolledLessonsResult.data
+      ),
+    });
+  }
+
+  const misCursosData: MisCursosData = {
+    microcredentials: misCursosMicrocredentials,
+    standaloneCourses: misCursosStandalone,
+  };
+
   return {
     enrolledCourses,
     recommendedCourses,
@@ -595,6 +935,7 @@ async function fetchStudentDashboardData(
       microcredentialsInProgress,
     },
     favorites: Array.from(favoriteIds),
+    misCursosData,
   };
 }
 
