@@ -1,14 +1,19 @@
 /**
  * Componentes del LessonPlayer
  *
- * Los tabs de Q&A y Notas se cargan dinámicamente con next/dynamic
- * para reducir el bundle inicial.
+ * Arquitectura de Tabs (Lazy Loading):
+ * - OverviewTab: Descripción y recursos de la lección
+ * - QuestionsTab: Preguntas y respuestas (Q&A)
+ * - NotesTab: Notas personales del estudiante
+ *
+ * Los tabs se cargan dinámicamente con next/dynamic en page.tsx
+ * para reducir el bundle inicial y mejorar el tiempo de carga.
  */
 
 // Componentes comunes (cargados siempre)
 export * from './common';
 
-// Los tabs se exportan desde sus respectivas carpetas
-// pero se importan con next/dynamic en el page.tsx
-// export { default as QuestionsTab } from './QuestionsTab';
-// export { default as NotesTab } from './NotesTab';
+// Nota: Los tabs se importan con next/dynamic en page.tsx:
+// - OverviewTab: import('./OverviewTab')
+// - QuestionsTab: import('./QuestionsTab')
+// - NotesTab: import('./NotesTab')

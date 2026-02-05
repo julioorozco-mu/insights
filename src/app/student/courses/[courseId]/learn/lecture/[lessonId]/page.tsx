@@ -41,6 +41,58 @@ import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import CourseRatingModal from "@/components/course/CourseRatingModal";
 import RichTextContent from "@/components/ui/RichTextContent";
+import dynamic from "next/dynamic";
+import { Suspense } from "react";
+import { formatTimestamp } from "./utils/lessonPlayerHelpers";
+
+// ===== DYNAMIC IMPORTS - Lazy loaded tabs =====
+const OverviewTab = dynamic(() => import("./_components/OverviewTab"), {
+  loading: () => <TabLoadingSkeleton type="overview" />,
+  ssr: false,
+});
+
+const QuestionsTab = dynamic(() => import("./_components/QuestionsTab"), {
+  loading: () => <TabLoadingSkeleton type="questions" />,
+  ssr: false,
+});
+
+const NotesTab = dynamic(() => import("./_components/NotesTab"), {
+  loading: () => <TabLoadingSkeleton type="notes" />,
+  ssr: false,
+});
+
+// Tab loading skeleton component
+function TabLoadingSkeleton({ type }: { type: "overview" | "questions" | "notes" }) {
+  return (
+    <div className="max-w-4xl animate-pulse">
+      {type === "overview" ? (
+        <>
+          <div className="h-8 bg-gray-200 rounded w-2/3 mb-4"></div>
+          <div className="space-y-2 mb-8">
+            <div className="h-4 bg-gray-200 rounded w-full"></div>
+            <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="h-24 bg-gray-100 rounded-lg mb-6"></div>
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="border-b pb-6 mb-6">
+              <div className="flex gap-3">
+                <div className="w-10 h-10 bg-gray-100 rounded-full"></div>
+                <div className="flex-1">
+                  <div className="h-4 bg-gray-100 rounded w-1/4 mb-2"></div>
+                  <div className="h-4 bg-gray-100 rounded w-full mb-1"></div>
+                  <div className="h-4 bg-gray-100 rounded w-3/4"></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
 
 // ===== TYPES =====
 interface Lesson {
@@ -163,13 +215,6 @@ const TOKENS = {
     topbarHeight: "64px",
   }
 };
-
-// ===== HELPER: Format timestamp =====
-function formatTimestamp(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
 
 // ===== HELPER: Format file size =====
 function formatFileSize(kb?: number): string {
@@ -1385,24 +1430,8 @@ export default function LessonPlayerPage() {
   const [resources, setResources] = useState<Resource[]>([]);
   const [loadingResources, setLoadingResources] = useState(false);
 
-  // Notes State
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [loadingNotes, setLoadingNotes] = useState(false);
-  const [newNoteContent, setNewNoteContent] = useState("");
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [editingNoteContent, setEditingNoteContent] = useState("");
-  const [savingNote, setSavingNote] = useState(false);
-
-  // Q&A State
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [loadingQuestions, setLoadingQuestions] = useState(false);
-  const [newQuestionText, setNewQuestionText] = useState("");
-  const [submittingQuestion, setSubmittingQuestion] = useState(false);
-  const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(null);
-  const [replyingToId, setReplyingToId] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState("");
-  const [submittingReply, setSubmittingReply] = useState(false);
-  const [questionSortBy, setQuestionSortBy] = useState<"recent" | "popular">("recent");
+  // Video timestamp state (shared with tabs for timestamp navigation)
+  // Note: Los estados de Notes y Q&A fueron movidos a sus respectivos componentes lazy-loaded
 
   // Video simulation state (para timestamp de notas)
   const [currentVideoTime, setCurrentVideoTime] = useState(0);
@@ -2550,53 +2579,7 @@ export default function LessonPlayerPage() {
     fetchResources();
   }, [currentLessonId]);
 
-  // Fetch notes when lesson changes or tab opens
-  const fetchNotes = useCallback(async () => {
-    if (isPreviewMode || !currentLessonId || !user) return;
-    setLoadingNotes(true);
-
-    try {
-      const res = await fetch(`/api/student/notes?lessonId=${currentLessonId}&userId=${user.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setNotes(data.notes || []);
-      }
-    } catch (error) {
-      console.error("Error fetching notes:", error);
-    } finally {
-      setLoadingNotes(false);
-    }
-  }, [currentLessonId, user, isPreviewMode]);
-
-  useEffect(() => {
-    if (activeTab === "notes") {
-      fetchNotes();
-    }
-  }, [activeTab, fetchNotes]);
-
-  // Fetch questions when lesson changes or tab opens
-  const fetchQuestions = useCallback(async () => {
-    if (isPreviewMode || !currentLessonId) return;
-    setLoadingQuestions(true);
-
-    try {
-      const res = await fetch(`/api/student/questions?lessonId=${currentLessonId}&sortBy=${questionSortBy}`);
-      if (res.ok) {
-        const data = await res.json();
-        setQuestions(data.questions || []);
-      }
-    } catch (error) {
-      console.error("Error fetching questions:", error);
-    } finally {
-      setLoadingQuestions(false);
-    }
-  }, [currentLessonId, questionSortBy, isPreviewMode]);
-
-  useEffect(() => {
-    if (activeTab === "questions") {
-      fetchQuestions();
-    }
-  }, [activeTab, fetchQuestions]);
+  // Note: fetchNotes, fetchQuestions y sus useEffects fueron movidos a los componentes lazy-loaded
 
   // ===== HANDLERS =====
   const goToLesson = useCallback((lessonId: string) => {
@@ -2633,75 +2616,7 @@ export default function LessonPlayerPage() {
     });
   };
 
-  // Note Handlers
-  const handleCreateNote = async () => {
-    if (!newNoteContent.trim() || !user || !currentLessonId) return;
-    setSavingNote(true);
-
-    try {
-      const res = await fetch(`/api/student/notes?lessonId=${currentLessonId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: newNoteContent.trim(),
-          video_timestamp: currentVideoTime,
-          course_id: courseId,
-          lesson_id: currentLessonId,
-        }),
-      });
-
-      if (res.ok) {
-        setNewNoteContent("");
-        fetchNotes();
-      }
-    } catch (error) {
-      console.error("Error creating note:", error);
-    } finally {
-      setSavingNote(false);
-    }
-  };
-
-  const handleUpdateNote = async (noteId: string) => {
-    if (!editingNoteContent.trim() || !user) return;
-    setSavingNote(true);
-
-    try {
-      const res = await fetch('/api/student/notes', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          noteId,
-          content: editingNoteContent.trim(),
-        }),
-      });
-
-      if (res.ok) {
-        setEditingNoteId(null);
-        setEditingNoteContent("");
-        fetchNotes();
-      }
-    } catch (error) {
-      console.error("Error updating note:", error);
-    } finally {
-      setSavingNote(false);
-    }
-  };
-
-  const handleDeleteNote = async (noteId: string) => {
-    if (!user || !confirm("¿Estás seguro de eliminar esta nota?")) return;
-
-    try {
-      const res = await fetch(`/api/student/notes?noteId=${noteId}`, {
-        method: 'DELETE',
-      });
-
-      if (res.ok) {
-        fetchNotes();
-      }
-    } catch (error) {
-      console.error("Error deleting note:", error);
-    }
-  };
+  // Note: Note Handlers (handleCreateNote, handleUpdateNote, handleDeleteNote) fueron movidos a NotesTab
 
   // Favorite Handler
   const handleToggleFavorite = async () => {
@@ -2737,59 +2652,7 @@ export default function LessonPlayerPage() {
     }
   };
 
-  // Question Handlers
-  const handleSubmitQuestion = async () => {
-    if (!newQuestionText.trim() || !user || !currentLessonId) return;
-    setSubmittingQuestion(true);
-
-    try {
-      const res = await fetch(`/api/student/questions?lessonId=${currentLessonId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question_text: newQuestionText.trim(),
-          video_timestamp: currentVideoTime,
-          course_id: courseId,
-          lesson_id: currentLessonId,
-        }),
-      });
-
-      if (res.ok) {
-        setNewQuestionText("");
-        fetchQuestions();
-      }
-    } catch (error) {
-      console.error("Error submitting question:", error);
-    } finally {
-      setSubmittingQuestion(false);
-    }
-  };
-
-  const handleSubmitReply = async (questionId: string) => {
-    if (!replyText.trim() || !user) return;
-    setSubmittingReply(true);
-
-    try {
-      const res = await fetch('/api/student/questions/answer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          answer_text: replyText.trim(),
-          question_id: questionId,
-        }),
-      });
-
-      if (res.ok) {
-        setReplyText("");
-        setReplyingToId(null);
-        fetchQuestions();
-      }
-    } catch (error) {
-      console.error("Error submitting reply:", error);
-    } finally {
-      setSubmittingReply(false);
-    }
-  };
+  // Note: Question Handlers (handleSubmitQuestion, handleSubmitReply) fueron movidos a QuestionsTab
 
   // ===== LOADING STATE =====
   if (loading) {
@@ -3198,427 +3061,43 @@ export default function LessonPlayerPage() {
             {/* Tab Content */}
             <div className="flex-1 overflow-y-auto p-4 md:p-8">
 
-              {/* ===== OVERVIEW TAB ===== */}
-              {activeTab === "overview" && currentLesson && (
-                <div className="max-w-4xl animate-in fade-in duration-200">
-                  <h1 className="text-2xl font-bold text-gray-900 mb-4">{currentLesson.title}</h1>
-
-                  {currentLesson.description && (
-                    <div className="prose prose-sm max-w-none text-gray-700 mb-8">
-                      <p>{currentLesson.description}</p>
-                    </div>
-                  )}
-
-                  {/* Resources Section */}
-                  {resources.length > 0 && (
-                    <div className="mt-8">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <IconPaperclip size={20} />
-                        Recursos de la lección
-                      </h3>
-                      <div className="grid gap-3">
-                        {resources.map((resource) => (
-                          <a
-                            key={resource.id}
-                            href={resource.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-3 p-4 rounded-lg border hover:bg-gray-50 transition-colors group"
-                            style={{ borderColor: TOKENS.colors.border }}
-                          >
-                            <span className="text-2xl">{getFileIcon(resource.fileType)}</span>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium text-gray-900 truncate group-hover:text-purple-600">
-                                {resource.fileName}
-                              </p>
-                              <p className="text-sm text-gray-500">
-                                {formatFileSize(resource.sizeKb)}
-                              </p>
-                            </div>
-                            <IconDownload size={20} className="text-gray-400 group-hover:text-purple-600" />
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {loadingResources && (
-                    <div className="flex items-center gap-2 text-gray-500 mt-4">
-                      <IconLoader2 className="w-4 h-4 animate-spin" />
-                      <span>Cargando recursos...</span>
-                    </div>
-                  )}
-                </div>
+              {/* ===== OVERVIEW TAB - Lazy Loaded ===== */}
+              {activeTab === "overview" && (
+                <Suspense fallback={<TabLoadingSkeleton type="overview" />}>
+                  <OverviewTab
+                    lesson={currentLesson || null}
+                    resources={resources}
+                    loadingResources={loadingResources}
+                  />
+                </Suspense>
               )}
 
-              {/* ===== QUESTIONS TAB ===== */}
+              {/* ===== QUESTIONS TAB - Lazy Loaded ===== */}
               {activeTab === "questions" && (
-                <div className="max-w-4xl animate-in fade-in duration-200">
-                  {/* New Question Input - Ocultar en modo preview */}
-                  {!isPreviewMode && (
-                    <div className="mb-6">
-                      <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-semibold shrink-0">
-                          {user?.email?.charAt(0).toUpperCase() || "U"}
-                        </div>
-                        <div className="flex-1">
-                          <textarea
-                            value={newQuestionText}
-                            onChange={(e) => setNewQuestionText(e.target.value)}
-                            placeholder={`Haz una pregunta en ${formatTimestamp(currentVideoTime)}...`}
-                            className="w-full p-3 border rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                            rows={3}
-                            style={{ borderColor: TOKENS.colors.border }}
-                          />
-                          <div className="flex justify-between items-center mt-2">
-                            <span className="text-xs text-gray-500">
-                              <IconClock size={12} className="inline mr-1" />
-                              {formatTimestamp(currentVideoTime)}
-                            </span>
-                            <button
-                              onClick={handleSubmitQuestion}
-                              disabled={!newQuestionText.trim() || submittingQuestion}
-                              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700 transition-colors flex items-center gap-2"
-                            >
-                              {submittingQuestion ? (
-                                <IconLoader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <IconSend size={16} />
-                              )}
-                              Publicar pregunta
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Mensaje en modo preview */}
-                  {isPreviewMode && (
-                    <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <p className="text-sm text-yellow-800">
-                        <strong>Modo Vista Previa:</strong> Puedes ver las preguntas existentes, pero no puedes crear nuevas preguntas ni responder.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Sort Options */}
-                  <div className="flex gap-4 mb-6 border-b pb-4" style={{ borderColor: TOKENS.colors.border }}>
-                    <button
-                      onClick={() => setQuestionSortBy("recent")}
-                      className={cn(
-                        "text-sm font-medium transition-colors",
-                        questionSortBy === "recent" ? "text-purple-600" : "text-gray-500 hover:text-gray-700"
-                      )}
-                    >
-                      Más recientes
-                    </button>
-                    <button
-                      onClick={() => setQuestionSortBy("popular")}
-                      className={cn(
-                        "text-sm font-medium transition-colors",
-                        questionSortBy === "popular" ? "text-purple-600" : "text-gray-500 hover:text-gray-700"
-                      )}
-                    >
-                      Más votadas
-                    </button>
-                  </div>
-
-                  {/* Questions List */}
-                  {loadingQuestions ? (
-                    <div className="flex items-center justify-center py-12">
-                      <IconLoader2 className="w-6 h-6 animate-spin text-gray-400" />
-                    </div>
-                  ) : questions.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-center text-gray-500">
-                      <IconMessageCircle size={48} className="mb-4 opacity-20" />
-                      <h3 className="text-lg font-medium text-gray-900">Sin preguntas todavía</h3>
-                      <p>Sé el primero en preguntar algo sobre esta lección.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {questions.map((question) => (
-                        <div key={question.id} className="border-b pb-6" style={{ borderColor: TOKENS.colors.border }}>
-                          <div className="flex gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-semibold shrink-0">
-                              {question.author?.avatarUrl ? (
-                                <Image
-                                  src={question.author.avatarUrl}
-                                  alt=""
-                                  width={40}
-                                  height={40}
-                                  className="rounded-full"
-                                />
-                              ) : (
-                                question.author?.name?.charAt(0).toUpperCase() || "?"
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium text-gray-900">{question.author?.name || "Usuario"}</span>
-                                <span className="text-xs text-gray-500">
-                                  {formatDistanceToNow(new Date(question.createdAt), { addSuffix: true, locale: es })}
-                                </span>
-                                {question.videoTimestamp > 0 && (
-                                  <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
-                                    {formatTimestamp(question.videoTimestamp)}
-                                  </span>
-                                )}
-                                {question.isResolved && (
-                                  <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded flex items-center gap-1">
-                                    <IconCheck size={12} />
-                                    Resuelta
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-gray-700 mb-3">{question.questionText}</p>
-
-                              <div className="flex items-center gap-4 text-sm">
-                                <div className="flex items-center gap-1 text-gray-500">
-                                  <IconThumbUp size={16} />
-                                  <span>{question.upvotes}</span>
-                                </div>
-                                <button
-                                  onClick={() => setExpandedQuestionId(expandedQuestionId === question.id ? null : question.id)}
-                                  className="text-gray-500 hover:text-purple-600 transition-colors"
-                                  disabled={isPreviewMode}
-                                >
-                                  {question.answersCount} respuesta{question.answersCount !== 1 ? 's' : ''}
-                                </button>
-                                {!isPreviewMode && (
-                                  <button
-                                    onClick={() => {
-                                      setReplyingToId(replyingToId === question.id ? null : question.id);
-                                      setExpandedQuestionId(question.id);
-                                    }}
-                                    className="text-purple-600 hover:text-purple-700 font-medium"
-                                  >
-                                    Responder
-                                  </button>
-                                )}
-                              </div>
-
-                              {/* Answers */}
-                              {expandedQuestionId === question.id && (
-                                <div className="mt-4 ml-4 pl-4 border-l-2 space-y-4" style={{ borderColor: TOKENS.colors.border }}>
-                                  {question.answers.map((answer) => (
-                                    <div key={answer.id} className="flex gap-3">
-                                      <div className={cn(
-                                        "w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold shrink-0",
-                                        answer.isInstructorAnswer
-                                          ? "bg-purple-100 text-purple-600"
-                                          : "bg-gray-100 text-gray-600"
-                                      )}>
-                                        {answer.author?.name?.charAt(0).toUpperCase() || "?"}
-                                      </div>
-                                      <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-1">
-                                          <span className="font-medium text-gray-900 text-sm">
-                                            {answer.author?.name || "Usuario"}
-                                          </span>
-                                          {answer.isInstructorAnswer && (
-                                            <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
-                                              Instructor
-                                            </span>
-                                          )}
-                                          {answer.isAccepted && (
-                                            <span className="text-xs text-green-600">
-                                              <IconCheck size={14} className="inline" /> Aceptada
-                                            </span>
-                                          )}
-                                          <span className="text-xs text-gray-500">
-                                            {formatDistanceToNow(new Date(answer.createdAt), { addSuffix: true, locale: es })}
-                                          </span>
-                                        </div>
-                                        <p className="text-gray-700 text-sm">{answer.answerText}</p>
-                                      </div>
-                                    </div>
-                                  ))}
-
-                                  {/* Reply Form - Ocultar en modo preview */}
-                                  {!isPreviewMode && replyingToId === question.id && (
-                                    <div className="flex gap-3 mt-4">
-                                      <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-semibold shrink-0 text-sm">
-                                        {user?.email?.charAt(0).toUpperCase() || "U"}
-                                      </div>
-                                      <div className="flex-1">
-                                        <textarea
-                                          value={replyText}
-                                          onChange={(e) => setReplyText(e.target.value)}
-                                          placeholder="Escribe tu respuesta..."
-                                          className="w-full p-2 border rounded-lg resize-none text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                                          rows={2}
-                                          style={{ borderColor: TOKENS.colors.border }}
-                                        />
-                                        <div className="flex justify-end gap-2 mt-2">
-                                          <button
-                                            onClick={() => {
-                                              setReplyingToId(null);
-                                              setReplyText("");
-                                            }}
-                                            className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
-                                          >
-                                            Cancelar
-                                          </button>
-                                          <button
-                                            onClick={() => handleSubmitReply(question.id)}
-                                            disabled={!replyText.trim() || submittingReply}
-                                            className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium disabled:opacity-50 hover:bg-purple-700 flex items-center gap-1"
-                                          >
-                                            {submittingReply && <IconLoader2 className="w-3 h-3 animate-spin" />}
-                                            Responder
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <Suspense fallback={<TabLoadingSkeleton type="questions" />}>
+                  <QuestionsTab
+                    lessonId={currentLessonId}
+                    courseId={courseId}
+                    currentUserId={user?.id}
+                    currentVideoTimestamp={currentVideoTime}
+                    onTimestampClick={(timestamp) => setCurrentVideoTime(timestamp)}
+                    isPreviewMode={isPreviewMode}
+                    userEmail={user?.email}
+                  />
+                </Suspense>
               )}
 
-              {/* ===== NOTES TAB ===== */}
+              {/* ===== NOTES TAB - Lazy Loaded ===== */}
               {activeTab === "notes" && (
-                <div className="max-w-4xl animate-in fade-in duration-200">
-                  {/* New Note Input - Ocultar en modo preview */}
-                  {!isPreviewMode && (
-                    <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-2 mb-2 text-sm text-gray-600">
-                        <IconClock size={14} />
-                        <span>Crear una nueva nota en {formatTimestamp(currentVideoTime)}</span>
-                      </div>
-                      <div className="flex gap-3">
-                        <input
-                          type="text"
-                          value={newNoteContent}
-                          onChange={(e) => setNewNoteContent(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleCreateNote()}
-                          placeholder="Escribe tu nota aquí..."
-                          className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                          style={{ borderColor: TOKENS.colors.border }}
-                        />
-                        <button
-                          onClick={handleCreateNote}
-                          disabled={!newNoteContent.trim() || savingNote}
-                          className="px-4 py-2 bg-purple-600 text-white rounded-lg font-medium disabled:opacity-50 hover:bg-purple-700 transition-colors flex items-center gap-2"
-                        >
-                          {savingNote ? (
-                            <IconLoader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <IconNote size={18} />
-                          )}
-                          <span className="hidden sm:inline">Guardar</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Mensaje en modo preview */}
-                  {isPreviewMode && (
-                    <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <p className="text-sm text-yellow-800">
-                        <strong>Modo Vista Previa:</strong> Puedes ver las notas existentes, pero no puedes crear, editar ni eliminar notas.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Notes List */}
-                  {loadingNotes ? (
-                    <div className="flex items-center justify-center py-12">
-                      <IconLoader2 className="w-6 h-6 animate-spin text-gray-400" />
-                    </div>
-                  ) : notes.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-center text-gray-500">
-                      <IconNote size={48} className="mb-4 opacity-20" />
-                      <h3 className="text-lg font-medium text-gray-900">Sin notas todavía</h3>
-                      <p>Crea tu primera nota para recordar los puntos importantes.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {notes.map((note) => (
-                        <div
-                          key={note.id}
-                          className="p-4 border rounded-lg hover:shadow-sm transition-shadow"
-                          style={{ borderColor: TOKENS.colors.border }}
-                        >
-                          {editingNoteId === note.id ? (
-                            <div>
-                              <textarea
-                                value={editingNoteContent}
-                                onChange={(e) => setEditingNoteContent(e.target.value)}
-                                className="w-full p-3 border rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                                rows={3}
-                                style={{ borderColor: TOKENS.colors.border }}
-                              />
-                              <div className="flex justify-end gap-2 mt-2">
-                                <button
-                                  onClick={() => {
-                                    setEditingNoteId(null);
-                                    setEditingNoteContent("");
-                                  }}
-                                  className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
-                                >
-                                  Cancelar
-                                </button>
-                                <button
-                                  onClick={() => handleUpdateNote(note.id)}
-                                  disabled={!editingNoteContent.trim() || savingNote}
-                                  className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium disabled:opacity-50 hover:bg-purple-700"
-                                >
-                                  Guardar cambios
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex-1">
-                                  <button
-                                    className="text-sm text-purple-600 bg-purple-50 px-2 py-0.5 rounded mb-2 hover:bg-purple-100"
-                                    title="Ir a este momento del video"
-                                  >
-                                    {formatTimestamp(note.video_timestamp)}
-                                  </button>
-                                  <p className="text-gray-700">{note.content}</p>
-                                </div>
-                                {!isPreviewMode && (
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      onClick={() => {
-                                        setEditingNoteId(note.id);
-                                        setEditingNoteContent(note.content);
-                                      }}
-                                      className="p-1.5 text-gray-400 hover:text-purple-600 rounded transition-colors"
-                                      title="Editar nota"
-                                    >
-                                      <IconEdit size={16} />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteNote(note.id)}
-                                      className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors"
-                                      title="Eliminar nota"
-                                    >
-                                      <IconTrash size={16} />
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                              <p className="text-xs text-gray-400 mt-2">
-                                {formatDistanceToNow(new Date(note.created_at), { addSuffix: true, locale: es })}
-                              </p>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <Suspense fallback={<TabLoadingSkeleton type="notes" />}>
+                  <NotesTab
+                    lessonId={currentLessonId}
+                    courseId={courseId}
+                    currentVideoTimestamp={currentVideoTime}
+                    onTimestampClick={(timestamp) => setCurrentVideoTime(timestamp)}
+                    isPreviewMode={isPreviewMode}
+                  />
+                </Suspense>
               )}
             </div>
           </div>

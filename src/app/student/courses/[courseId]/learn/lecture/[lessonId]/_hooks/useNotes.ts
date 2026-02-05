@@ -59,8 +59,13 @@ export function useNotes({ lessonId, courseId }: UseNotesOptions): UseNotesRetur
     fetcher,
     {
       revalidateOnFocus: false,
-      dedupingInterval: 5000,
+      revalidateOnReconnect: false,
+      dedupingInterval: 30000, // Cache por 30s para contenido semi-estático
       errorRetryCount: 2,
+      shouldRetryOnError: (error: any) => {
+        // No retry en errores de autenticación o permisos
+        return error?.status !== 401 && error?.status !== 403 && error?.status !== 404;
+      },
     }
   );
 
@@ -92,7 +97,7 @@ export function useNotes({ lessonId, courseId }: UseNotesOptions): UseNotesRetur
 
         const { note } = await res.json();
 
-        // Optimistic update: insertar en orden por timestamp
+        // Optimistic update con rollback en caso de error
         mutate(
           (currentData) => {
             if (!currentData) return currentData;
@@ -104,12 +109,16 @@ export function useNotes({ lessonId, courseId }: UseNotesOptions): UseNotesRetur
               notes: newNotes,
             };
           },
-          { revalidate: false }
+          false // No revalidate inmediatamente
         );
 
         return note;
       } catch (err) {
         console.error('[useNotes] Error creating note:', err);
+        // Rollback al estado anterior en caso de error
+        if (data) {
+          mutate(data, false);
+        }
         return null;
       } finally {
         setIsCreating(false);
@@ -140,7 +149,7 @@ export function useNotes({ lessonId, courseId }: UseNotesOptions): UseNotesRetur
 
         const { note } = await res.json();
 
-        // Optimistic update
+        // Optimistic update con rollback en caso de error
         mutate(
           (currentData) => {
             if (!currentData) return currentData;
@@ -151,12 +160,16 @@ export function useNotes({ lessonId, courseId }: UseNotesOptions): UseNotesRetur
               ),
             };
           },
-          { revalidate: false }
+          false // No revalidate inmediatamente
         );
 
         return note;
       } catch (err) {
         console.error('[useNotes] Error updating note:', err);
+        // Rollback al estado anterior en caso de error
+        if (data) {
+          mutate(data, false);
+        }
         return null;
       } finally {
         setIsUpdating(false);
@@ -179,7 +192,7 @@ export function useNotes({ lessonId, courseId }: UseNotesOptions): UseNotesRetur
           throw new Error(errorData.error || 'Error al eliminar nota');
         }
 
-        // Optimistic update
+        // Optimistic update con rollback en caso de error
         mutate(
           (currentData) => {
             if (!currentData) return currentData;
@@ -188,12 +201,16 @@ export function useNotes({ lessonId, courseId }: UseNotesOptions): UseNotesRetur
               notes: currentData.notes.filter((n) => n.id !== noteId),
             };
           },
-          { revalidate: false }
+          false // No revalidate inmediatamente
         );
 
         return true;
       } catch (err) {
         console.error('[useNotes] Error deleting note:', err);
+        // Rollback al estado anterior en caso de error
+        if (data) {
+          mutate(data, false);
+        }
         return false;
       } finally {
         setIsDeleting(false);
