@@ -97,16 +97,13 @@ export function useNotes({ lessonId, courseId }: UseNotesOptions): UseNotesRetur
 
         const { note } = await res.json();
 
-        // Optimistic update con rollback en caso de error
+        // Optimistic update: agregar la nueva nota al principio (más reciente primero)
         mutate(
           (currentData) => {
             if (!currentData) return currentData;
-            const newNotes = [...currentData.notes, note].sort(
-              (a, b) => a.videoTimestamp - b.videoTimestamp
-            );
             return {
               ...currentData,
-              notes: newNotes,
+              notes: [note, ...currentData.notes],
             };
           },
           false // No revalidate inmediatamente

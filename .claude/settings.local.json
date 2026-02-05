@@ -26,7 +26,11 @@
       "Bash(git commit -m \"$\\(cat <<''EOF''\nchore: update pnpm-lock.yaml for swr dependency\n\nSync lockfile after adding swr@^2.4.0 for SWR data fetching hooks.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git push:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat\\(db\\): add RLS policies for student_enrollments table\n\nAdds missing Row Level Security policies that were causing 403 errors\nwhen checking course enrollment.\n\nPolicies added:\n- student_enrollments_select_own: Students can view their enrollments\n- student_enrollments_update_own: Students can update their progress\n- student_enrollments_admin_*: Admins can manage all enrollments\n- student_enrollments_teacher_select: Teachers can view their course enrollments\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(git check-ignore:*)"
+      "Bash(git check-ignore:*)",
+      "Bash(timeout 30 pnpm dev:*)",
+      "Bash(dir /s /b \"c:\\\\Dev\\\\julioorozco-mu\\\\insights\\\\src\\\\app\\\\student\\\\courses\\\\[courseId]\\\\learn\\\\lecture\\\\[lessonId]\\\\_components\"\" 2>nul || echo \"Directory or files not found \")",
+      "Bash(Select-Object FullName)",
+      "Bash(pnpm run lint)"
     ]
   }
 }

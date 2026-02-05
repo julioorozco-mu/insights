@@ -41,6 +41,12 @@ interface SubmitAnswerResult {
   answer?: Answer;
 }
 
+interface UpdateQuestionInput {
+  questionId: string;
+  questionText?: string;
+  videoTimestamp?: number;
+}
+
 interface UseQuestionsReturn {
   questions: (Question & { answers?: Answer[] })[];
   isLoading: boolean;
@@ -51,6 +57,10 @@ interface UseQuestionsReturn {
   refetch: () => Promise<void>;
   createQuestion: (input: Omit<CreateQuestionInput, 'lessonId'>) => Promise<Question | null>;
   isCreating: boolean;
+  updateQuestion: (input: UpdateQuestionInput) => Promise<Question | null>;
+  isUpdating: boolean;
+  deleteQuestion: (questionId: string) => Promise<boolean>;
+  isDeleting: boolean;
   submitAnswer: (questionId: string, answerText: string) => Promise<SubmitAnswerResult>;
   isSubmittingAnswer: boolean;
 }
@@ -61,6 +71,8 @@ export function useQuestions({
 }: UseQuestionsOptions): UseQuestionsReturn {
   const [sortBy, setSortByState] = useState<QuestionSortBy>(initialSortBy);
   const [isCreating, setIsCreating] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
 
   // SWR key con sort incluido
@@ -142,6 +154,98 @@ export function useQuestions({
       }
     },
     [lessonId, mutate]
+  );
+
+  // Actualizar pregunta
+  const updateQuestion = useCallback(
+    async (input: UpdateQuestionInput): Promise<Question | null> => {
+      setIsUpdating(true);
+      try {
+        const res = await fetch('/api/student/questions', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            questionId: input.questionId,
+            question_text: input.questionText,
+            video_timestamp: input.videoTimestamp,
+          }),
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          console.error('[useQuestions] API error updating question:', errorData);
+          throw new Error(errorData.error || 'Error al actualizar pregunta');
+        }
+
+        const { question } = await res.json();
+
+        // Optimistic update
+        mutate(
+          (currentData) => {
+            if (!currentData) return currentData;
+            return {
+              ...currentData,
+              questions: currentData.questions.map((q) =>
+                q.id === question.id ? { ...q, ...question } : q
+              ),
+            };
+          },
+          false
+        );
+
+        return question;
+      } catch (err) {
+        console.error('[useQuestions] Error updating question:', err);
+        if (data) {
+          mutate(data, false);
+        }
+        return null;
+      } finally {
+        setIsUpdating(false);
+      }
+    },
+    [mutate, data]
+  );
+
+  // Eliminar pregunta
+  const deleteQuestion = useCallback(
+    async (questionId: string): Promise<boolean> => {
+      setIsDeleting(true);
+      try {
+        const res = await fetch(`/api/student/questions?questionId=${questionId}`, {
+          method: 'DELETE',
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          console.error('[useQuestions] API error deleting question:', errorData);
+          throw new Error(errorData.error || 'Error al eliminar pregunta');
+        }
+
+        // Optimistic update
+        mutate(
+          (currentData) => {
+            if (!currentData) return currentData;
+            return {
+              ...currentData,
+              questions: currentData.questions.filter((q) => q.id !== questionId),
+            };
+          },
+          false
+        );
+
+        return true;
+      } catch (err) {
+        console.error('[useQuestions] Error deleting question:', err);
+        if (data) {
+          mutate(data, false);
+        }
+        return false;
+      } finally {
+        setIsDeleting(false);
+      }
+    },
+    [mutate, data]
   );
 
   // Responder a una pregunta con optimistic update
@@ -228,6 +332,10 @@ export function useQuestions({
     refetch,
     createQuestion,
     isCreating,
+    updateQuestion,
+    isUpdating,
+    deleteQuestion,
+    isDeleting,
     submitAnswer,
     isSubmittingAnswer,
   };

@@ -3,13 +3,13 @@
 import React, { useCallback, memo } from 'react';
 import {
   IconMessageCircle,
-  IconFlame,
-  IconHelpCircle,
   IconClock,
   IconSend,
   IconLoader2,
   IconThumbUp,
   IconCheck,
+  IconEdit,
+  IconTrash,
 } from '@tabler/icons-react';
 import Image from 'next/image';
 import { formatDistanceToNow } from 'date-fns';
@@ -45,11 +45,21 @@ interface QuestionCardProps {
   userEmail?: string;
   replyError?: string | null;
   clearReplyError?: () => void;
+  // Edit/Delete props
+  editingQuestionId: string | null;
+  editingQuestionText: string;
+  setEditingQuestionId: (id: string | null) => void;
+  setEditingQuestionText: (text: string) => void;
+  onUpdateQuestion: (questionId: string) => Promise<void>;
+  onDeleteQuestion: (questionId: string) => Promise<void>;
+  isUpdating: boolean;
+  isDeleting: boolean;
 }
 
 // ===== QUESTION CARD COMPONENT =====
 const QuestionCard = memo(function QuestionCard({
   question,
+  currentUserId,
   onTimestampClick,
   isPreviewMode,
   expandedQuestionId,
@@ -63,7 +73,20 @@ const QuestionCard = memo(function QuestionCard({
   userEmail,
   replyError,
   clearReplyError,
+  editingQuestionId,
+  editingQuestionText,
+  setEditingQuestionId,
+  setEditingQuestionText,
+  onUpdateQuestion,
+  onDeleteQuestion,
+  isUpdating,
+  isDeleting,
 }: QuestionCardProps) {
+  // Check if current user is the author
+  const isAuthor = !!(currentUserId && question.author?.id === currentUserId);
+  // Can only edit/delete if no answers
+  const canEditOrDelete = isAuthor && question.answersCount === 0;
+
   return (
     <div className="border-b pb-6" style={{ borderColor: 'rgba(15, 23, 42, 0.1)' }}>
       <div className="flex gap-3">
@@ -81,27 +104,89 @@ const QuestionCard = memo(function QuestionCard({
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="font-medium text-gray-900">{question.author?.name || "Usuario"}</span>
-            <span className="text-xs text-gray-500">
-              {formatDistanceToNow(new Date(question.createdAt), { addSuffix: true, locale: es })}
-            </span>
-            {question.videoTimestamp > 0 && (
-              <button
-                onClick={() => onTimestampClick?.(question.videoTimestamp)}
-                className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded hover:bg-purple-100"
-              >
-                {formatTimestamp(question.videoTimestamp)}
-              </button>
-            )}
-            {question.isResolved && (
-              <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded flex items-center gap-1">
-                <IconCheck size={12} />
-                Resuelta
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-gray-900">{question.author?.name || "Usuario"}</span>
+              <span className="text-xs text-gray-500">
+                {formatDistanceToNow(new Date(question.createdAt), { addSuffix: true, locale: es })}
               </span>
+              {question.videoTimestamp > 0 && (
+                <button
+                  onClick={() => onTimestampClick?.(question.videoTimestamp)}
+                  className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded hover:bg-purple-100"
+                >
+                  {formatTimestamp(question.videoTimestamp)}
+                </button>
+              )}
+              {question.isResolved && (
+                <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded flex items-center gap-1">
+                  <IconCheck size={12} />
+                  Resuelta
+                </span>
+              )}
+            </div>
+            {/* Edit/Delete buttons - only show for author with no answers */}
+            {!isPreviewMode && canEditOrDelete && editingQuestionId !== question.id && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    setEditingQuestionId(question.id);
+                    setEditingQuestionText(question.questionText);
+                  }}
+                  className="p-1.5 text-gray-400 hover:text-purple-600 rounded transition-colors"
+                  title="Editar pregunta"
+                >
+                  <IconEdit size={16} />
+                </button>
+                <button
+                  onClick={() => onDeleteQuestion(question.id)}
+                  disabled={isDeleting}
+                  className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors"
+                  title="Eliminar pregunta"
+                >
+                  {isDeleting ? (
+                    <IconLoader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <IconTrash size={16} />
+                  )}
+                </button>
+              </div>
             )}
           </div>
-          <p className="text-gray-700 mb-3">{question.questionText}</p>
+
+          {/* Question text or edit form */}
+          {editingQuestionId === question.id ? (
+            <div className="mb-3">
+              <textarea
+                value={editingQuestionText}
+                onChange={(e) => setEditingQuestionText(e.target.value)}
+                className="w-full p-3 border rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                rows={3}
+                style={{ borderColor: 'rgba(15, 23, 42, 0.1)' }}
+              />
+              <div className="flex justify-end gap-2 mt-2">
+                <button
+                  onClick={() => {
+                    setEditingQuestionId(null);
+                    setEditingQuestionText("");
+                  }}
+                  className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => onUpdateQuestion(question.id)}
+                  disabled={!editingQuestionText.trim() || editingQuestionText.trim().length < 10 || isUpdating}
+                  className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm font-medium disabled:opacity-50 hover:bg-purple-700 flex items-center gap-1"
+                >
+                  {isUpdating && <IconLoader2 className="w-3 h-3 animate-spin" />}
+                  Guardar cambios
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-gray-700 mb-3">{question.questionText}</p>
+          )}
 
           <div className="flex items-center gap-4 text-sm">
             <div className="flex items-center gap-1 text-gray-500">
@@ -245,6 +330,10 @@ function QuestionsTab({
     setSortBy,
     createQuestion,
     isCreating,
+    updateQuestion,
+    isUpdating,
+    deleteQuestion,
+    isDeleting,
     submitAnswer,
     isSubmittingAnswer,
   } = useQuestions({
@@ -259,6 +348,9 @@ function QuestionsTab({
   const [replyingToId, setReplyingToId] = React.useState<string | null>(null);
   const [replyText, setReplyText] = React.useState("");
   const [replyError, setReplyError] = React.useState<string | null>(null);
+  // Edit state
+  const [editingQuestionId, setEditingQuestionId] = React.useState<string | null>(null);
+  const [editingQuestionText, setEditingQuestionText] = React.useState("");
 
   // Constantes de validación (deben coincidir con el backend)
   const MIN_QUESTION_LENGTH = 10;
@@ -302,6 +394,26 @@ function QuestionsTab({
       setReplyError(result.error || 'Error al enviar la respuesta');
     }
   }, [replyText, submitAnswer]);
+
+  const handleUpdateQuestion = useCallback(async (questionId: string) => {
+    if (!editingQuestionText.trim() || editingQuestionText.trim().length < 10) return;
+
+    const result = await updateQuestion({
+      questionId,
+      questionText: editingQuestionText.trim(),
+    });
+
+    if (result) {
+      setEditingQuestionId(null);
+      setEditingQuestionText("");
+    }
+  }, [updateQuestion, editingQuestionText]);
+
+  const handleDeleteQuestion = useCallback(async (questionId: string) => {
+    if (!confirm('¿Estás seguro de eliminar esta pregunta?')) return;
+
+    await deleteQuestion(questionId);
+  }, [deleteQuestion]);
 
   const sortOptions: { key: QuestionSortBy; label: string }[] = [
     { key: 'recent', label: 'Más recientes' },
@@ -445,6 +557,14 @@ function QuestionsTab({
               replyError={replyError}
               clearReplyError={() => setReplyError(null)}
               userEmail={userEmail}
+              editingQuestionId={editingQuestionId}
+              editingQuestionText={editingQuestionText}
+              setEditingQuestionId={setEditingQuestionId}
+              setEditingQuestionText={setEditingQuestionText}
+              onUpdateQuestion={handleUpdateQuestion}
+              onDeleteQuestion={handleDeleteQuestion}
+              isUpdating={isUpdating}
+              isDeleting={isDeleting}
             />
           ))}
         </div>

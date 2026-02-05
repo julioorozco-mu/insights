@@ -80,13 +80,14 @@ export async function GET(req: NextRequest) {
     }
 
     // 5. Obtener notas del estudiante para esta lección
+    // Ordenar por fecha de creación descendente (más recientes primero)
     let query = supabase
       .from(TABLES.LESSON_NOTES)
       .select('id, content, video_timestamp, created_at, updated_at')
       .eq('student_id', student.id)
       .eq('lesson_id', lessonId)
-      .order('video_timestamp', { ascending: true })
-      .order('id', { ascending: true })
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(queryOptions.limit);
 
     // Filtro opcional por timestamp

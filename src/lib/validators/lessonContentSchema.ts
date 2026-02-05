@@ -148,6 +148,28 @@ export const acceptAnswerSchema = z.object({
     .uuid('ID de pregunta inválido'),
 });
 
+/**
+ * Schema para actualizar una pregunta existente
+ */
+export const updateQuestionSchema = z.object({
+  question_text: z
+    .string()
+    .min(LIMITS.QUESTION.MIN, `La pregunta debe tener al menos ${LIMITS.QUESTION.MIN} caracteres`)
+    .max(LIMITS.QUESTION.MAX, `La pregunta no puede exceder ${LIMITS.QUESTION.MAX} caracteres`)
+    .refine((val) => !hasDangerousContent(val), {
+      message: 'La pregunta contiene contenido no permitido',
+    })
+    .transform(sanitizeText)
+    .optional(),
+
+  video_timestamp: z
+    .number()
+    .int()
+    .min(LIMITS.VIDEO_TIMESTAMP.MIN)
+    .max(LIMITS.VIDEO_TIMESTAMP.MAX)
+    .optional(),
+});
+
 // =============================================================================
 // SCHEMAS DE NOTAS
 // =============================================================================
@@ -289,6 +311,7 @@ export type AcceptAnswerInput = z.infer<typeof acceptAnswerSchema>;
 export type CreateNoteInput = z.infer<typeof createNoteSchema>;
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 export type DeleteNoteInput = z.infer<typeof deleteNoteSchema>;
+export type UpdateQuestionInput = z.infer<typeof updateQuestionSchema>;
 
 export type ListQuestionsQuery = z.infer<typeof listQuestionsQuerySchema>;
 export type ListNotesQuery = z.infer<typeof listNotesQuerySchema>;

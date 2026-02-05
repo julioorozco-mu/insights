@@ -2,29 +2,17 @@
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import {
   IconChevronLeft,
   IconChevronRight,
   IconChevronDown,
-  IconPlayerPlay,
   IconCheck,
   IconX,
   IconShare,
   IconDotsVertical,
   IconStar,
-  IconStarFilled,
-  IconMessageCircle,
-  IconNote,
   IconVideo,
-  IconFile,
-  IconDownload,
-  IconClock,
-  IconSend,
-  IconTrash,
-  IconEdit,
-  IconThumbUp,
   IconLoader2,
   IconPaperclip,
   IconHeart,
@@ -37,13 +25,10 @@ import {
   IconClipboardCheck,
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
-import { formatDistanceToNow } from "date-fns";
-import { es } from "date-fns/locale";
 import CourseRatingModal from "@/components/course/CourseRatingModal";
 import RichTextContent from "@/components/ui/RichTextContent";
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
-import { formatTimestamp } from "./utils/lessonPlayerHelpers";
 
 // ===== DYNAMIC IMPORTS - Lazy loaded tabs =====
 const OverviewTab = dynamic(() => import("./_components/OverviewTab"), {
@@ -58,6 +43,31 @@ const QuestionsTab = dynamic(() => import("./_components/QuestionsTab"), {
 
 const NotesTab = dynamic(() => import("./_components/NotesTab"), {
   loading: () => <TabLoadingSkeleton type="notes" />,
+  ssr: false,
+});
+
+// Lazy loaded content blocks
+const QuizBlock = dynamic(() => import("./_components/QuizBlock"), {
+  loading: () => (
+    <div className="my-6 p-6 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border border-purple-200">
+      <div className="flex items-center justify-center gap-3 text-purple-600">
+        <div className="w-6 h-6 animate-spin rounded-full border-2 border-purple-600 border-t-transparent" />
+        <span className="font-medium">Cargando quiz...</span>
+      </div>
+    </div>
+  ),
+  ssr: false,
+});
+
+const AttachmentBlock = dynamic(() => import("./_components/AttachmentBlock"), {
+  loading: () => (
+    <div className="my-4 flex items-center gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200 animate-pulse">
+      <div className="w-10 h-10 bg-gray-200 rounded-lg" />
+      <div className="flex-1">
+        <div className="h-4 bg-gray-200 rounded w-32" />
+      </div>
+    </div>
+  ),
   ssr: false,
 });
 
@@ -216,39 +226,12 @@ const TOKENS = {
   }
 };
 
-// ===== HELPER: Format file size =====
-function formatFileSize(kb?: number): string {
-  if (!kb) return '';
-  if (kb < 1024) return `${kb} KB`;
-  return `${(kb / 1024).toFixed(1)} MB`;
-}
-
-// ===== HELPER: Get file icon based on type =====
-function getFileIcon(fileType: string) {
-  if (fileType.includes('pdf')) return '📄';
-  if (fileType.includes('image')) return '🖼️';
-  if (fileType.includes('video')) return '🎬';
-  if (fileType.includes('word') || fileType.includes('document')) return '📝';
-  if (fileType.includes('excel') || fileType.includes('spreadsheet')) return '📊';
-  if (fileType.includes('powerpoint') || fileType.includes('presentation')) return '📑';
-  return '📎';
-}
-
 // ===== HELPER: Extract YouTube video ID =====
 function getYouTubeVideoId(url: string): string | null {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
   const match = url.match(regExp);
   return (match && match[2].length === 11) ? match[2] : null;
 }
-
-// ===== HELPER: Extract path from Supabase Storage URL =====
-const extractStoragePath = (url: string): { bucket: string; path: string } | null => {
-  const match = url.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/);
-  if (match) {
-    return { bucket: match[1], path: decodeURIComponent(match[2]) };
-  }
-  return null;
-};
 
 // ===== HELPER: Get content type icons for a subsection =====
 const getSubsectionContentIcons = (blocks: ContentBlock[] | undefined): React.ReactElement[] => {
@@ -295,716 +278,9 @@ const getSubsectionContentIcons = (blocks: ContentBlock[] | undefined): React.Re
   return icons;
 };
 
-// ===== COMPONENT: Attachment Block (con URL firmada) =====
-function AttachmentBlock({ block }: { block: ContentBlock }) {
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+// AttachmentBlock moved to ./_components/AttachmentBlock (lazy loaded)
 
-  const fileSize = block.data?.fileSize ? formatFileSize(block.data.fileSize / 1024) : '';
-
-  const handleDownload = async () => {
-    // Si ya tenemos URL firmada válida, usarla
-    if (signedUrl) {
-      window.open(signedUrl, '_blank');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Extraer bucket y path de la URL pública guardada
-      console.log('[AttachmentBlock] URL original:', block.content);
-      const storageInfo = extractStoragePath(block.content);
-      console.log('[AttachmentBlock] Storage info:', storageInfo);
-
-      if (!storageInfo) {
-        // Si no es URL de Supabase Storage, abrir directamente
-        console.log('[AttachmentBlock] No es URL de Supabase, abriendo directamente');
-        window.open(block.content, '_blank');
-        return;
-      }
-
-      // Obtener URL firmada
-      const apiUrl = `/api/student/getSignedUrl?bucket=${storageInfo.bucket}&path=${encodeURIComponent(storageInfo.path)}&expiresIn=3600`;
-      console.log('[AttachmentBlock] Llamando API:', apiUrl);
-      const res = await fetch(apiUrl);
-      console.log('[AttachmentBlock] Response status:', res.status);
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Error al obtener acceso al archivo');
-      }
-
-      const data = await res.json();
-      setSignedUrl(data.signedUrl);
-      window.open(data.signedUrl, '_blank');
-    } catch (err: any) {
-      console.error('Error getting signed URL:', err);
-      console.error('Error details:', JSON.stringify(err, null, 2));
-      setError(err?.message || 'Error al acceder al archivo');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="my-4 flex items-center gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
-      <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-        <IconPaperclip className="w-5 h-5 text-purple-600" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-gray-900 truncate">{block.data?.fileName || 'Archivo adjunto'}</p>
-        {fileSize && <p className="text-xs text-gray-500">{fileSize}</p>}
-        {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-      </div>
-      <button
-        onClick={handleDownload}
-        disabled={loading}
-        className="px-4 py-2 text-sm font-medium text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {loading ? 'Cargando...' : 'Ver archivo'}
-      </button>
-    </div>
-  );
-}
-
-// ===== COMPONENT: Quiz Block =====
-interface QuizOption {
-  label: string;
-  value: string;
-  imageUrl?: string;
-  isCorrect?: boolean;
-}
-
-interface QuizQuestion {
-  id: string;
-  type: string;
-  questionText: string;
-  options?: QuizOption[];
-  correctAnswer?: string | string[];
-  isRequired?: boolean;
-}
-
-interface QuizData {
-  id: string;
-  title: string;
-  description?: string;
-  type: string;
-  questions: QuizQuestion[];
-}
-
-function QuizBlock({
-  quizId,
-  quizTitle,
-  courseId,
-  lessonId,
-  subsectionIndex,
-  totalSubsections,
-  onProgressUpdate,
-  onQuizScoreUpdate,
-  userId,
-}: {
-  quizId?: string;
-  quizTitle?: string;
-  courseId: string;
-  lessonId?: string;
-  subsectionIndex?: number;
-  totalSubsections?: number;
-  onProgressUpdate?: (subsectionIndex: number, isCompleted: boolean) => void;
-  onQuizScoreUpdate?: (
-    lessonId: string,
-    subsectionIndex: number,
-    score: { correct: number; total: number } | null
-  ) => void;
-  userId?: string;
-}) {
-  const [quiz, setQuiz] = useState<QuizData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
-  const [submitted, setSubmitted] = useState(false);
-  const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
-  const [showResults, setShowResults] = useState(false);
-  const [savingAnswers, setSavingAnswers] = useState(false);
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-
-  // Función para obtener el mensaje de retroalimentación basado en el número de aciertos
-  const getFeedbackMessage = (correctAnswers: number): { title: string; message: string; type: 'low' | 'medium' | 'high' } => {
-    if (correctAnswers <= 4) {
-      return {
-        title: 'Necesitas reforzar',
-        message: 'Los resultados indican que todavía hay dudas importantes sobre los conceptos de democracia, ciudadanía y ciudadanía universitaria. Se recomienda releer las definiciones básicas, revisar los recursos digitales y regresar al mapa conceptual para reforzar la comprensión antes de avanzar.',
-        type: 'low'
-      };
-    } else if (correctAnswers <= 7) {
-      return {
-        title: 'Buen progreso',
-        message: 'Se reconoce un dominio intermedio de los conceptos; hay una base, pero aún existen áreas por clarificar. Es conveniente revisar con atención las preguntas falladas y contrastarlas con ejemplos concretos de la vida universitaria para fortalecer la comprensión.',
-        type: 'medium'
-      };
-    } else {
-      return {
-        title: '¡Excelente trabajo!',
-        message: 'Los resultados muestran una comprensión adecuada de los conceptos básicos, lo que permite avanzar al siguiente tema con confianza. Se sugiere seguir conectando estas ideas con experiencias reales de participación y ejercicios de ciudadanía universitaria.',
-        type: 'high'
-      };
-    }
-  };
-
-  useEffect(() => {
-    if (!quizId) {
-      setLoading(false);
-      setError("No se encontró el ID del quiz");
-      return;
-    }
-
-    const loadQuiz = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch(`/api/student/getSurvey?surveyId=${quizId}&courseId=${courseId}`);
-        if (!res.ok) throw new Error('Error al cargar el quiz');
-
-        const data = await res.json();
-        const survey = data.survey;
-
-        if (survey) {
-          const quizData = {
-            id: survey.id,
-            title: survey.title,
-            description: survey.description,
-            type: survey.type,
-            questions: survey.questions || [],
-          };
-          setQuiz(quizData);
-
-          // Cargar respuestas guardadas si existen
-          if (userId && survey.id) {
-            try {
-              const savedAnswersRes = await fetch(
-                `/api/student/getQuizResponse?surveyId=${survey.id}&userId=${userId}`
-              );
-              if (savedAnswersRes.ok) {
-                const savedData = await savedAnswersRes.json();
-                if (savedData.response && savedData.response.answers) {
-                  // Restaurar respuestas guardadas
-                  const savedAnswers: Record<string, string | string[]> = {};
-                  savedData.response.answers.forEach((ans: any) => {
-                    savedAnswers[ans.questionId] = ans.answer;
-                  });
-                  setAnswers(savedAnswers);
-                  // Si hay respuestas guardadas, marcar como enviado y calcular score
-                  if (Object.keys(savedAnswers).length > 0) {
-                    setSubmitted(true);
-                    setShowResults(true);
-                    // Calcular score
-                    let correctCount = 0;
-                    quizData.questions.forEach((q: any) => {
-                      const userAnswer = savedAnswers[q.id];
-                      if (q.options && q.options.some((o: any) => o.isCorrect)) {
-                        const correctOptions = q.options.filter((o: any) => o.isCorrect).map((o: any) => o.value);
-                        if (q.type === 'multiple_choice') {
-                          const userAnswers = Array.isArray(userAnswer) ? userAnswer : [];
-                          if (correctOptions.length === userAnswers.length &&
-                            correctOptions.every((c: string) => userAnswers.includes(c))) {
-                            correctCount++;
-                          }
-                        } else {
-                          if (correctOptions.includes(userAnswer as string)) {
-                            correctCount++;
-                          }
-                        }
-                      } else if (q.correctAnswer) {
-                        if (Array.isArray(q.correctAnswer)) {
-                          if (Array.isArray(userAnswer) &&
-                            userAnswer.length === q.correctAnswer.length &&
-                            userAnswer.every((a: string) => q.correctAnswer?.includes(a))) {
-                            correctCount++;
-                          }
-                        } else if (userAnswer === q.correctAnswer) {
-                          correctCount++;
-                        }
-                      }
-                    });
-                    setScore({ correct: correctCount, total: quizData.questions.length });
-                    if (onQuizScoreUpdate && lessonId && subsectionIndex !== undefined) {
-                      onQuizScoreUpdate(lessonId, subsectionIndex, {
-                        correct: correctCount,
-                        total: quizData.questions.length,
-                      });
-                    }
-
-                    // Solo actualizar progreso si el quiz fue APROBADO (≥60%)
-                    // Esto evita que la siguiente lección se desbloquee si no se aprobó el quiz
-                    const percentage = correctCount / quizData.questions.length;
-                    const isQuizPassed = percentage >= 0.6;
-
-                    if (isQuizPassed && onProgressUpdate && subsectionIndex !== undefined && totalSubsections !== undefined) {
-                      const isLastSubsection = subsectionIndex === totalSubsections - 1;
-                      // Usar setTimeout para asegurar que el estado se actualice después del render
-                      setTimeout(() => {
-                        onProgressUpdate(subsectionIndex, isLastSubsection);
-                      }, 100);
-                    }
-                  }
-                }
-              }
-            } catch (err) {
-              console.error('Error loading saved answers:', err);
-              // Continuar sin respuestas guardadas
-            }
-          }
-        } else {
-          setError('Quiz no encontrado');
-        }
-      } catch (err: any) {
-        console.error("Error loading quiz:", err);
-        setError(err.message || "Error al cargar el quiz");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadQuiz();
-  }, [quizId, courseId, userId]);
-
-  const handleAnswerChange = (questionId: string, value: string | string[]) => {
-    setAnswers(prev => ({ ...prev, [questionId]: value }));
-  };
-
-  const handleSubmit = async () => {
-    if (!quiz || !quizId || !userId) return;
-
-    setSavingAnswers(true);
-
-    try {
-      // Calcular score
-      let correctCount = 0;
-      quiz.questions.forEach(q => {
-        const userAnswer = answers[q.id];
-
-        // Verificar usando isCorrect en las opciones
-        if (q.options && q.options.some(o => o.isCorrect)) {
-          const correctOptions = q.options.filter(o => o.isCorrect).map(o => o.value);
-
-          if (q.type === 'multiple_choice') {
-            // Para multiple choice, todas las correctas deben estar seleccionadas
-            const userAnswers = Array.isArray(userAnswer) ? userAnswer : [];
-            if (correctOptions.length === userAnswers.length &&
-              correctOptions.every(c => userAnswers.includes(c))) {
-              correctCount++;
-            }
-          } else {
-            // Para single choice
-            if (correctOptions.includes(userAnswer as string)) {
-              correctCount++;
-            }
-          }
-        } else if (q.correctAnswer) {
-          // Fallback a correctAnswer si no hay isCorrect
-          if (Array.isArray(q.correctAnswer)) {
-            if (Array.isArray(userAnswer) &&
-              userAnswer.length === q.correctAnswer.length &&
-              userAnswer.every(a => q.correctAnswer?.includes(a))) {
-              correctCount++;
-            }
-          } else if (userAnswer === q.correctAnswer) {
-            correctCount++;
-          }
-        }
-      });
-
-      // Preparar respuestas para guardar
-      const answersToSave = quiz.questions.map((q) => ({
-        questionId: q.id,
-        answer: answers[q.id] || '',
-      }));
-
-      // Guardar respuestas en la base de datos
-      const saveRes = await fetch('/api/student/submitQuiz', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          surveyId: quizId,
-          courseId,
-          lessonId: lessonId || null,
-          answers: answersToSave,
-        }),
-      });
-
-      if (!saveRes.ok) {
-        console.error('Error saving quiz answers');
-        // Continuar de todas formas para mostrar el resultado
-      }
-
-      setScore({ correct: correctCount, total: quiz.questions.length });
-      setSubmitted(true);
-      setShowResults(true);
-      setShowFeedbackModal(true);
-      if (onQuizScoreUpdate && lessonId && subsectionIndex !== undefined) {
-        onQuizScoreUpdate(lessonId, subsectionIndex, {
-          correct: correctCount,
-          total: quiz.questions.length,
-        });
-      }
-
-      // Actualizar progreso solo si el quiz fue APROBADO (≥60%)
-      // Si no se aprueba, el progreso NO se actualiza y la siguiente subsección permanece bloqueada
-      const quizPercentage = correctCount / quiz.questions.length;
-      const quizPassed = quizPercentage >= 0.6;
-
-      if (quizPassed && onProgressUpdate && subsectionIndex !== undefined && totalSubsections !== undefined) {
-        // Marcar esta subsección como completada solo si aprobó el quiz
-        const isLastSubsection = subsectionIndex === totalSubsections - 1;
-        onProgressUpdate(subsectionIndex, isLastSubsection);
-      }
-    } catch (err) {
-      console.error('Error submitting quiz:', err);
-    } finally {
-      setSavingAnswers(false);
-    }
-  };
-
-  const handleRetry = async () => {
-    // Resetear respuestas localmente
-    setAnswers({});
-    setSubmitted(false);
-    setScore(null);
-    setShowResults(false);
-    if (onQuizScoreUpdate && lessonId && subsectionIndex !== undefined) {
-      onQuizScoreUpdate(lessonId, subsectionIndex, null);
-    }
-
-    // Eliminar respuestas guardadas de la base de datos
-    if (quizId && userId) {
-      try {
-        await fetch('/api/student/deleteQuizResponse', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            surveyId: quizId,
-            userId,
-          }),
-        });
-      } catch (err) {
-        console.error('Error deleting quiz response:', err);
-        // Continuar de todas formas
-      }
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="my-6 p-6 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border border-purple-200">
-        <div className="flex items-center justify-center gap-3 text-purple-600">
-          <IconLoader2 className="w-6 h-6 animate-spin" />
-          <span className="font-medium">Cargando quiz...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !quiz) {
-    return (
-      <div className="my-6 p-6 bg-red-50 rounded-xl border border-red-200">
-        <div className="flex items-center gap-3 text-red-600">
-          <IconX className="w-6 h-6" />
-          <span className="font-medium">{error || "No se pudo cargar el quiz"}</span>
-        </div>
-      </div>
-    );
-  }
-
-  const getQuestionTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      'single_choice': 'Selección única',
-      'multiple_choice': 'Selección múltiple',
-      'short_text': 'Respuesta corta',
-      'long_text': 'Respuesta larga',
-      'dropdown': 'Desplegable',
-      'quiz': 'Quiz',
-    };
-    return labels[type] || type;
-  };
-
-  const isCorrectAnswer = (questionId: string, optionValue: string) => {
-    const question = quiz.questions.find(q => q.id === questionId);
-    if (!question) return false;
-
-    // Primero verificar si la opción tiene isCorrect marcado
-    const option = question.options?.find(o => o.value === optionValue);
-    if (option?.isCorrect) return true;
-
-    // Si no, verificar contra correctAnswer
-    if (!question.correctAnswer) return false;
-
-    if (Array.isArray(question.correctAnswer)) {
-      return question.correctAnswer.includes(optionValue);
-    }
-    return question.correctAnswer === optionValue;
-  };
-
-  return (
-    <div className="my-6 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border border-purple-200 overflow-hidden">
-      {/* Header */}
-      <div className="bg-[#192170] text-white px-6 py-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-            <IconCheck className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="font-bold text-lg">{quiz.title || quizTitle || "Quiz"}</h3>
-            {quiz.description && (
-              <p className="text-white/80 text-sm mt-1">{quiz.description}</p>
-            )}
-          </div>
-        </div>
-        <div className="mt-3 flex items-center gap-4 text-sm text-white/70">
-          <span>{quiz.questions.length} preguntas</span>
-          {score && (
-            <span className="bg-white/20 px-3 py-1 rounded-full font-semibold">
-              Puntuación: {score.correct}/{score.total} ({Math.round((score.correct / score.total) * 100)}%)
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Questions */}
-      <div className="p-6 space-y-6">
-        {quiz.questions.map((question, index) => (
-          <div
-            key={question.id}
-            className={cn(
-              "p-5 rounded-xl border transition-all",
-              showResults && question.correctAnswer
-                ? isCorrectAnswer(question.id, answers[question.id] as string)
-                  ? "bg-green-50 border-green-300"
-                  : "bg-red-50 border-red-300"
-                : "bg-white border-gray-200"
-            )}
-          >
-            <div className="flex items-start gap-3 mb-4">
-              <span className="w-8 h-8 bg-[#192170] text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0">
-                {index + 1}
-              </span>
-              <div className="flex-1">
-                <p className="font-semibold text-gray-900">{question.questionText}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {getQuestionTypeLabel(question.type)}
-                  {question.isRequired && <span className="text-red-500 ml-1">*</span>}
-                </p>
-              </div>
-            </div>
-
-            {/* Options for choice questions */}
-            {['single_choice', 'multiple_choice', 'dropdown', 'quiz'].includes(question.type) && question.options && (
-              <div className="space-y-2 ml-11">
-                {question.options.map((option, optIndex) => {
-                  const optionValue = option.value;
-                  const optionLabel = option.label;
-
-                  const isSelected = question.type === 'multiple_choice'
-                    ? (answers[question.id] as string[] || []).includes(optionValue)
-                    : answers[question.id] === optionValue;
-
-                  // Solo mostrar feedback para respuestas SELECCIONADAS
-                  // No revelar cuáles son las correctas si no las seleccionó
-                  const optionIsCorrect = option.isCorrect || isCorrectAnswer(question.id, optionValue);
-                  const isSelectedAndCorrect = showResults && isSelected && optionIsCorrect;
-                  const isSelectedAndWrong = showResults && isSelected && !optionIsCorrect;
-
-                  return (
-                    <label
-                      key={optIndex}
-                      className={cn(
-                        "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
-                        submitted ? "cursor-default" : "hover:bg-gray-50",
-                        isSelected && !showResults && "bg-purple-50 border-purple-300",
-                        isSelectedAndCorrect && "bg-green-100 border-green-400",
-                        isSelectedAndWrong && "bg-red-100 border-red-400",
-                        !isSelected && !isSelectedAndCorrect && !isSelectedAndWrong && "border-gray-200"
-                      )}
-                    >
-                      <input
-                        type={question.type === 'multiple_choice' ? 'checkbox' : 'radio'}
-                        name={question.id}
-                        value={optionValue}
-                        checked={isSelected}
-                        disabled={submitted}
-                        onChange={(e) => {
-                          if (question.type === 'multiple_choice') {
-                            const current = (answers[question.id] as string[]) || [];
-                            if (e.target.checked) {
-                              handleAnswerChange(question.id, [...current, optionValue]);
-                            } else {
-                              handleAnswerChange(question.id, current.filter(o => o !== optionValue));
-                            }
-                          } else {
-                            handleAnswerChange(question.id, optionValue);
-                          }
-                        }}
-                        className="w-4 h-4 text-purple-600 focus:ring-purple-500"
-                      />
-                      <span className={cn(
-                        "flex-1",
-                        isSelectedAndCorrect && "font-semibold text-green-700",
-                        isSelectedAndWrong && "text-red-700"
-                      )}>
-                        {optionLabel}
-                      </span>
-                      {isSelectedAndCorrect && (
-                        <IconCheck className="w-5 h-5 text-green-600" />
-                      )}
-                      {isSelectedAndWrong && (
-                        <IconX className="w-5 h-5 text-red-600" />
-                      )}
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Text input for text questions */}
-            {['short_text', 'long_text'].includes(question.type) && (
-              <div className="ml-11">
-                {question.type === 'short_text' ? (
-                  <input
-                    type="text"
-                    value={(answers[question.id] as string) || ''}
-                    onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                    disabled={submitted}
-                    placeholder="Escribe tu respuesta..."
-                    className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50"
-                  />
-                ) : (
-                  <textarea
-                    value={(answers[question.id] as string) || ''}
-                    onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                    disabled={submitted}
-                    placeholder="Escribe tu respuesta..."
-                    rows={4}
-                    className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 resize-none"
-                  />
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-
-        {/* Actions */}
-        <div className="flex items-center justify-between pt-4 border-t border-purple-200">
-          {!submitted ? (
-            <button
-              onClick={handleSubmit}
-              disabled={Object.keys(answers).length === 0 || savingAnswers}
-              className="px-6 py-3 bg-[#192170] text-white rounded-lg font-semibold hover:bg-[#141a5a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {savingAnswers ? (
-                <>
-                  <IconLoader2 className="w-5 h-5 animate-spin" />
-                  Guardando...
-                </>
-              ) : (
-                <>
-                  <IconCheck className="w-5 h-5" />
-                  Enviar respuestas
-                </>
-              )}
-            </button>
-          ) : (
-            <button
-              onClick={handleRetry}
-              className="px-6 py-3 bg-purple-100 text-purple-700 rounded-lg font-semibold hover:bg-purple-200 transition-colors flex items-center gap-2"
-            >
-              Intentar de nuevo
-            </button>
-          )}
-
-          {score && (() => {
-            const percentage = score.correct / score.total;
-            const passed = percentage >= 0.6;
-            return (
-              <div className={cn(
-                "text-lg font-bold px-4 py-2 rounded-lg",
-                passed
-                  ? "bg-green-100 text-green-700"
-                  : "bg-red-100 text-red-700"
-              )}>
-                {passed ? "¡Aprobado! " : "No aprobado - "}
-                {Math.round(percentage * 100)}%
-                {!passed && (
-                  <span className="text-sm font-normal ml-2">
-                    (Se requiere 60%)
-                  </span>
-                )}
-              </div>
-            );
-          })()}
-        </div>
-      </div>
-
-      {/* Modal de Retroalimentación General */}
-      {showFeedbackModal && score && (() => {
-        const feedback = getFeedbackMessage(score.correct);
-        const bgColor = feedback.type === 'high' ? 'bg-emerald-50' : feedback.type === 'medium' ? 'bg-amber-50' : 'bg-red-50';
-        const borderColor = feedback.type === 'high' ? 'border-emerald-200' : feedback.type === 'medium' ? 'border-amber-200' : 'border-red-200';
-        const titleColor = feedback.type === 'high' ? 'text-emerald-700' : feedback.type === 'medium' ? 'text-amber-700' : 'text-red-700';
-        const iconBgColor = feedback.type === 'high' ? 'bg-emerald-100' : feedback.type === 'medium' ? 'bg-amber-100' : 'bg-red-100';
-        const iconColor = feedback.type === 'high' ? 'text-emerald-600' : feedback.type === 'medium' ? 'text-amber-600' : 'text-red-600';
-        const buttonColor = feedback.type === 'high' ? 'bg-emerald-600 hover:bg-emerald-700' : feedback.type === 'medium' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-red-600 hover:bg-red-700';
-
-        return (
-          <dialog className="modal modal-open">
-            <div className={cn("modal-box max-w-lg", bgColor, borderColor, "border-2")}>
-              <div className="flex flex-col items-center text-center">
-                {/* Icono */}
-                <div className={cn("w-16 h-16 rounded-full flex items-center justify-center mb-4", iconBgColor)}>
-                  {feedback.type === 'high' ? (
-                    <IconStar className={cn("w-8 h-8", iconColor)} />
-                  ) : feedback.type === 'medium' ? (
-                    <IconThumbUp className={cn("w-8 h-8", iconColor)} />
-                  ) : (
-                    <IconNote className={cn("w-8 h-8", iconColor)} />
-                  )}
-                </div>
-
-                {/* Puntuación */}
-                <div className="mb-4">
-                  <span className={cn("text-4xl font-bold", titleColor)}>
-                    {score.correct}/{score.total}
-                  </span>
-                  <p className="text-gray-500 text-sm mt-1">aciertos</p>
-                </div>
-
-                {/* Título */}
-                <h3 className={cn("text-xl font-bold mb-3", titleColor)}>
-                  {feedback.title}
-                </h3>
-
-                {/* Mensaje */}
-                <p className="text-gray-700 leading-relaxed mb-6">
-                  {feedback.message}
-                </p>
-
-                {/* Botón */}
-                <button
-                  onClick={() => setShowFeedbackModal(false)}
-                  className={cn("px-6 py-3 text-white rounded-lg font-semibold transition-colors", buttonColor)}
-                >
-                  Entendido
-                </button>
-              </div>
-            </div>
-            <form method="dialog" className="modal-backdrop bg-black/50">
-              <button onClick={() => setShowFeedbackModal(false)}>close</button>
-            </form>
-          </dialog>
-        );
-      })()}
-    </div>
-  );
-}
+// QuizBlock moved to ./_components/QuizBlock (lazy loaded)
 
 // ===== COMPONENT: Content Block Renderer =====
 function ContentBlockRenderer({

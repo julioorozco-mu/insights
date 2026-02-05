@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { TABLES } from '@/utils/constants';
 import {
   createQuestionSchema,
+  updateQuestionSchema,
   listQuestionsQuerySchema,
   parseRequestBody,
   parseQueryParams,
@@ -319,6 +320,297 @@ export async function POST(req: NextRequest) {
         },
       },
     }, { status: 201 });
+
+  } catch (e: any) {
+    console.error('[questions API] Error:', e);
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/student/questions - Eliminar una pregunta
+ * Query params: questionId
+ *
+ * SEGURIDAD:
+ * - Autenticación requerida via session
+ * - Verifica que la pregunta pertenece al estudiante autenticado
+ * - Solo se puede eliminar si no tiene respuestas
+ */
+export async function DELETE(req: NextRequest) {
+  try {
+    // 1. Autenticación
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'No autorizado' },
+        { status: 401 }
+      );
+    }
+
+    // 2. Rate limiting
+    const rateLimitResponse = rateLimitMiddleware(
+      req,
+      RATE_LIMITS.CONTENT_CREATE,
+      user.id
+    );
+    if (rateLimitResponse) return rateLimitResponse;
+
+    // 3. Validar questionId
+    const { searchParams } = new URL(req.url);
+    const questionId = searchParams.get('questionId');
+
+    if (!questionId) {
+      return NextResponse.json(
+        { error: 'questionId es requerido' },
+        { status: 400 }
+      );
+    }
+
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(questionId)) {
+      return NextResponse.json(
+        { error: 'questionId inválido' },
+        { status: 400 }
+      );
+    }
+
+    // 4. Obtener student_id del usuario autenticado
+    const { data: student, error: studentError } = await supabase
+      .from(TABLES.STUDENTS)
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (studentError || !student) {
+      return NextResponse.json(
+        { error: 'No se encontró el registro de estudiante' },
+        { status: 404 }
+      );
+    }
+
+    // 5. Verificar que la pregunta pertenece al estudiante y no tiene respuestas
+    const { data: question, error: questionCheckError } = await supabase
+      .from(TABLES.LESSON_QUESTIONS)
+      .select('id, student_id, answer_count')
+      .eq('id', questionId)
+      .single();
+
+    if (questionCheckError || !question) {
+      return NextResponse.json(
+        { error: 'Pregunta no encontrada' },
+        { status: 404 }
+      );
+    }
+
+    if (question.student_id !== student.id) {
+      return NextResponse.json(
+        { error: 'No tienes permiso para eliminar esta pregunta' },
+        { status: 403 }
+      );
+    }
+
+    if (question.answer_count > 0) {
+      return NextResponse.json(
+        { error: 'No se puede eliminar una pregunta que tiene respuestas' },
+        { status: 400 }
+      );
+    }
+
+    // 6. Eliminar la pregunta
+    const { error: deleteError } = await supabase
+      .from(TABLES.LESSON_QUESTIONS)
+      .delete()
+      .eq('id', questionId)
+      .eq('student_id', student.id);
+
+    if (deleteError) {
+      console.error('[questions API] Error deleting question:', deleteError);
+      return NextResponse.json(
+        { error: 'Error al eliminar la pregunta' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 });
+
+  } catch (e: any) {
+    console.error('[questions API] Error:', e);
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PATCH /api/student/questions - Actualizar una pregunta
+ * Body: { questionId, questionText }
+ *
+ * SEGURIDAD:
+ * - Autenticación requerida via session
+ * - Verifica que la pregunta pertenece al estudiante autenticado
+ * - Solo se puede editar si no tiene respuestas
+ * - Validación y sanitización con Zod
+ */
+export async function PATCH(req: NextRequest) {
+  try {
+    // 1. Autenticación
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'No autorizado' },
+        { status: 401 }
+      );
+    }
+
+    // 2. Rate limiting
+    const rateLimitResponse = rateLimitMiddleware(
+      req,
+      RATE_LIMITS.CONTENT_CREATE,
+      user.id
+    );
+    if (rateLimitResponse) return rateLimitResponse;
+
+    // 3. Parsear y validar body
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { error: 'Body JSON inválido' },
+        { status: 400 }
+      );
+    }
+
+    const { questionId } = body;
+
+    if (!questionId) {
+      return NextResponse.json(
+        { error: 'questionId es requerido' },
+        { status: 400 }
+      );
+    }
+
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(questionId)) {
+      return NextResponse.json(
+        { error: 'questionId inválido' },
+        { status: 400 }
+      );
+    }
+
+    // Validar contenido con Zod
+    const parseResult = updateQuestionSchema.safeParse(body);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: parseResult.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const { question_text, video_timestamp } = parseResult.data;
+
+    // 4. Obtener student_id del usuario autenticado
+    const { data: student, error: studentError } = await supabase
+      .from(TABLES.STUDENTS)
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (studentError || !student) {
+      return NextResponse.json(
+        { error: 'No se encontró el registro de estudiante' },
+        { status: 404 }
+      );
+    }
+
+    // 5. Verificar que la pregunta pertenece al estudiante y no tiene respuestas
+    const { data: existingQuestion, error: questionCheckError } = await supabase
+      .from(TABLES.LESSON_QUESTIONS)
+      .select('id, student_id, answer_count')
+      .eq('id', questionId)
+      .single();
+
+    if (questionCheckError || !existingQuestion) {
+      return NextResponse.json(
+        { error: 'Pregunta no encontrada' },
+        { status: 404 }
+      );
+    }
+
+    if (existingQuestion.student_id !== student.id) {
+      return NextResponse.json(
+        { error: 'No tienes permiso para editar esta pregunta' },
+        { status: 403 }
+      );
+    }
+
+    if (existingQuestion.answer_count > 0) {
+      return NextResponse.json(
+        { error: 'No se puede editar una pregunta que tiene respuestas' },
+        { status: 400 }
+      );
+    }
+
+    // 6. Actualizar la pregunta
+    const updateData: Record<string, unknown> = {};
+    if (question_text !== undefined) updateData.question_text = question_text;
+    if (video_timestamp !== undefined) updateData.video_timestamp = video_timestamp;
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json(
+        { error: 'Nada que actualizar' },
+        { status: 400 }
+      );
+    }
+
+    const { data: question, error: updateError } = await supabase
+      .from(TABLES.LESSON_QUESTIONS)
+      .update(updateData)
+      .eq('id', questionId)
+      .eq('student_id', student.id)
+      .select(`
+        id,
+        question_text,
+        video_timestamp,
+        is_resolved,
+        upvotes,
+        answer_count,
+        created_at
+      `)
+      .single();
+
+    if (updateError) {
+      console.error('[questions API] Error updating question:', updateError);
+      return NextResponse.json(
+        { error: 'Error al actualizar la pregunta' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      question: {
+        id: question.id,
+        questionText: question.question_text,
+        videoTimestamp: question.video_timestamp,
+        isResolved: question.is_resolved,
+        upvotes: question.upvotes,
+        answersCount: question.answer_count || 0,
+        createdAt: question.created_at,
+        author: {
+          id: user.id,
+          name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuario',
+          avatarUrl: user.user_metadata?.avatar_url,
+        },
+      },
+    }, { status: 200 });
 
   } catch (e: any) {
     console.error('[questions API] Error:', e);
