@@ -1543,7 +1543,10 @@ CREATE TABLE IF NOT EXISTS "public"."survey_responses" (
     "course_id" "uuid",
     "lesson_id" "uuid",
     "answers" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
-    "submitted_at" timestamp with time zone DEFAULT "now"()
+    "submitted_at" timestamp with time zone DEFAULT "now"(),
+    "score" integer,
+    "total_questions" integer,
+    "percentage" numeric(5,2)
 );
 
 
@@ -1551,6 +1554,18 @@ ALTER TABLE "public"."survey_responses" OWNER TO "postgres";
 
 
 COMMENT ON TABLE "public"."survey_responses" IS 'Respuestas a encuestas';
+
+
+
+COMMENT ON COLUMN "public"."survey_responses"."score" IS 'Number of correct answers';
+
+
+
+COMMENT ON COLUMN "public"."survey_responses"."total_questions" IS 'Total number of questions in the quiz';
+
+
+
+COMMENT ON COLUMN "public"."survey_responses"."percentage" IS 'Score as percentage (0-100)';
 
 
 
@@ -2505,6 +2520,10 @@ CREATE INDEX "idx_student_enrollments_subsection_progress" ON "public"."student_
 
 
 CREATE INDEX "idx_students_user_id" ON "public"."students" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_survey_responses_course_user_pct" ON "public"."survey_responses" USING "btree" ("course_id", "user_id", "percentage");
 
 
 
@@ -3638,6 +3657,50 @@ ALTER TABLE "public"."student_answers" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."student_enrollments" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "student_enrollments_admin_delete" ON "public"."student_enrollments" FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role"]))))));
+
+
+
+CREATE POLICY "student_enrollments_admin_insert" ON "public"."student_enrollments" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
+   FROM "public"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role"]))))));
+
+
+
+CREATE POLICY "student_enrollments_admin_select" ON "public"."student_enrollments" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role", 'support'::"public"."user_role"]))))));
+
+
+
+CREATE POLICY "student_enrollments_admin_update" ON "public"."student_enrollments" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"public"."user_role", 'superadmin'::"public"."user_role"]))))));
+
+
+
+CREATE POLICY "student_enrollments_select_own" ON "public"."student_enrollments" FOR SELECT TO "authenticated" USING (("student_id" IN ( SELECT "students"."id"
+   FROM "public"."students"
+  WHERE ("students"."user_id" = "auth"."uid"()))));
+
+
+
+CREATE POLICY "student_enrollments_teacher_select" ON "public"."student_enrollments" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."courses"
+  WHERE (("courses"."id" = "student_enrollments"."course_id") AND ("auth"."uid"() = ANY ("courses"."teacher_ids"))))));
+
+
+
+CREATE POLICY "student_enrollments_update_own" ON "public"."student_enrollments" FOR UPDATE TO "authenticated" USING (("student_id" IN ( SELECT "students"."id"
+   FROM "public"."students"
+  WHERE ("students"."user_id" = "auth"."uid"())))) WITH CHECK (("student_id" IN ( SELECT "students"."id"
+   FROM "public"."students"
+  WHERE ("students"."user_id" = "auth"."uid"()))));
+
 
 
 ALTER TABLE "public"."students" ENABLE ROW LEVEL SECURITY;

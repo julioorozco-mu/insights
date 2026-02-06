@@ -19,6 +19,19 @@ interface RecommendedMicrocredential {
   salePercentage: number;
 }
 
+// Quiz/exam detail for accordion in Mis Cursos
+interface QuizExamDetailData {
+  id: string;
+  name: string;
+  passed: boolean;
+  score: number;
+  totalQuestions: number;
+  percentage: number;
+  completedDate: string | null;
+  lessonId: string;
+  subsectionIndex: number;
+}
+
 // Types for Mis Cursos section (microcredential-grouped view)
 interface MisCursosCourseProgressData {
   courseId: string;
@@ -34,6 +47,7 @@ interface MisCursosCourseProgressData {
   progressPercent: number;
   totalQuizzes: number;
   completedQuizzes: number;
+  quizDetails: QuizExamDetailData[];
   lastAccessedLessonId: string | null;
   lastAccessedSubsectionIndex: number;
 }
@@ -56,6 +70,7 @@ interface MisCursosStandaloneCourseData {
   progressPercent: number;
   totalQuizzes: number;
   completedQuizzes: number;
+  quizDetails: QuizExamDetailData[];
   lastAccessedLessonId: string | null;
   lastAccessedSubsectionIndex: number;
 }
@@ -414,8 +429,50 @@ async function fetchStudentDashboardData(
       .limit(6),
   ]);
 
-  // Fetch additional data for Mis Cursos section (sections + quiz counts)
-  const [courseSectionsResult, courseTestsResult, testAttemptsResult] =
+  // Extract quizIds from lesson content JSON (quizzes are linked via block.data.quizId, NOT via surveys.course_id)
+  // Also save lessonId + subsectionIndex for each quiz (needed for accordion detail + retry links)
+  interface QuizMapping {
+    quizId: string;
+    courseId: string;
+    lessonId: string;
+    subsectionIndex: number;
+  }
+  const quizMappings: QuizMapping[] = [];
+  const quizIdsByCourse = new Map<string, string[]>();
+  const allQuizIds = new Set<string>();
+  for (const lesson of enrolledLessonsResult.data || []) {
+    const content = (lesson as any).content;
+    if (!content) continue;
+    try {
+      const parsed = JSON.parse(content);
+      const subsections = parsed.subsections || [];
+      for (let subIdx = 0; subIdx < subsections.length; subIdx++) {
+        const sub = subsections[subIdx];
+        if (!sub?.blocks) continue;
+        for (const block of sub.blocks) {
+          if (block.type === "quiz" && block.data?.quizId) {
+            const qid = block.data.quizId;
+            allQuizIds.add(qid);
+            if (!quizIdsByCourse.has(lesson.course_id)) {
+              quizIdsByCourse.set(lesson.course_id, []);
+            }
+            quizIdsByCourse.get(lesson.course_id)!.push(qid);
+            quizMappings.push({
+              quizId: qid,
+              courseId: lesson.course_id,
+              lessonId: lesson.id,
+              subsectionIndex: subIdx,
+            });
+          }
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  const allQuizIdsArray = Array.from(allQuizIds);
+
+  // Fetch additional data for Mis Cursos section (sections + quiz data)
+  const [courseSectionsResult, surveysResult, surveyResponsesResult] =
     await Promise.all([
       // Course sections for enrolled courses
       enrolledCourseIdsArray.length > 0
@@ -425,22 +482,26 @@ async function fetchStudentDashboardData(
             .in("course_id", enrolledCourseIdsArray)
         : Promise.resolve({ data: [] as { id: string; course_id: string }[] }),
 
-      // Course tests linked to enrolled courses
-      enrolledCourseIdsArray.length > 0
+      // Surveys (quizzes) by their IDs — include title for accordion display
+      allQuizIdsArray.length > 0
         ? supabase
-            .from("course_tests")
-            .select("id, test_id, course_id")
-            .in("course_id", enrolledCourseIdsArray)
+            .from(TABLES.SURVEYS)
+            .select("id, title, questions")
+            .in("id", allQuizIdsArray)
         : Promise.resolve(
-            { data: [] as { id: string; test_id: string; course_id: string }[] }
+            { data: [] as { id: string; title: string; questions: any }[] }
           ),
 
-      // Test attempts by this student
-      supabase
-        .from("test_attempts")
-        .select("id, course_test_id, course_id, status")
-        .eq("student_id", studentId)
-        .eq("status", "completed"),
+      // Student's survey responses — include score fields + submitted_at for detail cards
+      allQuizIdsArray.length > 0
+        ? supabase
+            .from(TABLES.SURVEY_RESPONSES)
+            .select("id, survey_id, answers, percentage, score, total_questions, submitted_at")
+            .eq("user_id", userId)
+            .in("survey_id", allQuizIdsArray)
+        : Promise.resolve(
+            { data: [] as { id: string; survey_id: string; answers: any; percentage: number | null; score: number | null; total_questions: number | null; submitted_at: string | null }[] }
+          ),
     ]);
 
   // Build section count maps
@@ -452,22 +513,154 @@ async function fetchStudentDashboardData(
     sectionsByCourse.get(section.course_id)!.push(section.id);
   }
 
-  // Build quiz/test count maps
-  const courseTestsByCourse = new Map<string, string[]>();
-  for (const ct of courseTestsResult.data || []) {
-    if (!courseTestsByCourse.has(ct.course_id)) {
-      courseTestsByCourse.set(ct.course_id, []);
-    }
-    courseTestsByCourse.get(ct.course_id)!.push(ct.id);
+  // Build quiz count per course from lesson content (quizIdsByCourse already computed above)
+  // surveysByCourse maps courseId → array of quiz info for counting totalQuizzes
+  const surveysByCourse = new Map<string, string[]>();
+  for (const [cid, qids] of quizIdsByCourse) {
+    surveysByCourse.set(cid, qids);
   }
 
-  const completedTestsByCourse = new Map<string, number>();
-  for (const attempt of testAttemptsResult.data || []) {
-    const courseId = attempt.course_id;
-    completedTestsByCourse.set(
-      courseId,
-      (completedTestsByCourse.get(courseId) || 0) + 1
+  // Build a map of survey questions for re-grading old responses
+  const surveyQuestionsMap = new Map<string, any[]>();
+  for (const survey of surveysResult.data || []) {
+    const questions = Array.isArray(survey.questions) ? survey.questions : [];
+    surveyQuestionsMap.set(survey.id, questions);
+  }
+
+  // Grade a response against survey questions (for old data without percentage)
+  function gradeResponse(
+    surveyId: string,
+    studentAnswers: any[]
+  ): number {
+    const questions = surveyQuestionsMap.get(surveyId);
+    if (!questions || questions.length === 0) return 0;
+    if (!Array.isArray(studentAnswers)) return 0;
+
+    const answersMap = new Map(
+      studentAnswers.map((a: any) => [a.questionId, a.answer])
     );
+    let correctCount = 0;
+
+    for (const q of questions) {
+      const userAnswer = answersMap.get(q.id);
+      if (userAnswer === undefined || userAnswer === "") continue;
+
+      if (q.options && q.options.some((o: any) => o.isCorrect)) {
+        const correctOpts = q.options
+          .filter((o: any) => o.isCorrect)
+          .map((o: any) => o.value);
+        if (q.type === "multiple_choice") {
+          const userArr = Array.isArray(userAnswer) ? userAnswer : [];
+          if (
+            correctOpts.length === userArr.length &&
+            correctOpts.every((c: string) => userArr.includes(c))
+          ) {
+            correctCount++;
+          }
+        } else {
+          if (correctOpts.includes(userAnswer as string)) correctCount++;
+        }
+      } else if (q.correctAnswer) {
+        if (Array.isArray(q.correctAnswer)) {
+          if (
+            Array.isArray(userAnswer) &&
+            userAnswer.length === q.correctAnswer.length &&
+            userAnswer.every((a: string) => q.correctAnswer.includes(a))
+          ) {
+            correctCount++;
+          }
+        } else if (userAnswer === q.correctAnswer) {
+          correctCount++;
+        }
+      }
+    }
+
+    return questions.length > 0
+      ? Math.round((correctCount / questions.length) * 10000) / 100
+      : 0;
+  }
+
+  // Build reverse map: quizId → courseId (from lesson content)
+  const quizIdToCourseId = new Map<string, string>();
+  for (const [cid, qids] of quizIdsByCourse) {
+    for (const qid of qids) {
+      quizIdToCourseId.set(qid, cid);
+    }
+  }
+
+  // Count passed quizzes per course (>= 60%)
+  const passedQuizzesByCourse = new Map<string, number>();
+  for (const resp of surveyResponsesResult.data || []) {
+    const courseId = quizIdToCourseId.get(resp.survey_id);
+    if (!courseId) continue;
+
+    // Use saved percentage if available, otherwise re-grade from answers
+    let pct = resp.percentage;
+    if (pct === null || pct === undefined) {
+      pct = gradeResponse(resp.survey_id, resp.answers);
+    }
+
+    if (pct >= 60) {
+      passedQuizzesByCourse.set(
+        courseId,
+        (passedQuizzesByCourse.get(courseId) || 0) + 1
+      );
+    }
+  }
+
+  // Build survey title map
+  const surveyTitleMap = new Map<string, string>();
+  for (const survey of surveysResult.data || []) {
+    surveyTitleMap.set(survey.id, (survey as any).title || "Quiz");
+  }
+
+  // Build response map (survey_id → response)
+  const responseMap = new Map<string, any>();
+  for (const resp of surveyResponsesResult.data || []) {
+    responseMap.set(resp.survey_id, resp);
+  }
+
+  // Build quiz detail arrays per course (for accordion)
+  const quizDetailsByCourse = new Map<string, QuizExamDetailData[]>();
+  for (const mapping of quizMappings) {
+    const resp = responseMap.get(mapping.quizId);
+    const title = surveyTitleMap.get(mapping.quizId) || "Quiz";
+    const questions = surveyQuestionsMap.get(mapping.quizId) || [];
+    const totalQ = questions.length;
+
+    let score = 0;
+    let pct = 0;
+    let completedDate: string | null = null;
+    let passed = false;
+
+    if (resp) {
+      if (resp.percentage !== null && resp.percentage !== undefined) {
+        pct = Number(resp.percentage);
+        score = (resp as any).score ?? Math.round((pct * totalQ) / 100);
+      } else {
+        pct = gradeResponse(mapping.quizId, resp.answers);
+        score = Math.round((pct * totalQ) / 100);
+      }
+      completedDate = (resp as any).submitted_at || null;
+      passed = pct >= 60;
+    }
+
+    const detail: QuizExamDetailData = {
+      id: mapping.quizId,
+      name: title,
+      passed,
+      score,
+      totalQuestions: totalQ,
+      percentage: pct,
+      completedDate,
+      lessonId: mapping.lessonId,
+      subsectionIndex: mapping.subsectionIndex,
+    };
+
+    if (!quizDetailsByCourse.has(mapping.courseId)) {
+      quizDetailsByCourse.set(mapping.courseId, []);
+    }
+    quizDetailsByCourse.get(mapping.courseId)!.push(detail);
   }
 
   // Build maps
@@ -783,11 +976,9 @@ async function fetchStudentDashboardData(
         subsProgress,
         enrolledLessonsResult.data
       );
-    const totalQuizzes = (courseTestsByCourse.get(courseId) || []).length;
-    const completedQuizzes = Math.min(
-      completedTestsByCourse.get(courseId) || 0,
-      totalQuizzes
-    );
+    const courseQuizDetails = quizDetailsByCourse.get(courseId) || [];
+    const totalQuizzes = courseQuizDetails.length;
+    const completedQuizzes = courseQuizDetails.filter((q) => q.passed).length;
 
     const lastLessonId = enrollmentItem.enrollment.lastAccessedLessonId || null;
 
@@ -805,6 +996,7 @@ async function fetchStudentDashboardData(
       progressPercent: enrollmentItem.progressPercent,
       totalQuizzes,
       completedQuizzes,
+      quizDetails: courseQuizDetails,
       lastAccessedLessonId: lastLessonId,
       lastAccessedSubsectionIndex: computeResumeSubsectionIndex(
         lastLessonId,
@@ -886,11 +1078,9 @@ async function fetchStudentDashboardData(
         subsProgress,
         enrolledLessonsResult.data
       );
-    const totalQuizzes = (courseTestsByCourse.get(courseId) || []).length;
-    const completedQuizzes = Math.min(
-      completedTestsByCourse.get(courseId) || 0,
-      totalQuizzes
-    );
+    const courseQuizDetails = quizDetailsByCourse.get(courseId) || [];
+    const totalQuizzes = courseQuizDetails.length;
+    const completedQuizzes = courseQuizDetails.filter((q) => q.passed).length;
 
     const lastLessonId = enrolled.enrollment.lastAccessedLessonId || null;
 
@@ -906,6 +1096,7 @@ async function fetchStudentDashboardData(
       progressPercent: enrolled.progressPercent,
       totalQuizzes,
       completedQuizzes,
+      quizDetails: courseQuizDetails,
       lastAccessedLessonId: lastLessonId,
       lastAccessedSubsectionIndex: computeResumeSubsectionIndex(
         lastLessonId,

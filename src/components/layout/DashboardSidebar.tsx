@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { User, UserRole } from "@/types/user";
 import {
@@ -410,14 +411,23 @@ export function DashboardSidebar({
         </button>
 
         {/* Logo */}
-        <div className={`${visualCollapsed ? "flex justify-center" : "text-center"} mb-6`}>
+        <div className={`${visualCollapsed ? "flex justify-center" : "flex justify-center"} mb-6`}>
           {visualCollapsed ? (
-            <Package className="h-8 w-8" />
+            <Image
+              src="/images/logos/logo_credlab_colapsable.png"
+              alt="CredLab"
+              width={40}
+              height={40}
+              className="object-contain"
+            />
           ) : (
-            <>
-              <div className="text-2xl font-semibold tracking-tight">MicroCert</div>
-              <p className="text-sm text-white/70 text-center">Microcredenciales<br />Marca UNACH</p>
-            </>
+            <Image
+              src="/images/logos/logo_credlab.png"
+              alt="CredLab"
+              width={260}
+              height={100}
+              className="w-full h-auto object-contain"
+            />
           )}
         </div>
 
@@ -438,8 +448,8 @@ export function DashboardSidebar({
                     <button
                       onClick={() => toggleSection(section.title!, section)}
                       className={`w-full flex items-center justify-between px-4 py-2 text-sm font-medium rounded-full transition ${isSectionActive(section)
-                          ? "bg-white/15 text-white"
-                          : "text-white/70 hover:bg-white/10"
+                        ? "bg-white/15 text-white"
+                        : "text-white/70 hover:bg-white/10"
                         }`}
                     >
                       <span className="flex items-center gap-3">
@@ -456,8 +466,8 @@ export function DashboardSidebar({
                     <button
                       onClick={() => toggleSection(section.title!, section)}
                       className={`w-full flex items-center justify-center px-4 py-2 rounded-full transition ${isSectionActive(section)
-                          ? "bg-white/15 text-white"
-                          : "text-white/70 hover:bg-white/10"
+                        ? "bg-white/15 text-white"
+                        : "text-white/70 hover:bg-white/10"
                         }`}
                       title={section.title}
                     >
@@ -468,10 +478,10 @@ export function DashboardSidebar({
                   {/* Items de la sección */}
                   <div
                     className={`overflow-hidden transition-all duration-200 ${hasTitle
-                        ? isExpanded
-                          ? "max-h-96 opacity-100 mt-1"
-                          : "max-h-0 opacity-0"
-                        : ""
+                      ? isExpanded
+                        ? "max-h-96 opacity-100 mt-1"
+                        : "max-h-0 opacity-0"
+                      : ""
                       }`}
                   >
                     <ul className="space-y-1">
@@ -508,9 +518,14 @@ export function DashboardSidebar({
           </button>
 
           {/* Logo */}
-          <div className="mb-6">
-            <div className="text-2xl font-semibold tracking-tight">MicroCert</div>
-            <p className="text-sm text-white/70">Microcredenciales<br />Marca UNACH</p>
+          <div className="mb-6 flex justify-center">
+            <Image
+              src="/images/logos/logo_credlab.png"
+              alt="CredLab"
+              width={180}
+              height={60}
+              className="object-contain"
+            />
           </div>
 
           {/* Navigation */}
@@ -530,8 +545,8 @@ export function DashboardSidebar({
                       <button
                         onClick={() => toggleSection(section.title!, section)}
                         className={`w-full flex items-center justify-between px-4 py-2 text-sm font-medium rounded-full transition ${isSectionActive(section)
-                            ? "bg-white/15 text-white"
-                            : "text-white/70 hover:bg-white/10"
+                          ? "bg-white/15 text-white"
+                          : "text-white/70 hover:bg-white/10"
                           }`}
                       >
                         <span className="flex items-center gap-3">
@@ -548,10 +563,10 @@ export function DashboardSidebar({
                     {/* Items de la sección */}
                     <div
                       className={`overflow-hidden transition-all duration-200 ${hasTitle
-                          ? isExpanded
-                            ? "max-h-96 opacity-100 mt-1"
-                            : "max-h-0 opacity-0"
-                          : ""
+                        ? isExpanded
+                          ? "max-h-96 opacity-100 mt-1"
+                          : "max-h-0 opacity-0"
+                        : ""
                         }`}
                     >
                       <ul className="space-y-1">

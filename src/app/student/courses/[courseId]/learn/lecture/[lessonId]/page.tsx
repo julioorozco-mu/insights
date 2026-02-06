@@ -292,6 +292,7 @@ function ContentBlockRenderer({
   userId,
   onProgressUpdate,
   onQuizScoreUpdate,
+  retryQuizId,
 }: {
   block: ContentBlock;
   courseId: string;
@@ -305,6 +306,7 @@ function ContentBlockRenderer({
     subsectionIndex: number,
     score: { correct: number; total: number } | null
   ) => void;
+  retryQuizId?: string | null;
 }) {
   switch (block.type) {
     case 'heading':
@@ -525,6 +527,7 @@ function ContentBlockRenderer({
           onProgressUpdate={onProgressUpdate}
           onQuizScoreUpdate={onQuizScoreUpdate}
           userId={userId}
+          autoRetry={retryQuizId === block.data?.quizId}
         />
       );
 
@@ -546,6 +549,7 @@ function SubsectionViewer({
   isCompleted,
   hasQuiz,
   onScrollComplete,
+  retryQuizId,
 }: {
   subsection: Subsection | null;
   courseId: string;
@@ -562,6 +566,7 @@ function SubsectionViewer({
   isCompleted?: boolean;
   hasQuiz?: boolean;
   onScrollComplete?: () => void;
+  retryQuizId?: string | null;
 }) {
   const [hasReachedEnd, setHasReachedEnd] = useState(false);
   const [isObserverReady, setIsObserverReady] = useState(false);
@@ -642,6 +647,7 @@ function SubsectionViewer({
           userId={userId}
           onProgressUpdate={onProgressUpdate}
           onQuizScoreUpdate={onQuizScoreUpdate}
+          retryQuizId={retryQuizId}
         />
       ))}
 
@@ -680,6 +686,9 @@ export default function LessonPlayerPage() {
 
   // Modo preview para maestros/admins (no requiere inscripción)
   const isPreviewMode = searchParams.get("preview") === "true";
+
+  // Auto-retry quiz ID from dashboard "Reintentar" button
+  const retryQuizId = searchParams.get("retryQuiz");
 
   // Get initial subsection index from URL query parameter
   const initialSubsectionIndex = searchParams.get("subsection")
@@ -2232,6 +2241,7 @@ export default function LessonPlayerPage() {
               })()}
               userId={user?.id}
               onQuizScoreUpdate={upsertQuizScore}
+              retryQuizId={retryQuizId}
               isCompleted={(() => {
                 if (!currentLessonId) return false;
                 const highestCompletedIndex = completedSubsectionsByLesson[currentLessonId] ?? -1;

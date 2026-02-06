@@ -53,6 +53,8 @@ export interface QuizBlockProps {
     score: { correct: number; total: number } | null
   ) => void;
   userId?: string;
+  /** When true, automatically triggers retry (clears saved answers and resets quiz) */
+  autoRetry?: boolean;
 }
 
 // =============================================================================
@@ -111,6 +113,7 @@ export default function QuizBlock({
   onProgressUpdate,
   onQuizScoreUpdate,
   userId,
+  autoRetry,
 }: QuizBlockProps) {
   const [quiz, setQuiz] = useState<QuizData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -237,6 +240,18 @@ export default function QuizBlock({
 
     loadQuiz();
   }, [quizId, courseId, userId, lessonId, subsectionIndex, totalSubsections, onProgressUpdate, onQuizScoreUpdate]);
+
+  // Auto-retry: when navigating from dashboard "Reintentar" button,
+  // automatically clear saved answers so student can retake immediately
+  useEffect(() => {
+    if (!autoRetry || !submitted || !quiz || loading) return;
+    // Small delay to let the UI render before clearing
+    const timer = setTimeout(() => {
+      handleRetry();
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRetry, submitted, quiz, loading]);
 
   const handleAnswerChange = (questionId: string, value: string | string[]) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
