@@ -30,6 +30,8 @@ interface QuizExamDetailData {
   completedDate: string | null;
   lessonId: string;
   subsectionIndex: number;
+  attemptCount: number;
+  maxAttempts: number;
 }
 
 // Types for Mis Cursos section (microcredential-grouped view)
@@ -492,15 +494,15 @@ async function fetchStudentDashboardData(
             { data: [] as { id: string; title: string; questions: any }[] }
           ),
 
-      // Student's survey responses — include score fields + submitted_at for detail cards
+      // Student's survey responses — include score fields + submitted_at + attempt_count for detail cards
       allQuizIdsArray.length > 0
         ? supabase
             .from(TABLES.SURVEY_RESPONSES)
-            .select("id, survey_id, answers, percentage, score, total_questions, submitted_at")
+            .select("id, survey_id, answers, percentage, score, total_questions, submitted_at, attempt_count")
             .eq("user_id", userId)
             .in("survey_id", allQuizIdsArray)
         : Promise.resolve(
-            { data: [] as { id: string; survey_id: string; answers: any; percentage: number | null; score: number | null; total_questions: number | null; submitted_at: string | null }[] }
+            { data: [] as { id: string; survey_id: string; answers: any; percentage: number | null; score: number | null; total_questions: number | null; submitted_at: string | null; attempt_count: number | null }[] }
           ),
     ]);
 
@@ -645,6 +647,8 @@ async function fetchStudentDashboardData(
       passed = pct >= 60;
     }
 
+    const attemptCount = resp ? ((resp as any).attempt_count ?? 1) : 0;
+
     const detail: QuizExamDetailData = {
       id: mapping.quizId,
       name: title,
@@ -655,6 +659,8 @@ async function fetchStudentDashboardData(
       completedDate,
       lessonId: mapping.lessonId,
       subsectionIndex: mapping.subsectionIndex,
+      attemptCount,
+      maxAttempts: 2,
     };
 
     if (!quizDetailsByCourse.has(mapping.courseId)) {

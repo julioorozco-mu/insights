@@ -115,6 +115,7 @@ export default function QuizBlock({
   userId,
   autoRetry,
 }: QuizBlockProps) {
+  const MAX_ATTEMPTS = 2;
   const [quiz, setQuiz] = useState<QuizData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +125,7 @@ export default function QuizBlock({
   const [showResults, setShowResults] = useState(false);
   const [savingAnswers, setSavingAnswers] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [attemptCount, setAttemptCount] = useState(0);
 
   useEffect(() => {
     if (!quizId) {
@@ -159,7 +161,11 @@ export default function QuizBlock({
               );
               if (savedAnswersRes.ok) {
                 const savedData = await savedAnswersRes.json();
-                if (savedData.response && savedData.response.answers) {
+                // Siempre actualizar attempt_count si hay un registro existente
+                if (savedData.response) {
+                  setAttemptCount(savedData.response.attempt_count ?? 1);
+                }
+                if (savedData.response && savedData.response.answers && Array.isArray(savedData.response.answers) && savedData.response.answers.length > 0) {
                   // Restaurar respuestas guardadas
                   const savedAnswers: Record<string, string | string[]> = {};
                   savedData.response.answers.forEach((ans: { questionId: string; answer: string | string[] }) => {
@@ -243,15 +249,17 @@ export default function QuizBlock({
 
   // Auto-retry: when navigating from dashboard "Reintentar" button,
   // automatically clear saved answers so student can retake immediately
+  // Only if attempts remain
   useEffect(() => {
     if (!autoRetry || !submitted || !quiz || loading) return;
+    if (attemptCount >= MAX_ATTEMPTS) return; // No auto-retry if max attempts reached
     // Small delay to let the UI render before clearing
     const timer = setTimeout(() => {
       handleRetry();
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRetry, submitted, quiz, loading]);
+  }, [autoRetry, submitted, quiz, loading, attemptCount]);
 
   const handleAnswerChange = (questionId: string, value: string | string[]) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
@@ -315,7 +323,18 @@ export default function QuizBlock({
       });
 
       if (!saveRes.ok) {
+        const errData = await saveRes.json().catch(() => ({}));
+        if (saveRes.status === 403) {
+          setError(errData.error || 'Has alcanzado el límite de intentos');
+          setSavingAnswers(false);
+          return;
+        }
         console.error('Error saving quiz answers');
+      } else {
+        const saveData = await saveRes.json();
+        if (saveData.attemptCount) {
+          setAttemptCount(saveData.attemptCount);
+        }
       }
 
       setScore({ correct: correctCount, total: quiz.questions.length });
@@ -431,6 +450,11 @@ export default function QuizBlock({
         </div>
         <div className="mt-3 flex items-center gap-4 text-sm text-white/70">
           <span>{quiz.questions.length} preguntas</span>
+          <span className={`px-3 py-1 rounded-full font-semibold ${
+            attemptCount >= MAX_ATTEMPTS ? "bg-red-500/30 text-red-200" : "bg-white/20"
+          }`}>
+            Intento {attemptCount}/{MAX_ATTEMPTS}
+          </span>
           {score && (
             <span className="bg-white/20 px-3 py-1 rounded-full font-semibold">
               Puntuación: {score.correct}/{score.total} ({Math.round((score.correct / score.total) * 100)}%)
@@ -579,13 +603,17 @@ export default function QuizBlock({
                 </>
               )}
             </button>
-          ) : (
+          ) : attemptCount < MAX_ATTEMPTS ? (
             <button
               onClick={handleRetry}
               className="px-6 py-3 bg-purple-100 text-purple-700 rounded-lg font-semibold hover:bg-purple-200 transition-colors flex items-center gap-2"
             >
-              Intentar de nuevo
+              Intentar de nuevo ({MAX_ATTEMPTS - attemptCount} restante{MAX_ATTEMPTS - attemptCount !== 1 ? 's' : ''})
             </button>
+          ) : (
+            <span className="px-6 py-3 bg-slate-100 text-slate-400 rounded-lg font-semibold">
+              Sin intentos restantes
+            </span>
           )}
 
           {score && (() => {

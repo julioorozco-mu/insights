@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     // Buscar respuesta guardada
     const { data: response, error } = await supabaseAdmin
       .from(TABLES.SURVEY_RESPONSES)
-      .select('id, answers, submitted_at')
+      .select('id, answers, submitted_at, attempt_count')
       .eq('survey_id', surveyId)
       .eq('user_id', userId)
       .maybeSingle();

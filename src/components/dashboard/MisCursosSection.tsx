@@ -14,6 +14,7 @@ import {
   X,
   Calendar,
   RotateCcw,
+  RefreshCw,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -27,6 +28,8 @@ export interface QuizExamDetail {
   completedDate: string | null;
   lessonId: string;
   subsectionIndex: number;
+  attemptCount: number;
+  maxAttempts: number;
 }
 
 export interface MisCursosCourseProgress {
@@ -152,7 +155,7 @@ function ExamAccordion({
                   {/* Row 1: Enumeration + Name + Badge */}
                   <div className="mb-1.5 flex items-center justify-between gap-2">
                     <span className="text-xs font-semibold text-slate-800 line-clamp-1">
-                      <span className="mr-1 text-slate-400">{idx + 1}.</span>
+                      <span className="mr-1 text-slate-800">{idx + 1}.</span>
                       {quiz.name}
                     </span>
                     {quiz.completedDate ? (
@@ -203,22 +206,46 @@ function ExamAccordion({
                         /{quiz.totalQuestions}
                       </span>
 
+                      {/* Intentos */}
+                      <span
+                        className={`inline-flex items-center gap-1 ${
+                          quiz.attemptCount >= quiz.maxAttempts
+                            ? "text-red-500"
+                            : "text-slate-500"
+                        }`}
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        <span className="font-semibold">
+                          {quiz.attemptCount}
+                        </span>
+                        /{quiz.maxAttempts}
+                      </span>
+
                       {/* Fecha */}
                       <span className="inline-flex items-center gap-1">
                         <Calendar className="h-3 w-3 text-slate-400" />
                         {formatDate(quiz.completedDate)}
                       </span>
 
-                      {/* Retry button for failed — amber tones to distinguish from red Fallido badge */}
-                      {!quiz.passed && (
-                        <Link
-                          href={`/student/courses/${courseId}/learn/lecture/${quiz.lessonId}?subsection=${quiz.subsectionIndex}&retryQuiz=${quiz.id}`}
-                          className="ml-auto inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 transition-colors hover:bg-amber-100"
-                        >
-                          <RotateCcw className="h-2.5 w-2.5" />
-                          Reintentar
-                        </Link>
-                      )}
+                      {/* Retry button for failed — only if attempts remain */}
+                      {!quiz.passed &&
+                        quiz.attemptCount < quiz.maxAttempts && (
+                          <Link
+                            href={`/student/courses/${courseId}/learn/lecture/${quiz.lessonId}?subsection=${quiz.subsectionIndex}&retryQuiz=${quiz.id}`}
+                            className="ml-auto inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 transition-colors hover:bg-amber-100"
+                          >
+                            <RotateCcw className="h-2.5 w-2.5" />
+                            Reintentar
+                          </Link>
+                        )}
+
+                      {/* No attempts left message */}
+                      {!quiz.passed &&
+                        quiz.attemptCount >= quiz.maxAttempts && (
+                          <span className="ml-auto inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-400">
+                            Sin intentos
+                          </span>
+                        )}
                     </div>
                   ) : (
                     <p className="text-[11px] text-slate-400">
@@ -398,7 +425,13 @@ const MisCursosCourseCard = memo(function MisCursosCourseCard({
 });
 
 // ─── Microcredential Group Card (Accordion) ─────────────────────────
-function MicrocredentialGroupCard({ mc }: { mc: MisCursosMicrocredential }) {
+function MicrocredentialGroupCard({
+  mc,
+  index
+}: {
+  mc: MisCursosMicrocredential;
+  index: number;
+}) {
   const [isOpen, setIsOpen] = useState(true);
   const toggle = useCallback(() => setIsOpen((prev) => !prev), []);
 
@@ -411,7 +444,7 @@ function MicrocredentialGroupCard({ mc }: { mc: MisCursosMicrocredential }) {
         className="flex w-full items-center justify-between border-b border-slate-100 bg-slate-50/60 px-4 py-3 text-left transition-colors hover:bg-slate-100/60"
       >
         <h3 className="text-sm font-semibold text-slate-700">
-          Microcredencial: {mc.title}
+          {index}. Microcredencial: {mc.title}
         </h3>
         <ChevronDown
           className={`h-4 w-4 text-slate-400 transition-transform duration-300 ${
@@ -549,8 +582,8 @@ export const MisCursosSection = memo(function MisCursosSection({
       {hasContent ? (
         <div className="space-y-4">
           {/* Microcredential Groups */}
-          {microcredentials.map((mc) => (
-            <MicrocredentialGroupCard key={mc.id} mc={mc} />
+          {microcredentials.map((mc, idx) => (
+            <MicrocredentialGroupCard key={mc.id} mc={mc} index={idx + 1} />
           ))}
 
           {/* Standalone Courses */}

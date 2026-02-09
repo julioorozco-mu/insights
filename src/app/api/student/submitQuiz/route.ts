@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
     const [existingCheck, surveyResult, userResult] = await Promise.all([
       supabaseAdmin
         .from(TABLES.SURVEY_RESPONSES)
-        .select('id')
+        .select('id, attempt_count, submitted_at')
         .eq('survey_id', surveyId)
         .eq('user_id', authUser.id)
         .maybeSingle(),
@@ -154,10 +154,31 @@ export async function POST(req: NextRequest) {
       percentage,
     };
 
+    const MAX_ATTEMPTS = 2;
     let responseId: string;
+    let currentAttempt: number;
 
     if (existingCheck.data) {
-      // Actualizar respuesta existente
+      const existingAttemptCount = existingCheck.data.attempt_count ?? 1;
+      const hasBeenCleared = !existingCheck.data.submitted_at;
+
+      // Si submitted_at es null → answers fueron limpiadas por retry → es un nuevo intento
+      // Si submitted_at no es null → es una re-envío del mismo intento (no incrementar)
+      if (hasBeenCleared) {
+        currentAttempt = existingAttemptCount + 1;
+      } else {
+        currentAttempt = existingAttemptCount;
+      }
+
+      // Limitar a MAX_ATTEMPTS
+      if (currentAttempt > MAX_ATTEMPTS) {
+        return NextResponse.json(
+          { error: `Has alcanzado el límite de ${MAX_ATTEMPTS} intentos para este quiz` },
+          { status: 403 }
+        );
+      }
+
+      // Actualizar respuesta existente con nuevo intento
       const { data: updatedResponse, error: updateError } = await supabaseAdmin
         .from(TABLES.SURVEY_RESPONSES)
         .update({
@@ -166,6 +187,7 @@ export async function POST(req: NextRequest) {
           score,
           total_questions: totalQuestions,
           percentage,
+          attempt_count: currentAttempt,
         })
         .eq('id', existingCheck.data.id)
         .select('id')
@@ -181,6 +203,7 @@ export async function POST(req: NextRequest) {
 
       responseId = updatedResponse.id;
     } else {
+      currentAttempt = 1;
       // Crear nueva respuesta
       const { data: newResponse, error: insertError } = await supabaseAdmin
         .from(TABLES.SURVEY_RESPONSES)
@@ -205,6 +228,8 @@ export async function POST(req: NextRequest) {
       score,
       totalQuestions,
       percentage,
+      attemptCount: currentAttempt,
+      maxAttempts: MAX_ATTEMPTS,
       message: existingCheck.data ? 'Respuesta actualizada' : 'Respuesta guardada',
     });
   } catch (e: any) {

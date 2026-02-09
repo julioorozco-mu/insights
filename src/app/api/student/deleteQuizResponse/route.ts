@@ -32,24 +32,31 @@ export async function POST(req: NextRequest) {
 
     const supabaseAdmin = getSupabaseAdmin();
 
-    // Eliminar respuesta guardada
+    // Limpiar respuestas pero conservar el registro y attempt_count
+    // para poder rastrear los intentos del estudiante
     const { error } = await supabaseAdmin
       .from(TABLES.SURVEY_RESPONSES)
-      .delete()
+      .update({
+        answers: [],
+        score: null,
+        total_questions: null,
+        percentage: null,
+        submitted_at: null,
+      })
       .eq('survey_id', surveyId)
       .eq('user_id', targetUserId);
 
     if (error) {
       console.error('[deleteQuizResponse API] Error:', error);
       return NextResponse.json(
-        { error: 'Error al eliminar la respuesta' },
+        { error: 'Error al limpiar la respuesta' },
         { status: 500 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Respuesta eliminada',
+      message: 'Respuesta limpiada para reintento',
     });
   } catch (e: any) {
     console.error('[deleteQuizResponse API] Error:', e);
