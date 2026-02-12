@@ -65,6 +65,7 @@ export default function AssignmentsPage() {
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [teacherSearch, setTeacherSearch] = useState("");
   const [selectedTeacherUserId, setSelectedTeacherUserId] = useState<string | null>(null);
+  const [currentAssignedTeacherUserId, setCurrentAssignedTeacherUserId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const allowed = useMemo(() => isAdminRole(user?.role), [user?.role]);
@@ -77,7 +78,15 @@ export default function AssignmentsPage() {
   const teacherCourseCounts = useMemo(() => {
     const map = new Map<string, number>();
     (courses || []).forEach((course) => {
-      const teacherUserId = Array.isArray(course.speakerIds) ? course.speakerIds[0] : null;
+      // Obtener el primer speaker asignado
+      const firstSpeaker = Array.isArray(course.speakers) && course.speakers.length > 0 
+        ? course.speakers[0] 
+        : null;
+      if (!firstSpeaker) return;
+      
+      // firstSpeaker.id es el userId directamente
+      const teacherUserId = firstSpeaker.id;
+      
       if (!teacherUserId) return;
       map.set(teacherUserId, (map.get(teacherUserId) || 0) + 1);
     });
@@ -105,14 +114,18 @@ export default function AssignmentsPage() {
   const filteredSpeakers = useMemo(() => {
     const term = teacherSearch.trim().toLowerCase();
     const list = (speakers || []).filter((s) => !!s.userId);
-    if (!term) return list;
+    
+    // Filtrar para excluir solo el docente asignado actual
+    const listFiltered = list.filter((s) => s.userId !== currentAssignedTeacherUserId);
+    
+    if (!term) return listFiltered;
 
-    return list.filter((s) => {
+    return listFiltered.filter((s) => {
       const expertise = Array.isArray(s.expertise) ? s.expertise.join(" ") : "";
       const haystack = `${s.name || ""} ${s.email || ""} ${expertise}`.toLowerCase();
       return haystack.includes(term);
     });
-  }, [speakers, teacherSearch]);
+  }, [speakers, teacherSearch, currentAssignedTeacherUserId]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -174,15 +187,22 @@ export default function AssignmentsPage() {
 
   useEffect(() => {
     if (!selectedCourse) return;
-    const currentTeacher = Array.isArray(selectedCourse.speakerIds) ? selectedCourse.speakerIds[0] || null : null;
-    setSelectedTeacherUserId(currentTeacher);
+    // Obtener el userId del primer speaker asignado
+    const firstSpeaker = Array.isArray(selectedCourse.speakers) && selectedCourse.speakers.length > 0 
+      ? selectedCourse.speakers[0] 
+      : null;
+    // firstSpeaker.id es el userId, lo usamos directamente
+    const currentTeacherUserId = firstSpeaker?.id || null;
+    setCurrentAssignedTeacherUserId(currentTeacherUserId);
+    setSelectedTeacherUserId(currentTeacherUserId);
     setTeacherSearch("");
-  }, [selectedCourseId]);
+  }, [selectedCourseId, selectedCourse]);
 
   const closePanel = () => {
     setSelectedCourseId(null);
     setTeacherSearch("");
     setSelectedTeacherUserId(null);
+    setCurrentAssignedTeacherUserId(null);
   };
 
   const handleAssign = async () => {
@@ -194,6 +214,7 @@ export default function AssignmentsPage() {
 
       const payload = {
         courseId: selectedCourse.id,
+        // updateCourse espera userId(s)
         speakerIds: selectedTeacherUserId ? [selectedTeacherUserId] : [],
       };
 
@@ -265,6 +286,39 @@ export default function AssignmentsPage() {
               </div>
             </div>
 
+            {currentAssignedTeacherUserId && (() => {
+              const currentSpeaker = speakers.find(s => s.userId === currentAssignedTeacherUserId);
+              if (!currentSpeaker) return null;
+              
+              const count = teacherCourseCounts.get(currentAssignedTeacherUserId) || 0;
+              
+              return (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 mb-3 uppercase tracking-wide">Docente Actual</p>
+                  <div className="p-4 bg-brand-primary/5 rounded-lg border-2 border-brand-primary/20">
+                    <div className="flex items-center gap-3">
+                      {currentSpeaker.avatarUrl ? (
+                        <img alt="" src={currentSpeaker.avatarUrl} className="h-12 w-12 rounded-full object-cover" />
+                      ) : (
+                        <div className="h-12 w-12 rounded-full bg-brand-secondary/10 flex items-center justify-center text-brand-secondary font-bold text-sm">
+                          {getInitials(currentSpeaker.name || currentSpeaker.email || "Docente")}
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <span className="block text-sm font-bold text-slate-900">{currentSpeaker.name || currentSpeaker.email}</span>
+                        <span className="block text-xs text-slate-600 mt-0.5">
+                          {Array.isArray(currentSpeaker.expertise) && currentSpeaker.expertise.length > 0 ? currentSpeaker.expertise[0] : ""}
+                        </span>
+                      </div>
+                      <span className="text-[10px] px-2.5 py-1 rounded-full bg-brand-primary/10 text-brand-primary font-medium">
+                        {count === 1 ? "1 Curso" : `${count} Cursos`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Buscar Docente</label>
               <div className="relative">
@@ -283,11 +337,17 @@ export default function AssignmentsPage() {
             <div>
               <p className="text-xs font-semibold text-slate-500 mb-3 uppercase tracking-wide">Resultados sugeridos</p>
               <div className="space-y-3">
-                <label className="relative flex items-center p-3 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors">
+                <label 
+                  className={
+                    "relative flex items-center p-3 rounded-lg border cursor-pointer hover:bg-slate-50 transition-colors " +
+                    (!selectedTeacherUserId ? "border-brand-primary bg-brand-primary/5" : "border-slate-200")
+                  }
+                  onClick={() => setSelectedTeacherUserId(null)}
+                >
                   <input
                     type="radio"
                     name="teacher_select"
-                    className="h-4 w-4 text-brand-primary border-slate-300 focus:ring-brand-primary"
+                    className="h-4 w-4 text-brand-primary border-slate-300 focus:ring-brand-primary cursor-pointer"
                     checked={!selectedTeacherUserId}
                     onChange={() => setSelectedTeacherUserId(null)}
                   />
@@ -300,6 +360,9 @@ export default function AssignmentsPage() {
                       <span className="block text-xs text-slate-500">Dejar el curso sin asignación</span>
                     </div>
                   </div>
+                  {!selectedTeacherUserId && (
+                    <div className="absolute inset-0 rounded-lg ring-2 ring-brand-primary ring-opacity-20 pointer-events-none" />
+                  )}
                 </label>
 
                 {filteredSpeakers.map((sp) => {
@@ -316,13 +379,14 @@ export default function AssignmentsPage() {
                       key={sp.id}
                       className={
                         "relative flex items-center p-3 rounded-lg border cursor-pointer hover:bg-slate-50 transition-colors group " +
-                        (selectedTeacherUserId === teacherUserId ? "border-brand-primary" : "border-slate-200")
+                        (selectedTeacherUserId === teacherUserId ? "border-brand-primary bg-brand-primary/5" : "border-slate-200")
                       }
+                      onClick={() => setSelectedTeacherUserId(teacherUserId)}
                     >
                       <input
                         type="radio"
                         name="teacher_select"
-                        className="h-4 w-4 text-brand-primary border-slate-300 focus:ring-brand-primary"
+                        className="h-4 w-4 text-brand-primary border-slate-300 focus:ring-brand-primary cursor-pointer"
                         checked={selectedTeacherUserId === teacherUserId}
                         onChange={() => setSelectedTeacherUserId(teacherUserId)}
                       />
@@ -437,103 +501,117 @@ export default function AssignmentsPage() {
           {loading ? (
             <Loader />
           ) : (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-20">
-              {filteredCourses.map((course) => {
-                const hasTeacher = (course.speakerIds || []).length > 0;
-                const teacher = Array.isArray(course.speakers) ? course.speakers[0] : null;
-                const isSelected = selectedCourseId === course.id;
-                const imageUrl = course.coverImageUrl || course.thumbnailUrl;
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Curso
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Docente Asignado
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Lecciones
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Estado
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        Acción
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200">
+                    {filteredCourses.map((course) => {
+                      const hasTeacher = (course.speakerIds || []).length > 0;
+                      const teacher = Array.isArray(course.speakers) ? course.speakers[0] : null;
+                      const isSelected = selectedCourseId === course.id;
+                      const imageUrl = course.coverImageUrl || course.thumbnailUrl;
 
-                return (
-                  <button
-                    key={course.id}
-                    type="button"
-                    onClick={() => setSelectedCourseId(course.id)}
-                    className={
-                      "text-left bg-white rounded-xl border overflow-hidden flex flex-col md:flex-row transition-all " +
-                      (isSelected
-                        ? "shadow-lg ring-2 ring-brand-primary border-transparent"
-                        : "shadow-sm border-slate-200 hover:shadow-md")
-                    }
-                  >
-                    <div className="w-full md:w-48 h-48 md:h-auto bg-slate-100 relative flex-shrink-0">
-                      {imageUrl ? (
-                        <img alt={course.title} src={imageUrl as string} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-brand-primary/10 to-brand-secondary/10" />
-                      )}
-
-                      <div
-                        className={
-                          "absolute top-3 left-3 text-xs font-semibold px-2.5 py-0.5 rounded-full border " +
-                          (hasTeacher
-                            ? "bg-brand-success/10 text-brand-success border-brand-success/20"
-                            : "bg-amber-100 text-amber-700 border-amber-200")
-                        }
-                      >
-                        {hasTeacher ? "Asignado" : "Sin Docente"}
-                      </div>
-
-                      {isSelected && (
-                        <div className="absolute right-0 top-0 p-2">
-                          <span className="flex h-3 w-3 relative">
-                            <span className="absolute inline-flex h-full w-full rounded-full bg-brand-primary/50 animate-ping" />
-                            <span className="relative inline-flex rounded-full h-3 w-3 bg-brand-primary" />
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="p-5 flex flex-col justify-between flex-1">
-                      <div>
-                        <h3 className="text-xl font-bold text-slate-900 mb-2 leading-tight">{course.title}</h3>
-                        <p className="text-sm text-slate-500 mb-4 line-clamp-2 leading-relaxed">
-                          {course.description || "Sin descripción disponible"}
-                        </p>
-
-                        {hasTeacher && teacher ? (
-                          <div className="flex items-center gap-3 mb-4">
-                            {teacher.photoURL ? (
-                              <img alt="" className="h-9 w-9 rounded-full border-2 border-slate-200" src={teacher.photoURL} />
+                      return (
+                        <tr
+                          key={course.id}
+                          onClick={() => setSelectedCourseId(course.id)}
+                          className={`cursor-pointer transition-colors ${
+                            isSelected ? "bg-brand-primary/5 hover:bg-brand-primary/10" : "hover:bg-slate-50"
+                          }`}
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <div className="flex-shrink-0 h-12 w-12 rounded-lg overflow-hidden bg-slate-100">
+                                {imageUrl ? (
+                                  <img alt={course.title} src={imageUrl as string} className="h-12 w-12 object-cover" />
+                                ) : (
+                                  <div className="h-12 w-12 bg-gradient-to-br from-brand-primary/10 to-brand-secondary/10" />
+                                )}
+                              </div>
+                              <div className="ml-4">
+                                <div className="text-sm font-medium text-slate-900">{course.title}</div>
+                                <div className="text-xs text-slate-500">ID: {course.id.slice(0, 8)}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {hasTeacher && teacher ? (
+                              <div className="flex items-center">
+                                {teacher.photoURL ? (
+                                  <img alt="" className="h-8 w-8 rounded-full" src={teacher.photoURL} />
+                                ) : (
+                                  <div className="h-8 w-8 rounded-full bg-brand-secondary/10 text-brand-secondary flex items-center justify-center text-xs font-bold">
+                                    {getInitials(teacher.name || teacher.email || "Docente")}
+                                  </div>
+                                )}
+                                <div className="ml-3">
+                                  <div className="text-sm font-medium text-slate-900">{teacher.name || teacher.email}</div>
+                                  <div className="text-xs text-slate-500">Docente Titular</div>
+                                </div>
+                              </div>
                             ) : (
-                              <div className="h-9 w-9 rounded-full bg-brand-secondary/10 text-brand-secondary flex items-center justify-center text-xs font-bold border-2 border-slate-200">
-                                {getInitials(teacher.name || teacher.email || "Docente")}
+                              <div className="flex items-center text-slate-400">
+                                <UserIcon className="h-5 w-5 mr-2" />
+                                <span className="text-sm">Sin asignar</span>
                               </div>
                             )}
-                            <div>
-                              <p className="text-sm font-semibold text-slate-900">{teacher.name || teacher.email}</p>
-                              <p className="text-xs text-slate-500">Docente Titular</p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-3 mb-4 p-2 bg-brand-error/5 rounded-lg border border-brand-error/10">
-                            <AlertTriangle className="h-4 w-4 text-brand-error" />
-                            <div>
-                              <p className="text-sm font-semibold text-brand-error">Acción requerida</p>
-                              <p className="text-xs text-brand-error/80">Asigne un docente para iniciar.</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-auto">
-                        <div className="flex items-center text-xs text-slate-500 gap-4">
-                          <span className="flex items-center gap-2">
-                            <span className="inline-block h-2 w-2 rounded-full bg-slate-300" />
-                            {(Array.isArray(course.lessons) ? course.lessons.length : 0) + " Lecciones"}
-                          </span>
-                        </div>
-                        <span className={`text-sm font-medium ${hasTeacher ? "text-brand-secondary" : "text-brand-primary"}`}>
-                          {hasTeacher ? "Editar" : "Gestionar"}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                            {Array.isArray(course.lessons) ? course.lessons.length : 0}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                hasTeacher
+                                  ? "bg-brand-success/10 text-brand-success"
+                                  : "bg-amber-100 text-amber-700"
+                              }`}
+                            >
+                              {hasTeacher ? "Asignado" : "Sin Docente"}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <button
+                              type="button"
+                              className={`${
+                                hasTeacher ? "text-brand-secondary hover:text-brand-secondary/80" : "text-brand-primary hover:text-brand-primary/80"
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCourseId(course.id);
+                              }}
+                            >
+                              {hasTeacher ? "Editar" : "Gestionar"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
               {filteredCourses.length === 0 && (
-                <div className="col-span-full text-center text-sm text-slate-500 py-12">No se encontraron cursos.</div>
+                <div className="text-center text-sm text-slate-500 py-12">No se encontraron cursos.</div>
               )}
             </div>
           )}
